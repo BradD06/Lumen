@@ -44,10 +44,16 @@ public struct BlockContent: Hashable, Codable, Sendable {
     public var runs: [TextRun]
     /// Отметка для блока-задачи.
     public var isChecked: Bool
+    /// Страница, на которую ссылается блок «Страница».
+    public var pageId: UUID?
+    /// Имя файла во вложениях для блока «Картинка».
+    public var attachment: String?
 
-    public init(runs: [TextRun] = [], isChecked: Bool = false) {
+    public init(runs: [TextRun] = [], isChecked: Bool = false, pageId: UUID? = nil, attachment: String? = nil) {
         self.runs = runs
         self.isChecked = isChecked
+        self.pageId = pageId
+        self.attachment = attachment
     }
 
     public init(text: String, isChecked: Bool = false) {
@@ -62,13 +68,15 @@ public struct BlockContent: Hashable, Codable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case runs, isChecked
+        case runs, isChecked, pageId, attachment
     }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         runs = try container.decodeIfPresent([TextRun].self, forKey: .runs) ?? []
         isChecked = try container.decodeIfPresent(Bool.self, forKey: .isChecked) ?? false
+        pageId = try container.decodeIfPresent(UUID.self, forKey: .pageId)
+        attachment = try container.decodeIfPresent(String.self, forKey: .attachment)
     }
 }
 

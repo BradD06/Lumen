@@ -1,6 +1,7 @@
 import LumenCore
 import LumenStorage
 import LumenThemes
+import PhotosUI
 import SwiftUI
 
 enum EditorFocus: Hashable {
@@ -12,15 +13,20 @@ enum EditorFocus: Hashable {
 /// в ленивом стеке. Markdown-сокращения, slash-меню, Return и Backspace работают как в Notion.
 struct PageEditorView: View {
     @State private var model: PageEditorModel
+    var onOpenPage: (UUID) -> Void
     var onClose: () -> Void
 
     @FocusState private var focus: EditorFocus?
+    @State private var isPickingCover = false
+    @State private var coverPhoto: PhotosPickerItem?
     @Environment(\.lumenTheme) private var theme
 
     private static let icons = ["📝", "📘", "📚", "🎓", "💡", "✅", "🧠", "🌅", "🗂️", "⭐️"]
+    private static let coverGradients = ["Персик", "Солнце", "Лаванда", "Лайм", "Небо"]
 
-    init(database: AppDatabase, pageId: UUID, onClose: @escaping () -> Void) {
+    init(database: AppDatabase, pageId: UUID, onOpenPage: @escaping (UUID) -> Void, onClose: @escaping () -> Void) {
         _model = State(initialValue: PageEditorModel(database: database, pageId: pageId))
+        self.onOpenPage = onOpenPage
         self.onClose = onClose
     }
 
@@ -38,9 +44,12 @@ struct PageEditorView: View {
                     )
                 }
                 Color.clear
-                    .frame(height: 200)
+                    .frame(height: model.links.backlinks.isEmpty ? 200 : 60)
                     .contentShape(Rectangle())
                     .onTapGesture { model.focusEnd() }
+                if !model.links.backlinks.isEmpty {
+                    backlinks
+                }
             }
             .padding(.horizontal, 28)
             .padding(.vertical, 24)
@@ -49,11 +58,25 @@ struct PageEditorView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(ThemedBackground())
-        .navigationTitle(model.page?.displayTitle ?? "")
+        .navigationTitle(model.isLoaded ? displayTitle : "")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
+            ToolbarItemGroup {
+                Button {
+                    model.undo()
+                } label: {
+                    Label("Отменить", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(!model.canUndo)
+                Button {
+                    model.redo()
+                } label: {
+                    Label("Повторить", systemImage: "arrow.uturn.forward")
+                }
+                .disabled(!model.canRedo)
+            }
             ToolbarItem {
                 Menu {
                     Button {
@@ -91,6 +114,23 @@ struct PageEditorView: View {
             if model.title.isEmpty {
                 focus = .title
             }
+            await model.observeLinks()
+        }
+        .focusedSceneValue(\.pageEditor, model)
+        .onChange(of: model.openRequest) { _, request in
+            guard let request else { return }
+            model.openRequest = nil
+            onOpenPage(request)
+        }
+        .photosPicker(isPresented: $isPickingCover, selection: $coverPhoto, matching: .images)
+        .onChange(of: coverPhoto) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    model.setCoverImage(data: data)
+                }
+                coverPhoto = nil
+            }
         }
         .onChange(of: model.focusRequest) { _, request in
             guard let request else { return }
@@ -102,8 +142,17 @@ struct PageEditorView: View {
         }
     }
 
+    private var displayTitle: String {
+        let trimmed = model.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Без названия" : trimmed
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let cover = model.page?.pageCover {
+                PageCoverView(cover: cover, attachments: model.database.attachments)
+                    .padding(.bottom, 6)
+            }
             HStack(spacing: 8) {
                 Menu {
                     ForEach(Self.icons, id: \.self) { icon in
@@ -125,6 +174,8 @@ struct PageEditorView: View {
                 .menuStyle(.button)
                 .buttonStyle(.plain)
                 .fixedSize()
+
+                coverMenu
 
                 if model.page?.inInbox == true {
                     Button {
@@ -152,6 +203,86 @@ struct PageEditorView: View {
             .foregroundStyle(theme.textPrimary)
             .focused($focus, equals: .title)
             .onSubmit { model.focusFirstBlock() }
+        }
+    }
+
+    private var coverMenu: some View {
+        Menu {
+            ForEach(Array(Self.coverGradients.enumerated()), id: \.offset) { index, name in
+                Button(name) { model.setCover(.gradient(index)) }
+            }
+            Divider()
+            Button {
+                isPickingCover = true
+            } label: {
+                Label("Фото…", systemImage: "photo")
+            }
+            if model.page?.cover != nil {
+                Divider()
+                Button("Убрать обложку", role: .destructive) { model.setCover(nil) }
+            }
+        } label: {
+            Label("Обложка", systemImage: "photo.artframe")
+                .font(.subheadline)
+                .foregroundStyle(theme.textSecondary)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .fixedSize()
+    }
+
+    /// Обратные ссылки: страницы, в которых есть ссылка на эту.
+    private var backlinks: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Ссылки на эту страницу", systemImage: "arrow.turn.down.left")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.textSecondary)
+            ForEach(model.links.backlinks) { page in
+                Button {
+                    model.open(page.id)
+                } label: {
+                    PageLabel(page: page)
+                        .foregroundStyle(theme.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .lumenCard(padding: 14)
+        .padding(.bottom, 40)
+    }
+}
+
+// MARK: - Отмена и повтор в меню
+
+private struct PageEditorKey: FocusedValueKey {
+    typealias Value = PageEditorModel
+}
+
+extension FocusedValues {
+    /// Редактор в активном окне: к нему обращаются ⌘Z и ⇧⌘Z из меню.
+    var pageEditor: PageEditorModel? {
+        get { self[PageEditorKey.self] }
+        set { self[PageEditorKey.self] = newValue }
+    }
+}
+
+/// Команды «Отменить» и «Повторить» для открытой страницы. Заменяют стандартные пункты меню
+/// «Правка», чтобы ⌘Z отменял и правки текста, и действия с блоками одной историей.
+public struct EditorCommands: Commands {
+    @FocusedValue(\.pageEditor) private var editor
+
+    public init() {}
+
+    public var body: some Commands {
+        CommandGroup(replacing: .undoRedo) {
+            Button("Отменить") { editor?.undo() }
+                .keyboardShortcut("z", modifiers: .command)
+                .disabled(editor?.canUndo != true)
+            Button("Повторить") { editor?.redo() }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+                .disabled(editor?.canRedo != true)
         }
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import LumenCore
 import LumenStorage
 import Observation
@@ -15,15 +16,40 @@ final class PageEditorModel {
     private(set) var title = ""
     private(set) var blocks: [Block] = []
     private(set) var isLoaded = false
+    /// Живые страницы (для выбора ссылки и подписей блоков-ссылок) и обратные ссылки.
+    private(set) var links = PageLinksSnapshot.empty
+    private(set) var canUndo = false
+    private(set) var canRedo = false
     /// Блок, на который нужно перевести фокус. Вью сбрасывает его после применения.
     var focusRequest: UUID?
+    /// Страница, которую нужно открыть (ссылка или новая подстраница). Вью сбрасывает её после перехода.
+    var openRequest: UUID?
 
     @ObservationIgnored private var dirtyBlocks: Set<UUID> = []
     @ObservationIgnored private var isTitleDirty = false
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var lastWrite: Task<Void, Never>?
 
+    @ObservationIgnored private var undoStack: [Snapshot] = []
+    @ObservationIgnored private var redoStack: [Snapshot] = []
+    /// Набор текста подряд в одном поле отменяется одним шагом, а не по букве.
+    @ObservationIgnored private var typingGroup: TypingGroup?
+    @ObservationIgnored private var lastTypingAt = Date.distantPast
+
     private static let saveDelay: Duration = .milliseconds(350)
+    private static let typingGroupInterval: TimeInterval = 1.5
+    private static let undoLimit = 200
+
+    /// Состояние страницы для отмены и повтора.
+    private struct Snapshot {
+        var title: String
+        var blocks: [Block]
+    }
+
+    private enum TypingGroup: Equatable {
+        case title
+        case block(UUID)
+    }
 
     init(database: AppDatabase, pageId: UUID) {
         self.database = database
@@ -50,11 +76,31 @@ final class PageEditorModel {
         }
     }
 
-    /// Немедленно записывает все несохранённые правки.
+    /// Следит за списком страниц и обратными ссылками, пока страница открыта.
+    func observeLinks() async {
+        let pageId = pageId
+        let observation = ValueObservation.tracking { db in try PageLinksSnapshot.fetch(db, pageId: pageId) }
+        do {
+            for try await value in observation.values(in: database.reader) {
+                links = value
+                // Иконка, обложка и избранное могли поменяться в сайдбаре. Название не трогаем:
+                // его источник правды здесь, пока страница открыта.
+                if var fresh = value.pages.first(where: { $0.id == pageId }) {
+                    fresh.title = title
+                    page = fresh
+                }
+            }
+        } catch {
+            print("Links observation failed: \(error)")
+        }
+    }
+
+    /// Немедленно записывает все несохранённые правки и ждёт, пока очередь записей опустеет.
     func flush() async {
         saveTask?.cancel()
         saveTask = nil
         await save()
+        await lastWrite?.value
     }
 
     private func markDirty(_ id: UUID) {
@@ -104,16 +150,90 @@ final class PageEditorModel {
         await write.value
     }
 
+    /// Удаление блока из базы в той же очереди, что и сохранения,
+    /// чтобы запоздалая запись не вернула удалённый блок.
+    private func enqueueDelete(_ id: UUID) {
+        dirtyBlocks.remove(id)
+        let database = database
+        let previous = lastWrite
+        lastWrite = Task {
+            await previous?.value
+            try? await database.deleteBlock(id)
+        }
+    }
+
+    // MARK: Отмена и повтор
+
+    /// Запоминает состояние перед правкой. `typing` объединяет набор текста подряд в один шаг.
+    private func recordUndo(typing group: TypingGroup? = nil) {
+        let now = Date()
+        if let group, group == typingGroup, now.timeIntervalSince(lastTypingAt) < Self.typingGroupInterval {
+            lastTypingAt = now
+            return
+        }
+        typingGroup = group
+        lastTypingAt = now
+        undoStack.append(Snapshot(title: title, blocks: blocks))
+        if undoStack.count > Self.undoLimit {
+            undoStack.removeFirst()
+        }
+        redoStack.removeAll()
+        updateUndoState()
+    }
+
+    func undo() {
+        guard let snapshot = undoStack.popLast() else { return }
+        redoStack.append(Snapshot(title: title, blocks: blocks))
+        restore(snapshot)
+    }
+
+    func redo() {
+        guard let snapshot = redoStack.popLast() else { return }
+        undoStack.append(Snapshot(title: title, blocks: blocks))
+        restore(snapshot)
+    }
+
+    private func updateUndoState() {
+        canUndo = !undoStack.isEmpty
+        canRedo = !redoStack.isEmpty
+    }
+
+    /// Возвращает страницу к снимку и записывает в базу только то, что изменилось.
+    private func restore(_ snapshot: Snapshot) {
+        typingGroup = nil
+        let current = Dictionary(uniqueKeysWithValues: blocks.map { ($0.id, $0) })
+        let restoredIds = Set(snapshot.blocks.map(\.id))
+        let removed = blocks.map(\.id).filter { !restoredIds.contains($0) }
+        let changed = snapshot.blocks.filter { current[$0.id] != $0 }.map(\.id)
+
+        if title != snapshot.title {
+            title = snapshot.title
+            isTitleDirty = true
+        }
+        blocks = snapshot.blocks
+        for id in removed {
+            enqueueDelete(id)
+        }
+        dirtyBlocks.formUnion(changed)
+        scheduleSave()
+        updateUndoState()
+        if let first = changed.first ?? blocks.first?.id {
+            focusRequest = first
+        }
+    }
+
     // MARK: Страница
 
     func setTitle(_ value: String) {
         // Return в названии переводит курсор в первый блок.
-        if value.contains("\n") {
-            title = value.replacingOccurrences(of: "\n", with: "")
+        let hasReturn = value.contains("\n")
+        let newTitle = hasReturn ? value.replacingOccurrences(of: "\n", with: "") : value
+        if hasReturn {
             focusFirstBlock()
-        } else {
-            title = value
         }
+        guard newTitle != title else { return }
+        recordUndo(typing: .title)
+        title = newTitle
         isTitleDirty = true
         scheduleSave()
     }
@@ -160,11 +280,13 @@ final class PageEditorModel {
         var block = blocks[index]
 
         if newText.contains("\n"), block.type != .code {
+            recordUndo()
             split(at: index, text: newText)
             return
         }
 
         if block.type == .paragraph, let shortcut = MarkdownShortcut.match(newText) {
+            recordUndo()
             block.type = shortcut.type
             block.text = shortcut.remainder
             blocks[index] = block
@@ -176,6 +298,7 @@ final class PageEditorModel {
         }
 
         guard block.text != newText else { return }
+        recordUndo(typing: .block(id))
         block.text = newText
         blocks[index] = block
         markDirty(id)
@@ -184,6 +307,7 @@ final class PageEditorModel {
     /// Return в конце блока (на macOS приходит как submit, а не как перевод строки).
     func submit(_ id: UUID) {
         guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
+        recordUndo()
         split(at: index, text: blocks[index].text + "\n")
     }
 
@@ -208,21 +332,21 @@ final class PageEditorModel {
         var lastIndex = index
         var lastId = block.id
         for line in lines.dropFirst() {
-            lastId = insertBlock(after: lastIndex, type: block.type.continuation, text: line).id
+            lastId = insertBlock(after: lastIndex, type: block.type.continuation, content: BlockContent(text: line)).id
             lastIndex += 1
         }
         focusRequest = lastId
     }
 
     @discardableResult
-    private func insertBlock(after index: Int?, type: BlockType, text: String = "") -> Block {
+    private func insertBlock(after index: Int?, type: BlockType, content: BlockContent = BlockContent()) -> Block {
         let position = index.map { $0 + 1 } ?? 0
         let lower = position > 0 ? blocks[position - 1].sortKey : nil
         let upper = position < blocks.count ? blocks[position].sortKey : nil
         let block = Block(
             pageId: pageId,
             type: type,
-            content: BlockContent(text: text),
+            content: content,
             sortKey: SortKey.between(lower, upper)
         )
         blocks.insert(block, at: position)
@@ -231,8 +355,14 @@ final class PageEditorModel {
     }
 
     /// Меняет тип блока (из slash-меню или контекстного меню).
+    /// «Страница» создаёт новую подстраницу и сразу открывает её, как в Notion.
     func setType(_ id: UUID, _ type: BlockType) {
         guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
+        if type == .page {
+            createSubpage(from: id, title: "", open: true)
+            return
+        }
+        recordUndo()
         var block = blocks[index]
         block.type = type
         if !type.hasText || block.text.hasPrefix("/") {
@@ -249,6 +379,7 @@ final class PageEditorModel {
 
     func toggleChecked(_ id: UUID) {
         guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
+        recordUndo()
         blocks[index].content.isChecked.toggle()
         markDirty(id)
     }
@@ -258,6 +389,7 @@ final class PageEditorModel {
     func backspaceInEmptyBlock(_ id: UUID) -> Bool {
         guard let index = blocks.firstIndex(where: { $0.id == id }), blocks[index].text.isEmpty else { return false }
         if blocks[index].type != .paragraph {
+            recordUndo()
             blocks[index].type = .paragraph
             markDirty(id)
             return true
@@ -269,18 +401,127 @@ final class PageEditorModel {
 
     func deleteBlock(_ id: UUID) {
         guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
+        recordUndo()
         blocks.remove(at: index)
-        dirtyBlocks.remove(id)
         if blocks.isEmpty {
             insertBlock(after: nil, type: .paragraph)
         }
         focusRequest = blocks[max(index - 1, 0)].id
-        // В ту же очередь, что и сохранения, чтобы запоздалая запись не вернула удалённый блок.
-        let database = database
-        let previous = lastWrite
-        lastWrite = Task {
-            await previous?.value
-            try? await database.deleteBlock(id)
+        enqueueDelete(id)
+    }
+
+    // MARK: Перемещение
+
+    /// Ставит блок на место другого: при перетаскивании вниз он встаёт после цели, вверх перед ней.
+    func moveBlock(_ id: UUID, onto targetId: UUID) {
+        guard id != targetId,
+              let from = blocks.firstIndex(where: { $0.id == id }),
+              let to = blocks.firstIndex(where: { $0.id == targetId }) else { return }
+        recordUndo()
+        var block = blocks.remove(at: from)
+        let lower = to > 0 ? blocks[to - 1].sortKey : nil
+        let upper = to < blocks.count ? blocks[to].sortKey : nil
+        block.sortKey = SortKey.between(lower, upper)
+        blocks.insert(block, at: to)
+        markDirty(id)
+    }
+
+    /// Сдвигает блок на одну позицию вверх (`-1`) или вниз (`+1`).
+    func moveBlock(_ id: UUID, by offset: Int) {
+        guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
+        let target = index + offset
+        guard blocks.indices.contains(target) else { return }
+        moveBlock(id, onto: blocks[target].id)
+        focusRequest = id
+    }
+
+    // MARK: Ссылки на страницы
+
+    /// Страницы для меню по `[[` и `@`: сначала недавно изменённые.
+    func linkCandidates(_ query: String, limit: Int = 8) -> [Page] {
+        let query = query.trimmingCharacters(in: .whitespaces).lowercased()
+        return links.pages
+            .filter { $0.id != pageId }
+            .filter { query.isEmpty || $0.displayTitle.lowercased().contains(query) }
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    func linkedPage(_ id: UUID?) -> Page? {
+        guard let id else { return nil }
+        return links.pages.first { $0.id == id }
+    }
+
+    /// Заменяет набранный `[[запрос` или `@запрос` ссылкой на страницу. Если до триггера
+    /// был текст, он остаётся в блоке, а ссылка встаёт следующим блоком.
+    func linkPage(from id: UUID, to targetId: UUID) {
+        guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
+        recordUndo()
+        let prefix = MentionTrigger.match(blocks[index].text)?.prefix ?? ""
+        let remaining = prefix.trimmingCharacters(in: .whitespaces)
+        let linkIndex: Int
+        if remaining.isEmpty {
+            blocks[index].type = .page
+            blocks[index].content = BlockContent(pageId: targetId)
+            markDirty(id)
+            linkIndex = index
+        } else {
+            blocks[index].text = remaining
+            markDirty(id)
+            insertBlock(after: index, type: .page, content: BlockContent(pageId: targetId))
+            linkIndex = index + 1
+        }
+        focusRequest = insertBlock(after: linkIndex, type: .paragraph).id
+    }
+
+    /// Новая подстраница этой страницы со ссылкой на неё вместо блока `id`.
+    func createSubpage(from id: UUID, title: String, open: Bool) {
+        Task {
+            do {
+                let child = try await database.createPage(title: title, parentId: pageId)
+                linkPage(from: id, to: child.id)
+                if open {
+                    await flush()
+                    openRequest = child.id
+                }
+            } catch {
+                print("Failed to create subpage: \(error)")
+            }
+        }
+    }
+
+    func open(_ pageId: UUID) {
+        Task {
+            await flush()
+            openRequest = pageId
+        }
+    }
+
+    // MARK: Картинки
+
+    /// Сохраняет картинку во вложения и показывает её в блоке.
+    func setImage(_ id: UUID, data: Data, fileExtension: String?) {
+        guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
+        do {
+            let name = try database.attachments.save(data, fileExtension: fileExtension)
+            recordUndo()
+            blocks[index].content.attachment = name
+            markDirty(id)
+        } catch {
+            print("Failed to save image: \(error)")
+        }
+    }
+
+    func setCover(_ cover: PageCover?) {
+        page?.pageCover = cover
+        Task { try? await database.setCover(pageId, cover: cover) }
+    }
+
+    func setCoverImage(data: Data) {
+        do {
+            setCover(.image(try database.attachments.save(data)))
+        } catch {
+            print("Failed to save cover: \(error)")
         }
     }
 

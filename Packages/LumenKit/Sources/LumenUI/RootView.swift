@@ -69,8 +69,13 @@ public struct RootView: View {
         case .trash:
             TrashView(database: database)
         case .page(let id):
-            PageEditorView(database: database, pageId: id, onClose: { selection = .home })
-                .id(id)
+            PageEditorView(
+                database: database,
+                pageId: id,
+                onOpenPage: { selection = .page($0) },
+                onClose: { selection = .home }
+            )
+            .id(id)
         }
     }
 

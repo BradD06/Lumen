@@ -13,6 +13,10 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     case callout
     case code
     case divider
+    /// Ссылка на другую страницу или подстраницу (`content.pageId`).
+    case page
+    /// Картинка из вложений (`content.attachment`).
+    case image
 
     public var id: String { rawValue }
 
@@ -29,6 +33,8 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .callout: "Выноска"
         case .code: "Код"
         case .divider: "Разделитель"
+        case .page: "Страница"
+        case .image: "Картинка"
         }
     }
 
@@ -45,6 +51,8 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .callout: "lightbulb"
         case .code: "chevron.left.forwardslash.chevron.right"
         case .divider: "minus"
+        case .page: "doc.text"
+        case .image: "photo"
         }
     }
 
@@ -62,11 +70,22 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .callout: ["callout", "note", "выноска", "заметка"]
         case .code: ["code", "код"]
         case .divider: ["divider", "line", "разделитель", "линия"]
+        case .page: ["page", "subpage", "страница", "подстраница"]
+        case .image: ["image", "photo", "picture", "картинка", "фото", "изображение"]
         }
     }
 
     /// Есть ли у блока редактируемый текст.
-    public var hasText: Bool { self != .divider }
+    public var hasText: Bool {
+        switch self {
+        case .divider, .page, .image: false
+        default: true
+        }
+    }
+
+    /// Можно ли превратить в этот тип уже написанный блок (меню «Превратить в»).
+    /// Страница и картинка создаются только заново, из slash-меню.
+    public var isConvertible: Bool { self != .page && self != .image }
 
     /// Тип нового блока, который появляется по Return в конце этого блока:
     /// списки и задачи продолжаются, всё остальное превращается в обычный текст.

@@ -75,6 +75,30 @@ public enum InboxQuery {
     }
 }
 
+/// Страницы, которые нужны открытому редактору: все живые страницы для выбора ссылки
+/// и подписей блоков-ссылок, и страницы, которые ссылаются на открытую.
+public struct PageLinksSnapshot: Equatable, Sendable {
+    public var pages: [Page]
+    public var backlinks: [Page]
+
+    public static let empty = PageLinksSnapshot(pages: [], backlinks: [])
+
+    public static func fetch(_ db: Database, pageId: UUID) throws -> PageLinksSnapshot {
+        let pages = try Page
+            .filter(Column("deletedAt") == nil)
+            .order(Column("updatedAt").desc)
+            .fetchAll(db)
+        let backlinks = try Page.fetchAll(db, sql: """
+            SELECT DISTINCT page.*
+            FROM link
+            JOIN page ON page.id = link.sourcePageId
+            WHERE link.targetPageId = ? AND page.id != ? AND page.deletedAt IS NULL
+            ORDER BY page.title
+            """, arguments: [pageId, pageId])
+        return PageLinksSnapshot(pages: pages, backlinks: backlinks)
+    }
+}
+
 public enum TrashQuery {
     public static func fetch(_ db: Database) throws -> [Page] {
         try Page
