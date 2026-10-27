@@ -50,8 +50,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
         self.isChecked = isChecked
     }
 
-    public init(text: String) {
-        self.init(runs: text.isEmpty ? [] : [TextRun(text)])
+    public init(text: String, isChecked: Bool = false) {
+        self.init(runs: text.isEmpty ? [] : [TextRun(text)], isChecked: isChecked)
     }
 
     /// Простой текст блока. Запись заменяет все фрагменты одним без атрибутов:
