@@ -1,0 +1,16 @@
+# Xcode-проект генерируется из project.yml (xcodegen)
+*.xcodeproj
+*.xcworkspace
+!Packages/**/*.xcworkspace
+
+# Сборка
+.build/
+DerivedData/
+build/
+.swiftpm/
+Package.resolved.bak
+
+# macOS / Xcode
+.DS_Store
+xcuserdata/
+*.xcuserstate
