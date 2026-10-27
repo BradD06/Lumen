@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Тесты пакетов
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Версии
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: swift test
+        run: swift test --package-path Packages/LumenKit
+
+  build:
+    name: Сборка приложения (${{ matrix.platform }})
+    runs-on: macos-15
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: iOS
+            destination: generic/platform=iOS Simulator
+          - platform: macOS
+            destination: generic/platform=macOS
+    steps:
+      - uses: actions/checkout@v4
+      - name: Установить XcodeGen
+        run: brew install xcodegen
+      - name: Сгенерировать проект
+        run: xcodegen generate
+      - name: Собрать
+        run: |
+          xcodebuild build \
+            -project Lumen.xcodeproj \
+            -scheme Lumen \
+            -destination '${{ matrix.destination }}' \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee build.log | grep -E "error:|warning: .*Sendable|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
