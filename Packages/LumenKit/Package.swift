@@ -38,5 +38,6 @@ let package = Package(
         ),
         .testTarget(name: "LumenCoreTests", dependencies: ["LumenCore"]),
         .testTarget(name: "LumenStorageTests", dependencies: ["LumenStorage", "LumenCore"]),
+        .testTarget(name: "LumenUITests", dependencies: ["LumenUI", "LumenStorage", "LumenCore"]),
     ]
 )

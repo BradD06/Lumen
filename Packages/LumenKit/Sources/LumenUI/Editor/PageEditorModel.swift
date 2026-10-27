@@ -21,6 +21,7 @@ final class PageEditorModel {
     @ObservationIgnored private var dirtyBlocks: Set<UUID> = []
     @ObservationIgnored private var isTitleDirty = false
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    @ObservationIgnored private var lastWrite: Task<Void, Never>?
 
     private static let saveDelay: Duration = .milliseconds(350)
 
@@ -53,21 +54,7 @@ final class PageEditorModel {
     func flush() async {
         saveTask?.cancel()
         saveTask = nil
-        let pending = blocks.filter { dirtyBlocks.contains($0.id) }
-        dirtyBlocks.removeAll()
-        let newTitle = isTitleDirty ? title : nil
-        isTitleDirty = false
-
-        do {
-            if let newTitle {
-                try await database.renamePage(pageId, title: newTitle)
-            }
-            for block in pending {
-                try await database.saveBlock(block)
-            }
-        } catch {
-            print("Failed to save page \(pageId): \(error)")
-        }
+        await save()
     }
 
     private func markDirty(_ id: UUID) {
@@ -79,9 +66,42 @@ final class PageEditorModel {
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: Self.saveDelay)
-            guard !Task.isCancelled else { return }
-            await self?.flush()
+            guard !Task.isCancelled, let self else { return }
+            self.saveTask = nil
+            await self.save()
         }
+    }
+
+    /// Забирает накопленные правки и пишет их в базу.
+    ///
+    /// Запись идёт в отдельной задаче, которую не отменяет следующий таймер: GRDB не пишет
+    /// из отменённой задачи, и забранные правки иначе потерялись бы. Записи выстраиваются
+    /// в очередь, чтобы более поздняя правка не обогнала более раннюю.
+    private func save() async {
+        let pending = blocks.filter { dirtyBlocks.contains($0.id) }
+        dirtyBlocks.removeAll()
+        let newTitle = isTitleDirty ? title : nil
+        isTitleDirty = false
+        guard newTitle != nil || !pending.isEmpty else { return }
+
+        let database = database
+        let pageId = pageId
+        let previous = lastWrite
+        let write = Task {
+            await previous?.value
+            do {
+                if let newTitle {
+                    try await database.renamePage(pageId, title: newTitle)
+                }
+                for block in pending {
+                    try await database.saveBlock(block)
+                }
+            } catch {
+                print("Failed to save page \(pageId): \(error)")
+            }
+        }
+        lastWrite = write
+        await write.value
     }
 
     // MARK: Страница
@@ -255,7 +275,13 @@ final class PageEditorModel {
             insertBlock(after: nil, type: .paragraph)
         }
         focusRequest = blocks[max(index - 1, 0)].id
-        Task { try? await database.deleteBlock(id) }
+        // В ту же очередь, что и сохранения, чтобы запоздалая запись не вернула удалённый блок.
+        let database = database
+        let previous = lastWrite
+        lastWrite = Task {
+            await previous?.value
+            try? await database.deleteBlock(id)
+        }
     }
 
     /// Номер пункта в нумерованном списке: считаются подряд идущие нумерованные блоки.
