@@ -3,7 +3,7 @@
 name: Lumen
 
 options:
-  bundleIdPrefix: app.lumen
+  bundleIdPrefix: io.github.bradd06
   deploymentTarget:
     iOS: "18.0"
     macOS: "15.0"
@@ -35,7 +35,7 @@ targets:
         product: LumenUI
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: app.lumen.Lumen
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.bradd06.lumen
         PRODUCT_NAME: Lumen
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Lumen
