@@ -13,7 +13,6 @@ struct BlockRow: View {
     var focus: FocusState<EditorFocus?>.Binding
 
     @State private var isHovered = false
-    @State private var dropZone: BlockDropZone?
     @State private var size: CGSize = .zero
     @Environment(\.lumenTheme) private var theme
 
@@ -44,7 +43,7 @@ struct BlockRow: View {
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
         .onDrop(
             of: [.lumenBlock],
-            delegate: BlockDropDelegate(targetId: block.id, size: size, model: model, zone: $dropZone)
+            delegate: BlockDropDelegate(targetId: block.id, size: size, model: model)
         )
         .contextMenu { menu }
         .accessibilityElement(children: .contain)
@@ -127,7 +126,7 @@ struct BlockRow: View {
     /// Куда встанет перетаскиваемый блок: линия сверху, снизу или справа (новая колонка).
     @ViewBuilder
     private var dropIndicator: some View {
-        switch dropZone {
+        switch model.dropIndicator?.blockId == block.id ? model.dropIndicator?.zone : nil {
         case .before:
             VStack {
                 Capsule().fill(theme.accent).frame(height: 3).offset(y: -3)
@@ -176,6 +175,7 @@ struct BlockRow: View {
             // не зависит от того, сумеет ли система передать и расшифровать свой тип данных.
             .onDrag {
                 model.draggingBlockId = block.id
+                model.dropIndicator = nil
                 let provider = NSItemProvider()
                 provider.register(BlockDragItem(blockId: block.id))
                 return provider
@@ -377,13 +377,17 @@ enum BlockDropZone: Equatable {
     case before, after, beside
 }
 
+struct DropIndicator: Equatable {
+    var blockId: UUID
+    var zone: BlockDropZone
+}
+
 /// Приём перетаскиваемого блока: верхняя половина строки ставит его перед целью, нижняя после,
 /// правая четверть ставит рядом в новую колонку.
 struct BlockDropDelegate: DropDelegate {
     let targetId: UUID
     let size: CGSize
     let model: PageEditorModel
-    @Binding var zone: BlockDropZone?
 
     private func zone(at location: CGPoint) -> BlockDropZone {
         if size.width > 0, location.x > size.width * 0.75 { return .beside }
@@ -395,17 +399,22 @@ struct BlockDropDelegate: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        zone = zone(at: info.location)
+        let indicator = DropIndicator(blockId: targetId, zone: zone(at: info.location))
+        if model.dropIndicator != indicator {
+            model.dropIndicator = indicator
+        }
         return DropProposal(operation: .move)
     }
 
     func dropExited(info: DropInfo) {
-        zone = nil
+        if model.dropIndicator?.blockId == targetId {
+            model.dropIndicator = nil
+        }
     }
 
     func performDrop(info: DropInfo) -> Bool {
         let target = zone(at: info.location)
-        zone = nil
+        model.dropIndicator = nil
         if let dragged = model.draggingBlockId {
             model.draggingBlockId = nil
             Self.apply(target, moving: dragged, to: targetId, in: model)

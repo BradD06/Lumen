@@ -29,6 +29,9 @@ final class PageEditorModel {
     var focusRequest: UUID?
     /// Блок, который сейчас перетаскивают за ручку.
     @ObservationIgnored var draggingBlockId: UUID?
+    /// Где сейчас встанет перетаскиваемый блок. Одно значение на всю страницу,
+    /// поэтому подсветка не остаётся на строках, которые курсор уже покинул.
+    var dropIndicator: DropIndicator?
     /// Страница, которую нужно открыть (ссылка или новая подстраница). Вью сбрасывает её после перехода.
     var openRequest: UUID?
 
@@ -732,6 +735,30 @@ final class PageEditorModel {
     func placeBesidePrevious(_ id: UUID) {
         guard let previous = previousSibling(of: id) else { return }
         placeBeside(id, previous.id)
+    }
+
+    /// Доли ширины колонок ряда, в сумме 1. Колонка без сохранённой ширины получает среднюю долю.
+    func columnFractions(_ rowId: UUID) -> [Double] {
+        let columns = children(of: rowId)
+        guard !columns.isEmpty else { return [] }
+        let saved = columns.compactMap(\.content.columnWidth).filter { $0 > 0 }
+        let fallback = saved.isEmpty ? 1 : saved.reduce(0, +) / Double(saved.count)
+        let raw = columns.map { column -> Double in
+            guard let width = column.content.columnWidth, width > 0 else { return fallback }
+            return width
+        }
+        let total = raw.reduce(0, +)
+        return raw.map { $0 / total }
+    }
+
+    /// Сохраняет ширины колонок после перетаскивания разделителя.
+    func setColumnFractions(_ rowId: UUID, _ fractions: [Double]) {
+        let columns = children(of: rowId)
+        guard columns.count == fractions.count, fractions != columnFractions(rowId) else { return }
+        recordUndo()
+        for (column, fraction) in zip(columns, fractions) {
+            update(column.id) { $0.content.columnWidth = fraction }
+        }
     }
 
     /// Убирает пустые колонки, а ряд из одной колонки разворачивает обратно в обычные блоки.

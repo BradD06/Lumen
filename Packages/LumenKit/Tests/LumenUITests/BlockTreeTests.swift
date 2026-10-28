@@ -129,6 +129,26 @@ struct BlockTreeTests {
         #expect(model.children(of: row.id).map { texts(model, in: $0.id) } == [["а"], ["б"]])
     }
 
+    @Test func columnWidthsAreSaved() async throws {
+        let (model, pageId, ids) = try await open("а\nб\nв")
+        model.placeBeside(ids[1], ids[0])
+        let row = try #require(model.children(of: nil).first)
+        #expect(model.columnFractions(row.id) == [0.5, 0.5])
+
+        model.setColumnFractions(row.id, [0.7, 0.3])
+        #expect(model.columnFractions(row.id).map { ($0 * 100).rounded() } == [70, 30])
+
+        // Новая колонка без своей ширины получает среднюю долю, сумма остаётся 1.
+        model.placeBeside(ids[2], ids[1])
+        let fractions = model.columnFractions(row.id)
+        #expect(fractions.count == 3)
+        #expect(abs(fractions.reduce(0, +) - 1) < 0.0001)
+
+        await model.flush()
+        let saved = try await db.blocks(of: pageId).filter { $0.type == .column }
+        #expect(saved.compactMap(\.content.columnWidth).count == 2)
+    }
+
     @Test func duplicateCopiesSubtree() async throws {
         let (model, pageId, ids) = try await open("а\nб")
         model.indent(ids[1])

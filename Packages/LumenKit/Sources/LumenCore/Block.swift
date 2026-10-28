@@ -52,6 +52,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
     public var isCollapsed: Bool
     public var textColor: BlockColor?
     public var backgroundColor: BlockColor?
+    /// Доля ширины ряда, которую занимает колонка. `nil` значит поровну с остальными.
+    public var columnWidth: Double?
 
     public init(
         runs: [TextRun] = [],
@@ -60,7 +62,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
         attachment: String? = nil,
         isCollapsed: Bool = false,
         textColor: BlockColor? = nil,
-        backgroundColor: BlockColor? = nil
+        backgroundColor: BlockColor? = nil,
+        columnWidth: Double? = nil
     ) {
         self.runs = runs
         self.isChecked = isChecked
@@ -69,6 +72,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         self.isCollapsed = isCollapsed
         self.textColor = textColor
         self.backgroundColor = backgroundColor
+        self.columnWidth = columnWidth
     }
 
     public init(text: String, isChecked: Bool = false) {
@@ -83,7 +87,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case runs, isChecked, pageId, attachment, isCollapsed, textColor, backgroundColor
+        case runs, isChecked, pageId, attachment, isCollapsed, textColor, backgroundColor, columnWidth
     }
 
     public init(from decoder: any Decoder) throws {
@@ -97,6 +101,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         textColor = try container.decodeIfPresent(String.self, forKey: .textColor).flatMap(BlockColor.init(rawValue:))
         backgroundColor = try container.decodeIfPresent(String.self, forKey: .backgroundColor)
             .flatMap(BlockColor.init(rawValue:))
+        columnWidth = try container.decodeIfPresent(Double.self, forKey: .columnWidth)
     }
 }
 

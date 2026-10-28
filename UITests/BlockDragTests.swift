@@ -59,6 +59,21 @@ final class BlockDragTests: XCTestCase {
         XCTAssertGreaterThan(row("Right").frame.minX, row("Left").frame.maxX - 1, "Правый блок стоит справа")
     }
 
+    func testColumnDividerResizesColumns() {
+        createNote(["Left", "Right"])
+        drag("Right", to: "Left", at: CGVector(dx: 0.92, dy: 0.5))
+        let divider = app.descendants(matching: .any).matching(identifier: "column-divider").firstMatch
+        XCTAssertTrue(divider.waitForExistence(timeout: 5), "Между колонками есть разделитель")
+
+        let before = row("Left").frame.width
+        let start = divider.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.click(forDuration: 0.2, thenDragTo: start.withOffset(CGVector(dx: 120, dy: 0)))
+
+        let predicate = NSPredicate { _, _ in self.row("Left").frame.width > before + 60 }
+        let wider = expectation(for: predicate, evaluatedWith: nil)
+        wait(for: [wider], timeout: 5)
+    }
+
     func testDragAboveReordersBlocks() {
         createNote(["First", "Second", "Third"])
 
