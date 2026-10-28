@@ -21,8 +21,11 @@ final class BlockDragTests: XCTestCase {
             if index > 0 {
                 app.typeKey(.return, modifierFlags: [])
             }
-            // Фокус переходит в новый блок асинхронно.
-            Thread.sleep(forTimeInterval: 0.5)
+            // Новый пустой блок появляется и получает фокус асинхронно: ждём его и щёлкаем в него,
+            // чтобы текст не ушёл в предыдущий блок на медленной машине.
+            let empty = row("")
+            XCTAssertTrue(empty.waitForExistence(timeout: 5), "Не появился новый блок")
+            empty.click()
             app.typeText(line)
             XCTAssertTrue(row(line).waitForExistence(timeout: 5), "Нет блока «\(line)»")
         }
