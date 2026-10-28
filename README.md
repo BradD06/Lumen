@@ -13,7 +13,7 @@ brew install xcodegen
 make open        # генерирует Lumen.xcodeproj и открывает его
 ```
 
-В Xcode выберите схему **Lumen** и устройство (iPhone, iPad или My Mac). Для запуска на своём телефоне укажите команду разработчика в настройках подписи.
+В Xcode выберите схему **Lumen** и устройство (iPhone, iPad или My Mac). Чтобы не выбирать команду разработчика после каждого `make open`, создайте файл `Config/Local.xcconfig` со строкой `DEVELOPMENT_TEAM = <ID команды>` (ID виден в Xcode, в Signing & Capabilities, или на developer.apple.com). Файл не попадает в git.
 
 Тесты всех модулей:
 
