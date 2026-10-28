@@ -39,7 +39,14 @@ struct BlockRow: View {
         .padding(.vertical, verticalPadding)
         .overlay { dropIndicator }
         .contentShape(Rectangle())
-        .onHover { isHovered = $0 }
+        .onHover { hovering in
+            isHovered = hovering
+            // Перетаскивание отменили мимо строк: обычное наведение убирает оставшуюся линию.
+            // Во время самого перетаскивания линию сразу ставит заново приём блока.
+            if hovering, model.dropIndicator != nil {
+                model.dropIndicator = nil
+            }
+        }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
         .onDrop(
             of: [.lumenBlock],
