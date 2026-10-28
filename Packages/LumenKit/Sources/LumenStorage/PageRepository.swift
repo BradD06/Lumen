@@ -91,6 +91,12 @@ extension AppDatabase {
         }
     }
 
+    public func setBackground(_ id: UUID, background: PageBackground?) async throws {
+        try await writer.write { db in
+            try Self.updatePage(db, id) { $0.pageBackground = background }
+        }
+    }
+
     public func setFavorite(_ id: UUID, _ isFavorite: Bool) async throws {
         try await writer.write { db in
             try Self.updatePage(db, id) { $0.isFavorite = isFavorite }

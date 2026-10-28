@@ -35,6 +35,28 @@ struct PageCoverTests {
     }
 }
 
+struct PageBackgroundTests {
+    @Test func roundTrip() {
+        let backgrounds: [PageBackground] = [
+            .wallpaper(Wallpaper(palette: 2, layers: 6, hasSun: false, seed: 1234)),
+            .image("BG.png"),
+        ]
+        for background in backgrounds {
+            #expect(PageBackground(rawValue: background.rawValue) == background)
+        }
+    }
+
+    @Test func layersAreClamped() {
+        #expect(Wallpaper(layers: 40).layers == Wallpaper.layerRange.upperBound)
+        #expect(PageBackground(rawValue: "wallpaper:0,1,1,5") == .wallpaper(Wallpaper(palette: 0, layers: 2, hasSun: true, seed: 5)))
+    }
+
+    @Test(arguments: ["", "wallpaper:", "wallpaper:1,2,3", "wallpaper:a,b,c,d", "image:", "gradient:1"])
+    func invalid(raw: String) {
+        #expect(PageBackground(rawValue: raw) == nil)
+    }
+}
+
 struct BlockContentCompatibilityTests {
     /// Блоки, сохранённые до появления ссылок и картинок, читаются без ошибок.
     @Test func decodesOldJSON() throws {

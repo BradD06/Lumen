@@ -9,6 +9,8 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
     public var icon: String?
     /// Обложка страницы, см. `PageCover`.
     public var cover: String?
+    /// Фон страницы, см. `PageBackground`. `nil` это фон темы.
+    public var background: String?
     /// Источник (книга, файл), к которому привязана заметка. Появится на этапе 3.
     public var sourceId: UUID?
     /// Быстрые заметки лежат во «Входящих», пока их не разложат по разделам.
@@ -27,6 +29,7 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
         title: String = "",
         icon: String? = nil,
         cover: String? = nil,
+        background: String? = nil,
         sourceId: UUID? = nil,
         inInbox: Bool = false,
         isFavorite: Bool = false,
@@ -40,6 +43,7 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
         self.title = title
         self.icon = icon
         self.cover = cover
+        self.background = background
         self.sourceId = sourceId
         self.inInbox = inInbox
         self.isFavorite = isFavorite
@@ -59,6 +63,11 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
     public var pageCover: PageCover? {
         get { cover.flatMap(PageCover.init(rawValue:)) }
         set { cover = newValue?.rawValue }
+    }
+
+    public var pageBackground: PageBackground? {
+        get { background.flatMap(PageBackground.init(rawValue:)) }
+        set { background = newValue?.rawValue }
     }
 }
 
@@ -83,5 +92,62 @@ public enum PageCover: Hashable, Sendable {
         case .gradient(let index): "gradient:\(index)"
         case .image(let name): "image:\(name)"
         }
+    }
+}
+
+/// Фон страницы за текстом: многослойные «обои» или своя картинка из вложений.
+/// В базе хранится строкой: `wallpaper:0,5,1,42` или `image:<имя файла>`.
+public enum PageBackground: Hashable, Sendable {
+    case wallpaper(Wallpaper)
+    case image(String)
+
+    public init?(rawValue: String) {
+        if rawValue.hasPrefix("wallpaper:"), let wallpaper = Wallpaper(rawValue: String(rawValue.dropFirst("wallpaper:".count))) {
+            self = .wallpaper(wallpaper)
+        } else if rawValue.hasPrefix("image:"), rawValue.count > "image:".count {
+            self = .image(String(rawValue.dropFirst("image:".count)))
+        } else {
+            return nil
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .wallpaper(let wallpaper): "wallpaper:\(wallpaper.rawValue)"
+        case .image(let name): "image:\(name)"
+        }
+    }
+}
+
+/// Объёмные обои из полупрозрачных слоёв гор: небо, солнце и гряды, которые светлеют к горизонту.
+/// Рисует их `LayeredWallpaper` из LumenThemes, здесь только настройки.
+public struct Wallpaper: Hashable, Sendable {
+    public static let layerRange = 2...7
+
+    /// Номер палитры, см. `WallpaperPalette`.
+    public var palette: Int
+    /// Сколько гряд гор от горизонта до переднего плана.
+    public var layers: Int
+    public var hasSun: Bool
+    /// Зерно формы гор: одно и то же зерно всегда даёт те же горы.
+    public var seed: Int
+
+    public init(palette: Int = 0, layers: Int = 5, hasSun: Bool = true, seed: Int = 7) {
+        self.palette = palette
+        self.layers = min(max(layers, Self.layerRange.lowerBound), Self.layerRange.upperBound)
+        self.hasSun = hasSun
+        self.seed = seed
+    }
+
+    init?(rawValue: String) {
+        let parts = rawValue.split(separator: ",").map { Int($0) }
+        guard parts.count == 4, let palette = parts[0], let layers = parts[1], let sun = parts[2], let seed = parts[3] else {
+            return nil
+        }
+        self.init(palette: palette, layers: layers, hasSun: sun != 0, seed: seed)
+    }
+
+    var rawValue: String {
+        "\(palette),\(layers),\(hasSun ? 1 : 0),\(seed)"
     }
 }

@@ -54,7 +54,7 @@ struct AttachmentImage: View {
     }
 }
 
-/// Обложка страницы над названием.
+/// Обложка страницы над названием: на всю ширину окна, без скруглений.
 struct PageCoverView: View {
     let cover: PageCover
     let attachments: AttachmentStore
@@ -76,8 +76,8 @@ struct PageCoverView: View {
                 }
             }
         }
-        .frame(height: 190)
+        .frame(height: 240)
         .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous))
+        .clipped()
     }
 }

@@ -103,6 +103,12 @@ extension AppDatabase {
             }
         }
 
+        migrator.registerMigration("v3: page background") { db in
+            try db.alter(table: "page") { t in
+                t.add(column: "background", .text)
+            }
+        }
+
         return migrator
     }
 }

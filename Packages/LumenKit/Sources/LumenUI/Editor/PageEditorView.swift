@@ -4,6 +4,11 @@ import LumenThemes
 import PhotosUI
 import SwiftUI
 
+private enum PhotoTarget {
+    case cover
+    case background
+}
+
 enum EditorFocus: Hashable {
     case title
     case block(UUID)
@@ -17,8 +22,13 @@ struct PageEditorView: View {
     var onClose: () -> Void
 
     @FocusState private var focus: EditorFocus?
-    @State private var isPickingCover = false
-    @State private var coverPhoto: PhotosPickerItem?
+    /// Куда пойдёт фото из галереи: в обложку или в фон страницы.
+    @State private var photoTarget: PhotoTarget = .cover
+    @State private var isPickingPhoto = false
+    /// Фото для фона выбирают после закрытия окна фона: два окна сразу показать нельзя.
+    @State private var wantsBackgroundPhoto = false
+    @State private var pickedPhoto: PhotosPickerItem?
+    @State private var isEditingBackground = false
     @Environment(\.lumenTheme) private var theme
 
     private static let icons = ["📝", "📘", "📚", "🎓", "💡", "✅", "🧠", "🌅", "🗂️", "⭐️"]
@@ -32,27 +42,16 @@ struct PageEditorView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 6) {
-                header
-                    .padding(.bottom, 12)
-                ForEach(model.children(of: nil)) { block in
-                    BlockTree(block: block, depth: 0, model: model, focus: $focus)
+            VStack(spacing: 0) {
+                // Обложка на всю ширину окна, от края до края, как в Notion.
+                if let cover = model.page?.pageCover {
+                    PageCoverView(cover: cover, attachments: model.database.attachments)
                 }
-                Color.clear
-                    .frame(height: model.links.backlinks.isEmpty ? 200 : 60)
-                    .contentShape(Rectangle())
-                    .onTapGesture { model.focusEnd() }
-                if !model.links.backlinks.isEmpty {
-                    backlinks
-                }
+                content
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 24)
-            .frame(maxWidth: 780, alignment: .leading)
-            .frame(maxWidth: .infinity)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(ThemedBackground())
+        .background(PageBackgroundView(background: model.page?.pageBackground, attachments: model.database.attachments))
         .navigationTitle(model.isLoaded ? displayTitle : "")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -137,14 +136,33 @@ struct PageEditorView: View {
             model.openRequest = nil
             onOpenPage(request)
         }
-        .photosPicker(isPresented: $isPickingCover, selection: $coverPhoto, matching: .images)
-        .onChange(of: coverPhoto) { _, item in
+        .photosPicker(
+            isPresented: $isPickingPhoto,
+            selection: $pickedPhoto,
+            matching: .images
+        )
+        .onChange(of: pickedPhoto) { _, item in
             guard let item else { return }
+            let target = photoTarget
             Task {
                 if let data = try? await item.loadTransferable(type: Data.self) {
-                    model.setCoverImage(data: data)
+                    switch target {
+                    case .cover: model.setCoverImage(data: data)
+                    case .background: model.setBackgroundImage(data: data)
+                    }
                 }
-                coverPhoto = nil
+                pickedPhoto = nil
+            }
+        }
+        .sheet(isPresented: $isEditingBackground, onDismiss: {
+            if wantsBackgroundPhoto {
+                wantsBackgroundPhoto = false
+                photoTarget = .background
+                isPickingPhoto = true
+            }
+        }) {
+            PageBackgroundPicker(model: model) {
+                wantsBackgroundPhoto = true
             }
         }
         .onChange(of: model.focusRequest) { _, request in
@@ -157,6 +175,28 @@ struct PageEditorView: View {
         }
     }
 
+    /// Колонка с текстом страницы: заголовок, блоки и обратные ссылки.
+    private var content: some View {
+        LazyVStack(alignment: .leading, spacing: 6) {
+            header
+                .padding(.bottom, 12)
+            ForEach(model.children(of: nil)) { block in
+                BlockTree(block: block, depth: 0, model: model, focus: $focus)
+            }
+            Color.clear
+                .frame(height: model.links.backlinks.isEmpty ? 200 : 60)
+                .contentShape(Rectangle())
+                .onTapGesture { model.focusEnd() }
+            if !model.links.backlinks.isEmpty {
+                backlinks
+            }
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 24)
+        .frame(maxWidth: 780, alignment: .leading)
+        .frame(maxWidth: .infinity)
+    }
+
     private var displayTitle: String {
         let trimmed = model.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Без названия" : trimmed
@@ -164,10 +204,6 @@ struct PageEditorView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let cover = model.page?.pageCover {
-                PageCoverView(cover: cover, attachments: model.database.attachments)
-                    .padding(.bottom, 6)
-            }
             HStack(spacing: 8) {
                 Menu {
                     ForEach(Self.icons, id: \.self) { icon in
@@ -191,6 +227,16 @@ struct PageEditorView: View {
                 .fixedSize()
 
                 coverMenu
+
+                Button {
+                    isEditingBackground = true
+                } label: {
+                    Label("Фон", systemImage: "mountain.2")
+                        .font(.subheadline)
+                        .foregroundStyle(theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .help("Фон страницы: обои из слоёв гор или своё фото")
 
                 if model.page?.inInbox == true {
                     Button {
@@ -228,7 +274,8 @@ struct PageEditorView: View {
             }
             Divider()
             Button {
-                isPickingCover = true
+                photoTarget = .cover
+                isPickingPhoto = true
             } label: {
                 Label("Фото…", systemImage: "photo")
             }
