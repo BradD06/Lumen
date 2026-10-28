@@ -46,3 +46,13 @@ struct BlockContentCompatibilityTests {
         #expect(content.attachment == nil)
     }
 }
+
+struct BlockColorDecodingTests {
+    @Test func unknownColorIsIgnored() throws {
+        let json = Data(#"{"runs":[],"textColor":"neon","backgroundColor":"blue","isCollapsed":true}"#.utf8)
+        let content = try JSONDecoder().decode(BlockContent.self, from: json)
+        #expect(content.textColor == nil)
+        #expect(content.backgroundColor == .blue)
+        #expect(content.isCollapsed)
+    }
+}

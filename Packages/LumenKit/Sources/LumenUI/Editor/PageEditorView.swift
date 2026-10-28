@@ -35,13 +35,8 @@ struct PageEditorView: View {
             LazyVStack(alignment: .leading, spacing: 6) {
                 header
                     .padding(.bottom, 12)
-                ForEach(Array(model.blocks.enumerated()), id: \.element.id) { index, block in
-                    BlockRow(
-                        block: block,
-                        number: model.listNumber(at: index),
-                        model: model,
-                        focus: $focus
-                    )
+                ForEach(model.children(of: nil)) { block in
+                    BlockTree(block: block, depth: 0, model: model, focus: $focus)
                 }
                 Color.clear
                     .frame(height: model.links.backlinks.isEmpty ? 200 : 60)
@@ -63,6 +58,26 @@ struct PageEditorView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
+            #if os(iOS)
+            // На экранной клавиатуре нет Tab: вложенность меняется кнопками над клавиатурой.
+            ToolbarItemGroup(placement: .keyboard) {
+                if case .block(let id) = focus {
+                    Button {
+                        model.outdent(id)
+                    } label: {
+                        Label("Вынести на уровень выше", systemImage: "decrease.indent")
+                    }
+                    .disabled(!model.canOutdent(id))
+                    Button {
+                        model.indent(id)
+                    } label: {
+                        Label("Вложить в блок выше", systemImage: "increase.indent")
+                    }
+                    .disabled(!model.canIndent(id))
+                    Spacer()
+                }
+            }
+            #endif
             ToolbarItemGroup {
                 Button {
                     model.undo()

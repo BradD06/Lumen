@@ -8,11 +8,13 @@ import UniformTypeIdentifiers
 struct BlockRow: View {
     let block: Block
     let number: Int
+    let depth: Int
     let model: PageEditorModel
     var focus: FocusState<EditorFocus?>.Binding
 
     @State private var isHovered = false
-    @State private var isDropTarget = false
+    @State private var dropZone: BlockDropZone?
+    @State private var size: CGSize = .zero
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
@@ -20,6 +22,7 @@ struct BlockRow: View {
             dragHandle
             VStack(alignment: .leading, spacing: 6) {
                 content
+                    .blockBackground(block.content.backgroundColor)
                 if isFocused, let query = slashQuery {
                     SlashMenu(query: query) { type in
                         model.setType(block.id, type)
@@ -35,49 +38,104 @@ struct BlockRow: View {
             }
         }
         .padding(.vertical, verticalPadding)
-        .overlay(alignment: .top) {
-            if isDropTarget {
-                Capsule()
-                    .fill(theme.accent)
-                    .frame(height: 3)
-                    .offset(y: -3)
-            }
-        }
+        .overlay { dropIndicator }
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
-        .dropDestination(for: BlockDragItem.self) { items, _ in
-            guard let item = items.first else { return false }
-            model.moveBlock(item.blockId, onto: block.id)
-            return true
-        } isTargeted: { isDropTarget = $0 }
-        .contextMenu {
-            if block.type.isConvertible {
-                Menu("Превратить в") {
-                    ForEach(BlockType.allCases.filter(\.isConvertible)) { type in
-                        Button {
-                            model.setType(block.id, type)
-                        } label: {
-                            Label(type.title, systemImage: type.symbolName)
-                        }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+        .onDrop(
+            of: [.lumenBlock],
+            delegate: BlockDropDelegate(targetId: block.id, size: size, model: model, zone: $dropZone)
+        )
+        .contextMenu { menu }
+    }
+
+    @ViewBuilder
+    private var menu: some View {
+        if block.type.isConvertible {
+            Menu("Превратить в") {
+                ForEach(BlockType.allCases.filter(\.isConvertible)) { type in
+                    Button {
+                        model.setType(block.id, type)
+                    } label: {
+                        Label(type.title, systemImage: type.symbolName)
                     }
                 }
             }
+        }
+        if block.type.hasText {
+            Menu("Цвет") {
+                Button("По умолчанию") { model.setTextColor(block.id, nil) }
+                Section("Текст") {
+                    ForEach(BlockColor.allCases) { color in
+                        Button(color.title) { model.setTextColor(block.id, color) }
+                    }
+                }
+                Section("Фон") {
+                    ForEach(BlockColor.allCases) { color in
+                        Button(color.title) { model.setBackgroundColor(block.id, color) }
+                    }
+                }
+            }
+        }
+        Button {
+            model.duplicateBlock(block.id)
+        } label: {
+            Label("Дублировать", systemImage: "plus.square.on.square")
+        }
+        Divider()
+        Button {
+            model.moveBlock(block.id, by: -1)
+        } label: {
+            Label("Переместить вверх", systemImage: "arrow.up")
+        }
+        Button {
+            model.moveBlock(block.id, by: 1)
+        } label: {
+            Label("Переместить вниз", systemImage: "arrow.down")
+        }
+        if model.canIndent(block.id) {
             Button {
-                model.moveBlock(block.id, by: -1)
+                model.indent(block.id)
             } label: {
-                Label("Переместить вверх", systemImage: "arrow.up")
+                Label("Вложить в блок выше", systemImage: "increase.indent")
             }
+        }
+        if model.canOutdent(block.id) {
             Button {
-                model.moveBlock(block.id, by: 1)
+                model.outdent(block.id)
             } label: {
-                Label("Переместить вниз", systemImage: "arrow.down")
+                Label("Вынести на уровень выше", systemImage: "decrease.indent")
             }
-            Divider()
-            Button(role: .destructive) {
-                model.deleteBlock(block.id)
-            } label: {
-                Label("Удалить блок", systemImage: "trash")
+        }
+        Divider()
+        Button(role: .destructive) {
+            model.deleteBlock(block.id)
+        } label: {
+            Label("Удалить блок", systemImage: "trash")
+        }
+    }
+
+    /// Куда встанет перетаскиваемый блок: линия сверху, снизу или справа (новая колонка).
+    @ViewBuilder
+    private var dropIndicator: some View {
+        switch dropZone {
+        case .before:
+            VStack {
+                Capsule().fill(theme.accent).frame(height: 3).offset(y: -3)
+                Spacer()
             }
+        case .after:
+            VStack {
+                Spacer()
+                Capsule().fill(theme.accent).frame(height: 3).offset(y: 3)
+            }
+        case .beside:
+            HStack {
+                Spacer()
+                Capsule().fill(theme.accent).frame(width: 3)
+            }
+        case nil:
+            EmptyView()
         }
     }
 
@@ -139,7 +197,7 @@ struct BlockRow: View {
 
         case .bulletedList:
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("•")
+                Text(["•", "◦", "▪"][depth % 3])
                     .font(.title3.weight(.bold))
                     .foregroundStyle(theme.accent)
                 field
@@ -199,6 +257,25 @@ struct BlockRow: View {
         case .image:
             ImageBlock(block: block, model: model)
 
+        case .toggle:
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Button {
+                    model.toggleCollapsed(block.id)
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(theme.textSecondary)
+                        .rotationEffect(.degrees(block.content.isCollapsed ? 0 : 90))
+                        .animation(.snappy, value: block.content.isCollapsed)
+                        .frame(width: 14)
+                }
+                .buttonStyle(.plain)
+                field
+            }
+
+        case .columnList, .column:
+            EmptyView()
+
         case .paragraph, .heading1, .heading2, .heading3:
             field
         }
@@ -212,7 +289,7 @@ struct BlockRow: View {
         )
         .textFieldStyle(.plain)
         .font(font)
-        .foregroundStyle(theme.textPrimary)
+        .foregroundStyle(block.content.textColor.map(\.textColor) ?? theme.textPrimary)
         .focused(focus, equals: .block(block.id))
         .onSubmit { model.submit(block.id) }
         .onKeyPress(.delete) {
@@ -222,6 +299,23 @@ struct BlockRow: View {
         .onKeyPress(keys: [.upArrow, .downArrow]) { press in
             guard press.modifiers.contains(.command), press.modifiers.contains(.option) else { return .ignored }
             model.moveBlock(block.id, by: press.key == .upArrow ? -1 : 1)
+            return .handled
+        }
+        // Tab вкладывает блок в предыдущий, ⇧Tab выносит на уровень выше.
+        .onKeyPress(keys: [.tab, KeyEquivalent("\u{19}")]) { press in
+            if press.modifiers.contains(.shift) || press.key == KeyEquivalent("\u{19}") {
+                guard model.canOutdent(block.id) else { return .ignored }
+                model.outdent(block.id)
+            } else {
+                guard model.canIndent(block.id) else { return .ignored }
+                model.indent(block.id)
+            }
+            return .handled
+        }
+        // ⌘D дублирует блок.
+        .onKeyPress(keys: ["d"]) { press in
+            guard press.modifiers.contains(.command) else { return .ignored }
+            model.duplicateBlock(block.id)
             return .handled
         }
     }
@@ -237,7 +331,8 @@ struct BlockRow: View {
         case .quote: "Цитата"
         case .callout: "Выноска"
         case .code: "Код"
-        case .divider, .page, .image: ""
+        case .toggle: "Сворачиваемый блок"
+        case .divider, .page, .image, .columnList, .column: ""
         }
     }
 
@@ -258,6 +353,56 @@ struct BlockRow: View {
         case .heading3: 6
         default: 2
         }
+    }
+}
+
+enum BlockDropZone: Equatable {
+    case before, after, beside
+}
+
+/// Приём перетаскиваемого блока: верхняя половина строки ставит его перед целью, нижняя после,
+/// правая четверть ставит рядом в новую колонку.
+struct BlockDropDelegate: DropDelegate {
+    let targetId: UUID
+    let size: CGSize
+    let model: PageEditorModel
+    @Binding var zone: BlockDropZone?
+
+    private func zone(at location: CGPoint) -> BlockDropZone {
+        if size.width > 0, location.x > size.width * 0.75 { return .beside }
+        return location.y < size.height / 2 ? .before : .after
+    }
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.lumenBlock])
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        zone = zone(at: info.location)
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        zone = nil
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let target = zone(at: info.location)
+        zone = nil
+        guard let provider = info.itemProviders(for: [.lumenBlock]).first else { return false }
+        let targetId = targetId
+        let model = model
+        _ = provider.loadTransferable(type: BlockDragItem.self) { result in
+            guard case .success(let item) = result else { return }
+            Task { @MainActor in
+                switch target {
+                case .before: model.moveBlock(item.blockId, nextTo: targetId, after: false)
+                case .after: model.moveBlock(item.blockId, nextTo: targetId, after: true)
+                case .beside: model.placeBeside(item.blockId, targetId)
+                }
+            }
+        }
+        return true
     }
 }
 
@@ -423,7 +568,7 @@ struct SlashMenu: View {
     @Environment(\.lumenTheme) private var theme
 
     private var types: [BlockType] {
-        BlockType.allCases.filter { $0.matches(query) }
+        BlockType.allCases.filter { $0.isInsertable && $0.matches(query) }
     }
 
     var body: some View {
