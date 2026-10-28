@@ -320,7 +320,7 @@ struct BlockRow: View {
         .focused(focus, equals: .block(block.id))
         .onSubmit { model.submit(block.id) }
         #if os(iOS)
-        // На Mac поле забирает Backspace раньше SwiftUI, там клавишу ловит редактор (PageEditorView).
+        // На Mac поле забирает Backspace раньше SwiftUI, там клавишу ловит редактор (PageEditorView.installKeyMonitor).
         .onKeyPress(.delete) {
             model.backspaceInEmptyBlock(block.id) ? .handled : .ignored
         }

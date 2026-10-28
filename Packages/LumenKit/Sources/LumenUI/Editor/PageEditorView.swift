@@ -34,7 +34,7 @@ struct PageEditorView: View {
     @State private var isEditingBackground = false
     @State private var focusTask: Task<Void, Never>?
     #if os(macOS)
-    @State private var backspaceMonitor: Any?
+    @State private var keyMonitor: Any?
     #endif
     /// Насколько прокручена страница: по ней солнце на горах опускается за гряды.
     @State private var scrollOffset: CGFloat = 0
@@ -203,13 +203,13 @@ struct PageEditorView: View {
             }
         }
         #if os(macOS)
-        .onAppear { installBackspaceMonitor() }
+        .onAppear { installKeyMonitor() }
         #endif
         .onDisappear {
             #if os(macOS)
-            if let backspaceMonitor {
-                NSEvent.removeMonitor(backspaceMonitor)
-                self.backspaceMonitor = nil
+            if let keyMonitor {
+                NSEvent.removeMonitor(keyMonitor)
+                self.keyMonitor = nil
             }
             #endif
             Task { await model.flush() }
@@ -217,18 +217,30 @@ struct PageEditorView: View {
     }
 
     #if os(macOS)
-    /// Backspace в пустом блоке. На Mac текстовое поле обрабатывает эту клавишу само и до SwiftUI
-    /// она не доходит, поэтому нажатие перехватывается раньше поля, пока курсор стоит в блоке.
-    private func installBackspaceMonitor() {
-        guard backspaceMonitor == nil else { return }
+    /// Клавиши, которые текстовое поле на Mac обрабатывает само, до SwiftUI они не доходят.
+    /// Поэтому нажатие перехватывается раньше поля, пока курсор стоит в блоке:
+    /// Backspace в пустом блоке удаляет его, Return в блоке кода переносит строку.
+    private func installKeyMonitor() {
+        guard keyMonitor == nil else { return }
         let model = model
-        backspaceMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let isBackspace = event.keyCode == 51
-                && event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function]).isEmpty
-            guard isBackspace else { return event }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let plain = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                .subtracting([.capsLock, .numericPad, .function]).isEmpty
+            let isBackspace = plain && event.keyCode == 51
+            let isReturn = plain && (event.keyCode == 36 || event.keyCode == 76)
+            guard isBackspace || isReturn else { return event }
             let handled = MainActor.assumeIsolated {
                 guard let id = model.focusedBlockId else { return false }
-                return model.backspaceInEmptyBlock(id)
+                if isBackspace {
+                    return model.backspaceInEmptyBlock(id)
+                }
+                // Перевод строки вставляет само поле там, где стоит курсор. Второй Return
+                // на пустой последней строке модель превращает в выход из блока кода.
+                guard model.findBlock(id)?.type == .code,
+                      let textView = NSApp.keyWindow?.firstResponder as? NSTextView,
+                      !textView.hasMarkedText() else { return false }
+                textView.insertNewlineIgnoringFieldEditor(nil)
+                return true
             }
             return handled ? nil : event
         }

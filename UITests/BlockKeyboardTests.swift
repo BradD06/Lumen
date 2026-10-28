@@ -15,6 +15,15 @@ final class BlockKeyboardTests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: "row-\(text)").firstMatch
     }
 
+    /// Тексты всех блоков: в сообщении об ошибке видно, что получилось на самом деле.
+    private var rows: String {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'row-'"))
+            .allElementsBoundByIndex
+            .map { $0.identifier.debugDescription }
+            .joined(separator: ", ")
+    }
+
     func testBackspaceDeletesEmptyBlock() {
         app.typeKey("n", modifierFlags: .command)
         XCTAssertTrue(row("").waitForExistence(timeout: 10), "Не открылась новая заметка")
@@ -33,7 +42,7 @@ final class BlockKeyboardTests: XCTestCase {
 
         XCTAssertTrue(empty.waitForNonExistence(timeout: 5), "Backspace удалил пустой блок")
         app.typeText("X")
-        XCTAssertTrue(row("FirstX").waitForExistence(timeout: 5), "Курсор встал в конец блока выше")
+        XCTAssertTrue(row("FirstX").waitForExistence(timeout: 5), "Курсор встал в конец блока выше. Блоки: \(rows)")
     }
 
     func testReturnInCodeBlockAddsLineThenLeaves() {
@@ -47,12 +56,12 @@ final class BlockKeyboardTests: XCTestCase {
         app.typeText("a")
         app.typeKey(.return, modifierFlags: [])
         app.typeText("b")
-        XCTAssertTrue(row("a\nb").waitForExistence(timeout: 5), "Return перенёс строку внутри блока кода")
+        XCTAssertTrue(row("a\nb").waitForExistence(timeout: 5), "Return перенёс строку внутри блока кода. Блоки: \(rows)")
 
         app.typeKey(.return, modifierFlags: [])
         app.typeKey(.return, modifierFlags: [])
         app.typeText("after")
-        XCTAssertTrue(row("after").waitForExistence(timeout: 5), "Второй Return создал новый блок")
-        XCTAssertTrue(row("a\nb").exists, "Пустая строка в конце кода убрана")
+        XCTAssertTrue(row("after").waitForExistence(timeout: 5), "Второй Return создал новый блок. Блоки: \(rows)")
+        XCTAssertTrue(row("a\nb").exists, "Пустая строка в конце кода убрана. Блоки: \(rows)")
     }
 }
