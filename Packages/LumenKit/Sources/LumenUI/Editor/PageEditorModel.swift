@@ -438,6 +438,9 @@ final class PageEditorModel {
             }
             if shortcut.type == .divider {
                 focusRequest = insertBlock(after: id, type: .paragraph).id
+            } else {
+                // Блок другого типа рисуется новым полем: курсор нужно вернуть в него.
+                focusRequest = id
             }
             return
         }

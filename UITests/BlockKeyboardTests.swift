@@ -53,6 +53,8 @@ final class BlockKeyboardTests: XCTestCase {
         XCTAssertTrue(row("").waitForExistence(timeout: 5))
         row("").click()
         app.typeText("```")
+        // Блок превращается в код и получает новое поле: даём курсору в него вернуться.
+        Thread.sleep(forTimeInterval: 0.5)
         app.typeText("a")
         app.typeKey(.return, modifierFlags: [])
         app.typeText("b")

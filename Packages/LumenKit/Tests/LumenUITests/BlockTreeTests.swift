@@ -96,6 +96,15 @@ struct BlockTreeTests {
         #expect(model.focusRequest == top[1].id)
     }
 
+    @Test func markdownShortcutKeepsCursorInBlock() async throws {
+        let (model, _, ids) = try await open("x")
+        model.updateText(ids[0], to: "")
+        model.updateText(ids[0], to: "```")
+
+        #expect(model.findBlock(ids[0])?.type == .code)
+        #expect(model.focusRequest == ids[0], "После превращения в код курсор остаётся в блоке")
+    }
+
     @Test func doubleNewlineTypedInCodeBlockLeavesIt() async throws {
         let (model, _, ids) = try await open("x")
         model.setType(ids[0], .code)
