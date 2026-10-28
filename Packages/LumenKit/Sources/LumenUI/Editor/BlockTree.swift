@@ -77,6 +77,9 @@ struct ColumnsView: View {
     #endif
 
     static let dividerWidth: CGFloat = 16
+    /// Отступ между блоками. Если следом идёт ещё один ряд колонок, разделитель дотягивается
+    /// через этот отступ до разделителя следующего ряда, и линия не рвётся.
+    static let blockSpacing: CGFloat = 6
     /// Самая узкая колонка, доля ширины ряда.
     static let minFraction = 0.12
 
@@ -122,6 +125,15 @@ struct ColumnsView: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
+    /// Сразу под этим рядом стоит ещё один ряд колонок.
+    private var joinsNextRow: Bool {
+        let siblings = model.children(of: row.parentBlockId)
+        guard let index = siblings.firstIndex(where: { $0.id == row.id }), index + 1 < siblings.count else {
+            return false
+        }
+        return siblings[index + 1].type == .columnList
+    }
+
     private func available(count: Int) -> CGFloat {
         max(totalWidth - Self.dividerWidth * CGFloat(count - 1), 0)
     }
@@ -136,6 +148,7 @@ struct ColumnsView: View {
         ColumnDivider()
             .frame(width: Self.dividerWidth)
             .frame(maxHeight: .infinity)
+            .padding(.bottom, joinsNextRow ? -Self.blockSpacing : 0)
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in

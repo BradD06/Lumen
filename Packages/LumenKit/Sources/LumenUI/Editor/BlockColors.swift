@@ -24,16 +24,16 @@ extension BlockColor {
 }
 
 extension View {
-    /// Фон блока, если он выбран в меню «Цвет». Цвет текста задаёт само поле.
-    @ViewBuilder
+    /// Фон блока, если он выбран в палитре «Цвет». Цвет текста задаёт само поле.
+    /// Фон выступает чуть наружу, а текст остаётся на одной линии с соседними блоками, как в Notion.
     func blockBackground(_ color: BlockColor?) -> some View {
-        if let background = color {
-            self
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(background.backgroundColor, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        } else {
-            self
+        background {
+            if let color {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(color.backgroundColor)
+                    .padding(.horizontal, -6)
+                    .padding(.vertical, -2)
+            }
         }
     }
 }
