@@ -119,6 +119,16 @@ struct BlockTreeTests {
             == ids.sorted { $0.uuidString < $1.uuidString })
     }
 
+    @Test func placeBesidePreviousFromMenu() async throws {
+        let (model, _, ids) = try await open("а\nб")
+        #expect(model.previousSibling(of: ids[0]) == nil)
+        model.placeBesidePrevious(ids[1])
+
+        let row = try #require(model.children(of: nil).first)
+        #expect(row.type == .columnList)
+        #expect(model.children(of: row.id).map { texts(model, in: $0.id) } == [["а"], ["б"]])
+    }
+
     @Test func duplicateCopiesSubtree() async throws {
         let (model, pageId, ids) = try await open("а\nб")
         model.indent(ids[1])

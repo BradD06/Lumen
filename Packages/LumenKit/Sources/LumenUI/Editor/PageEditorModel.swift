@@ -717,6 +717,21 @@ final class PageEditorModel {
         focusRequest = id
     }
 
+    /// Блок выше на том же уровне: рядом с ним встанет новая колонка из меню блока.
+    func previousSibling(of id: UUID) -> Block? {
+        guard let block = findBlock(id) else { return nil }
+        let siblings = children(of: block.parentBlockId)
+        guard let index = siblings.firstIndex(where: { $0.id == id }), index > 0 else { return nil }
+        let previous = siblings[index - 1]
+        return previous.type.isLayout ? nil : previous
+    }
+
+    /// Пункт меню «Поставить в колонку рядом»: блок встаёт справа от блока выше.
+    func placeBesidePrevious(_ id: UUID) {
+        guard let previous = previousSibling(of: id) else { return }
+        placeBeside(id, previous.id)
+    }
+
     /// Убирает пустые колонки, а ряд из одной колонки разворачивает обратно в обычные блоки.
     private func normalizeColumns() {
         var changed = true

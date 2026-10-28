@@ -93,6 +93,13 @@ struct BlockRow: View {
         } label: {
             Label("Переместить вниз", systemImage: "arrow.down")
         }
+        if model.previousSibling(of: block.id) != nil {
+            Button {
+                model.placeBesidePrevious(block.id)
+            } label: {
+                Label("Поставить в колонку рядом с блоком выше", systemImage: "rectangle.split.2x1")
+            }
+        }
         if model.canIndent(block.id) {
             Button {
                 model.indent(block.id)
