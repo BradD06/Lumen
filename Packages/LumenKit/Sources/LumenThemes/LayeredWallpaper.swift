@@ -38,13 +38,16 @@ public struct LayeredWallpaper: View {
     let hasSun: Bool
     let isFaceted: Bool
     let seed: Int
+    /// Насколько солнце зашло: 0 стоит над горами, 1 целиком спряталось за ними, небо потемнело.
+    let sunset: Double
 
-    public init(palette: Int, layers: Int, hasSun: Bool, isFaceted: Bool = false, seed: Int) {
+    public init(palette: Int, layers: Int, hasSun: Bool, isFaceted: Bool = false, seed: Int, sunset: Double = 0) {
         self.palette = .palette(palette)
         self.layers = max(layers, 1)
         self.hasSun = hasSun
         self.isFaceted = isFaceted
         self.seed = seed
+        self.sunset = min(max(sunset, 0), 1)
     }
 
     public var body: some View {
@@ -67,13 +70,15 @@ public struct LayeredWallpaper: View {
             )
         )
 
-        let sunCenter = CGPoint(x: w * 0.68, y: h * 0.34)
+        // Солнце рисуется до гор, поэтому, опускаясь, уходит за гряды.
+        let sunCenter = CGPoint(x: w * 0.68, y: h * (0.34 + 0.66 * sunset))
         let sunRadius = min(w, h) * 0.085
+        let daylight = hasSun ? 1 - sunset : 0
         if hasSun {
             context.fill(
                 Path(rect),
                 with: .radialGradient(
-                    Gradient(colors: [Color(hex: palette.sun, opacity: 0.45), Color(hex: palette.sun, opacity: 0)]),
+                    Gradient(colors: [Color(hex: palette.sun, opacity: 0.45 * (1 - sunset * 0.6)), Color(hex: palette.sun, opacity: 0)]),
                     center: sunCenter,
                     startRadius: sunRadius * 0.6,
                     endRadius: max(w, h) * 0.42
@@ -115,7 +120,7 @@ public struct LayeredWallpaper: View {
                     with: .linearGradient(
                         Gradient(colors: [
                             Color(hex: palette.sun, opacity: 0.05),
-                            Color(hex: palette.sun, opacity: 0.55 * (1 - depth * 0.7)),
+                            Color(hex: palette.sun, opacity: 0.55 * (1 - depth * 0.7) * (0.3 + 0.7 * daylight)),
                             Color(hex: palette.sun, opacity: 0.05),
                         ]),
                         startPoint: CGPoint(x: 0, y: 0),
@@ -141,6 +146,11 @@ public struct LayeredWallpaper: View {
                     )
                 )
             }
+        }
+
+        // Сумерки: после заката небо и горы темнеют.
+        if sunset > 0 {
+            context.fill(Path(rect), with: .color(Color(hex: palette.near, opacity: 0.35 * sunset)))
         }
     }
 

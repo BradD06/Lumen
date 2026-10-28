@@ -24,7 +24,7 @@ struct MentionTriggerTests {
 
 struct PageCoverTests {
     @Test func roundTrip() {
-        for cover in [PageCover.gradient(3), .image("ABC.jpg")] {
+        for cover in [PageCover.gradient(3), .wallpaper(Wallpaper(palette: 4, layers: 3, isFaceted: true, seed: 11)), .image("ABC.jpg")] {
             #expect(PageCover(rawValue: cover.rawValue) == cover)
         }
     }

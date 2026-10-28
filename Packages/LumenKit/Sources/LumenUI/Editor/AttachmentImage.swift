@@ -58,12 +58,23 @@ struct AttachmentImage: View {
 struct PageCoverView: View {
     let cover: PageCover
     let attachments: AttachmentStore
+    /// Насколько зашло солнце на горной обложке, см. `LayeredWallpaper.sunset`.
+    var sunset: Double = 0
 
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
         Group {
             switch cover {
+            case .wallpaper(let wallpaper):
+                LayeredWallpaper(
+                    palette: wallpaper.palette,
+                    layers: wallpaper.layers,
+                    hasSun: wallpaper.hasSun,
+                    isFaceted: wallpaper.isFaceted,
+                    seed: wallpaper.seed,
+                    sunset: sunset
+                )
             case .gradient(let index):
                 LinearGradient(
                     colors: theme.vividCard(index).colors,

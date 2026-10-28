@@ -8,6 +8,8 @@ import SwiftUI
 struct PageBackgroundView: View {
     let background: PageBackground?
     let attachments: AttachmentStore
+    /// Насколько зашло солнце на обоях, см. `LayeredWallpaper.sunset`.
+    var sunset: Double = 0
 
     var body: some View {
         switch background {
@@ -19,7 +21,8 @@ struct PageBackgroundView: View {
                 layers: wallpaper.layers,
                 hasSun: wallpaper.hasSun,
                 isFaceted: wallpaper.isFaceted,
-                seed: wallpaper.seed
+                seed: wallpaper.seed,
+                sunset: sunset
             )
                 .overlay(Color.black.opacity(0.22))
                 .ignoresSafeArea()

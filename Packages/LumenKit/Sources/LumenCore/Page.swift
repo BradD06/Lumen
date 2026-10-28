@@ -71,15 +71,18 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-/// Обложка страницы: градиент из палитры темы или картинка из вложений.
-/// В базе хранится строкой: `gradient:2` или `image:<имя файла>`.
+/// Обложка страницы: градиент из палитры темы, горы как у обоев или картинка из вложений.
+/// В базе хранится строкой: `gradient:2`, `wallpaper:0,4,1,42,1` или `image:<имя файла>`.
 public enum PageCover: Hashable, Sendable {
     case gradient(Int)
+    case wallpaper(Wallpaper)
     case image(String)
 
     public init?(rawValue: String) {
         if rawValue.hasPrefix("gradient:"), let index = Int(rawValue.dropFirst("gradient:".count)) {
             self = .gradient(index)
+        } else if rawValue.hasPrefix("wallpaper:"), let wallpaper = Wallpaper(rawValue: String(rawValue.dropFirst("wallpaper:".count))) {
+            self = .wallpaper(wallpaper)
         } else if rawValue.hasPrefix("image:"), rawValue.count > "image:".count {
             self = .image(String(rawValue.dropFirst("image:".count)))
         } else {
@@ -90,6 +93,7 @@ public enum PageCover: Hashable, Sendable {
     public var rawValue: String {
         switch self {
         case .gradient(let index): "gradient:\(index)"
+        case .wallpaper(let wallpaper): "wallpaper:\(wallpaper.rawValue)"
         case .image(let name): "image:\(name)"
         }
     }
