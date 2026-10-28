@@ -27,6 +27,8 @@ final class PageEditorModel {
     private(set) var canRedo = false
     /// Блок, на который нужно перевести фокус. Вью сбрасывает его после применения.
     var focusRequest: UUID?
+    /// Блок, в котором сейчас курсор. Вью обновляет его при каждой смене фокуса.
+    @ObservationIgnored var focusedBlockId: UUID?
     /// Курсор нужно перевести в заголовок страницы. Вью сбрасывает флаг после применения.
     var focusTitleRequest = false
     /// Блок, который сейчас перетаскивают за ручку.

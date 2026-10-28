@@ -3,6 +3,9 @@ import LumenStorage
 import LumenThemes
 import PhotosUI
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 private enum PhotoTarget {
     case cover
@@ -30,6 +33,9 @@ struct PageEditorView: View {
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var isEditingBackground = false
     @State private var focusTask: Task<Void, Never>?
+    #if os(macOS)
+    @State private var backspaceMonitor: Any?
+    #endif
     /// Насколько прокручена страница: по ней солнце на горах опускается за гряды.
     @State private var scrollOffset: CGFloat = 0
     @Environment(\.lumenTheme) private var theme
@@ -189,10 +195,45 @@ struct PageEditorView: View {
             model.focusTitleRequest = false
             focus = .title
         }
+        .onChange(of: focus) { _, newFocus in
+            if case .block(let id) = newFocus {
+                model.focusedBlockId = id
+            } else {
+                model.focusedBlockId = nil
+            }
+        }
+        #if os(macOS)
+        .onAppear { installBackspaceMonitor() }
+        #endif
         .onDisappear {
+            #if os(macOS)
+            if let backspaceMonitor {
+                NSEvent.removeMonitor(backspaceMonitor)
+                self.backspaceMonitor = nil
+            }
+            #endif
             Task { await model.flush() }
         }
     }
+
+    #if os(macOS)
+    /// Backspace в пустом блоке. На Mac текстовое поле обрабатывает эту клавишу само и до SwiftUI
+    /// она не доходит, поэтому нажатие перехватывается раньше поля, пока курсор стоит в блоке.
+    private func installBackspaceMonitor() {
+        guard backspaceMonitor == nil else { return }
+        let model = model
+        backspaceMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let isBackspace = event.keyCode == 51
+                && event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function]).isEmpty
+            guard isBackspace else { return event }
+            let handled = MainActor.assumeIsolated {
+                guard let id = model.focusedBlockId else { return false }
+                return model.backspaceInEmptyBlock(id)
+            }
+            return handled ? nil : event
+        }
+    }
+    #endif
 
     /// Переводит курсор в блок. Новый блок после Return появляется в ленивом списке не сразу,
     /// а поле, в котором нажали Return, на macOS ещё успевает забрать фокус обратно.

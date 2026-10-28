@@ -319,9 +319,12 @@ struct BlockRow: View {
         .foregroundStyle(block.content.textColor.map(\.textColor) ?? theme.textPrimary)
         .focused(focus, equals: .block(block.id))
         .onSubmit { model.submit(block.id) }
+        #if os(iOS)
+        // На Mac поле забирает Backspace раньше SwiftUI, там клавишу ловит редактор (PageEditorView).
         .onKeyPress(.delete) {
             model.backspaceInEmptyBlock(block.id) ? .handled : .ignored
         }
+        #endif
         // ⌥⌘↑ и ⌥⌘↓ двигают блок, как в Notion.
         .onKeyPress(keys: [.upArrow, .downArrow]) { press in
             guard press.modifiers.contains(.command), press.modifiers.contains(.option) else { return .ignored }
