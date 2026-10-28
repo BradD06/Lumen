@@ -36,12 +36,14 @@ public struct LayeredWallpaper: View {
     let palette: WallpaperPalette
     let layers: Int
     let hasSun: Bool
+    let isFaceted: Bool
     let seed: Int
 
-    public init(palette: Int, layers: Int, hasSun: Bool, seed: Int) {
+    public init(palette: Int, layers: Int, hasSun: Bool, isFaceted: Bool = false, seed: Int) {
         self.palette = .palette(palette)
         self.layers = max(layers, 1)
         self.hasSun = hasSun
+        self.isFaceted = isFaceted
         self.seed = seed
     }
 
@@ -145,6 +147,9 @@ public struct LayeredWallpaper: View {
     /// Гребень гряды из «острых» синусоид разной частоты: сумма даёт естественные пики и седловины.
     private func ridgePath(width: CGFloat, height: CGFloat, base: CGFloat, amplitude: CGFloat, layer: Int) -> (fill: Path, crest: Path) {
         var random = SeededRandom(seed: UInt64(bitPattern: Int64(seed)) &* 31 &+ UInt64(layer) &* 7919)
+        if isFaceted {
+            return facetedPath(width: width, height: height, base: base, amplitude: amplitude, random: &random)
+        }
         // Первая волна даёт пару крупных вершин, следующие (вдвое чаще и слабее) добавляют скалистость.
         let waves = (0..<6).map { octave in
             (
@@ -176,6 +181,26 @@ public struct LayeredWallpaper: View {
         var fill = crest
         fill.addLine(to: CGPoint(x: width + step, y: height))
         fill.addLine(to: CGPoint(x: 0, y: height))
+        fill.closeSubpath()
+        return (fill, crest)
+    }
+
+    /// Гранёная гряда: несколько вершин, соединённых прямыми, как в дизайн-примере.
+    private func facetedPath(width: CGFloat, height: CGFloat, base: CGFloat, amplitude: CGFloat, random: inout SeededRandom) -> (fill: Path, crest: Path) {
+        let peaks = Int(random.next(in: 3...6.99))
+        let segment = width / CGFloat(peaks * 2)
+        var crest = Path()
+        crest.move(to: CGPoint(x: -segment * 0.5, y: base + amplitude * 0.2))
+        for index in 0..<(peaks * 2 + 1) {
+            let x = segment * (CGFloat(index) + CGFloat(random.next(in: -0.3...0.3)))
+            // Чётные точки это вершины, нечётные это седловины между ними.
+            let lift = index.isMultiple(of: 2) ? random.next(in: 0.55...1.3) : random.next(in: -0.1...0.35)
+            crest.addLine(to: CGPoint(x: x, y: base - amplitude * CGFloat(lift)))
+        }
+        crest.addLine(to: CGPoint(x: width + segment * 0.5, y: base + amplitude * 0.1))
+        var fill = crest
+        fill.addLine(to: CGPoint(x: width + segment, y: height))
+        fill.addLine(to: CGPoint(x: -segment, y: height))
         fill.closeSubpath()
         return (fill, crest)
     }

@@ -39,6 +39,7 @@ struct PageBackgroundTests {
     @Test func roundTrip() {
         let backgrounds: [PageBackground] = [
             .wallpaper(Wallpaper(palette: 2, layers: 6, hasSun: false, seed: 1234)),
+            .wallpaper(Wallpaper(palette: 1, layers: 3, hasSun: true, isFaceted: true, seed: 8)),
             .image("BG.png"),
         ]
         for background in backgrounds {
@@ -51,7 +52,7 @@ struct PageBackgroundTests {
         #expect(PageBackground(rawValue: "wallpaper:0,1,1,5") == .wallpaper(Wallpaper(palette: 0, layers: 2, hasSun: true, seed: 5)))
     }
 
-    @Test(arguments: ["", "wallpaper:", "wallpaper:1,2,3", "wallpaper:a,b,c,d", "image:", "gradient:1"])
+    @Test(arguments: ["", "wallpaper:", "wallpaper:1,2,3", "wallpaper:1,2,3,4,5,6", "wallpaper:a,b,c,d", "image:", "gradient:1"])
     func invalid(raw: String) {
         #expect(PageBackground(rawValue: raw) == nil)
     }

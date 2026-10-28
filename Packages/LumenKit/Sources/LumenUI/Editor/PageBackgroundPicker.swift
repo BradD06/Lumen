@@ -14,7 +14,13 @@ struct PageBackgroundView: View {
         case nil:
             ThemedBackground()
         case .wallpaper(let wallpaper):
-            LayeredWallpaper(palette: wallpaper.palette, layers: wallpaper.layers, hasSun: wallpaper.hasSun, seed: wallpaper.seed)
+            LayeredWallpaper(
+                palette: wallpaper.palette,
+                layers: wallpaper.layers,
+                hasSun: wallpaper.hasSun,
+                isFaceted: wallpaper.isFaceted,
+                seed: wallpaper.seed
+            )
                 .overlay(Color.black.opacity(0.22))
                 .ignoresSafeArea()
         case .image(let name):
@@ -60,6 +66,11 @@ struct PageBackgroundPicker: View {
 
                     if let wallpaper {
                         section("Слои") {
+                            Picker("Горы", selection: binding(\.isFaceted, wallpaper)) {
+                                Text("Скалистые").tag(false)
+                                Text("Гранёные").tag(true)
+                            }
+                            .pickerStyle(.segmented)
                             Stepper(value: binding(\.layers, wallpaper), in: Wallpaper.layerRange) {
                                 Text("Гряд гор: \(wallpaper.layers)")
                             }
@@ -123,6 +134,7 @@ struct PageBackgroundPicker: View {
                     palette: palette.id,
                     layers: wallpaper?.layers ?? 5,
                     hasSun: wallpaper?.hasSun ?? true,
+                    isFaceted: wallpaper?.isFaceted ?? false,
                     seed: wallpaper?.seed ?? Wallpaper().seed
                 )
                 .frame(height: 64)

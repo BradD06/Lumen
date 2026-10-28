@@ -96,7 +96,7 @@ public enum PageCover: Hashable, Sendable {
 }
 
 /// Фон страницы за текстом: многослойные «обои» или своя картинка из вложений.
-/// В базе хранится строкой: `wallpaper:0,5,1,42` или `image:<имя файла>`.
+/// В базе хранится строкой: `wallpaper:0,5,1,42,1` или `image:<имя файла>`.
 public enum PageBackground: Hashable, Sendable {
     case wallpaper(Wallpaper)
     case image(String)
@@ -129,25 +129,34 @@ public struct Wallpaper: Hashable, Sendable {
     /// Сколько гряд гор от горизонта до переднего плана.
     public var layers: Int
     public var hasSun: Bool
+    /// Гранёные горы из прямых линий, как в дизайн-примере, вместо скалистых гребней.
+    public var isFaceted: Bool
     /// Зерно формы гор: одно и то же зерно всегда даёт те же горы.
     public var seed: Int
 
-    public init(palette: Int = 0, layers: Int = 5, hasSun: Bool = true, seed: Int = 7) {
+    public init(palette: Int = 0, layers: Int = 5, hasSun: Bool = true, isFaceted: Bool = false, seed: Int = 7) {
         self.palette = palette
         self.layers = min(max(layers, Self.layerRange.lowerBound), Self.layerRange.upperBound)
         self.hasSun = hasSun
+        self.isFaceted = isFaceted
         self.seed = seed
     }
 
     init?(rawValue: String) {
         let parts = rawValue.split(separator: ",").map { Int($0) }
-        guard parts.count == 4, let palette = parts[0], let layers = parts[1], let sun = parts[2], let seed = parts[3] else {
-            return nil
-        }
-        self.init(palette: palette, layers: layers, hasSun: sun != 0, seed: seed)
+        // Пятое поле (гранёные горы) добавлено позже, без него горы скалистые.
+        guard parts.count == 4 || parts.count == 5, !parts.contains(nil) else { return nil }
+        let values = parts.compactMap { $0 }
+        self.init(
+            palette: values[0],
+            layers: values[1],
+            hasSun: values[2] != 0,
+            isFaceted: values.count == 5 && values[4] != 0,
+            seed: values[3]
+        )
     }
 
     var rawValue: String {
-        "\(palette),\(layers),\(hasSun ? 1 : 0),\(seed)"
+        "\(palette),\(layers),\(hasSun ? 1 : 0),\(seed),\(isFaceted ? 1 : 0)"
     }
 }
