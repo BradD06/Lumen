@@ -27,6 +27,8 @@ final class PageEditorModel {
     private(set) var canRedo = false
     /// Блок, на который нужно перевести фокус. Вью сбрасывает его после применения.
     var focusRequest: UUID?
+    /// Блок, который сейчас перетаскивают за ручку.
+    @ObservationIgnored var draggingBlockId: UUID?
     /// Страница, которую нужно открыть (ссылка или новая подстраница). Вью сбрасывает её после перехода.
     var openRequest: UUID?
 

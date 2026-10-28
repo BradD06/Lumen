@@ -28,6 +28,20 @@ targets:
     supportedDestinations: [iOS, macOS]
     sources:
       - App
+    # Свои типы данных для перетаскивания блоков и страниц нужно объявить, иначе система
+    # может не передать их между частями окна. XcodeGen пишет этот файл при генерации проекта.
+    info:
+      path: App/Info.plist
+      properties:
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: app.lumen.block
+            UTTypeDescription: Lumen Block
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification: {}
+          - UTTypeIdentifier: app.lumen.page
+            UTTypeDescription: Lumen Page
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification: {}
     dependencies:
       - package: LumenKit
         product: LumenStorage
@@ -49,3 +63,21 @@ targets:
         SWIFT_STRICT_CONCURRENCY: complete
     scheme:
       gatherCoverageData: false
+      testTargets:
+        - LumenAppUITests
+
+  # UI-тесты на Mac: запускают приложение и работают с ним как пользователь (клики, перетаскивание).
+  LumenAppUITests:
+    type: bundle.ui-testing
+    platform: auto
+    supportedDestinations: [macOS]
+    sources:
+      - UITests
+    dependencies:
+      - target: Lumen
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.bradd06.lumen.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Lumen
+        SWIFT_VERSION: "5.0"

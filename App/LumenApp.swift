@@ -24,6 +24,10 @@ struct LumenApp: App {
 enum AppEnvironment {
     static let database: AppDatabase = {
         do {
+            // UI-тесты запускают приложение с чистой базой в памяти.
+            if ProcessInfo.processInfo.arguments.contains("-uiTesting") {
+                return try AppDatabase.inMemory()
+            }
             return try AppDatabase.makeDefault()
         } catch {
             // Без базы приложение работать не может. Позже здесь будет экран восстановления.

@@ -51,3 +51,26 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | tee build.log | grep -E "error:|warning: .*Sendable|BUILD (SUCCEEDED|FAILED)" || true
           grep -q "BUILD SUCCEEDED" build.log
+
+  ui-test:
+    name: UI-тесты (macOS)
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Установить XcodeGen
+        run: brew install xcodegen
+      - name: Сгенерировать проект
+        run: xcodegen generate
+      - name: Запустить UI-тесты
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Lumen.xcodeproj \
+            -scheme Lumen \
+            -destination 'platform=macOS' \
+            -only-testing:LumenAppUITests \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM= \
+            | tee ui-test.log | grep -E "error:|Test Case|Executed|TEST (SUCCEEDED|FAILED)|XCTAssert"

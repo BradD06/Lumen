@@ -47,6 +47,8 @@ struct BlockRow: View {
             delegate: BlockDropDelegate(targetId: block.id, size: size, model: model, zone: $dropZone)
         )
         .contextMenu { menu }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("row-\(block.text)")
     }
 
     @ViewBuilder
@@ -170,13 +172,21 @@ struct BlockRow: View {
             .frame(width: 18, height: 24)
             .contentShape(Rectangle())
             .opacity(handleOpacity)
-            .draggable(BlockDragItem(blockId: block.id)) {
+            // Какой блок тянут, запоминаем в модели в момент начала перетаскивания: так приём
+            // не зависит от того, сумеет ли система передать и расшифровать свой тип данных.
+            .onDrag {
+                model.draggingBlockId = block.id
+                let provider = NSItemProvider()
+                provider.register(BlockDragItem(blockId: block.id))
+                return provider
+            } preview: {
                 Label(dragTitle, systemImage: block.type.symbolName)
                     .padding(8)
                     .lumenCard(padding: 4)
             }
             .help("Перетащите, чтобы переместить блок")
-            .accessibilityHidden(true)
+            .accessibilityLabel("Переместить блок")
+            .accessibilityIdentifier("handle-\(block.text)")
     }
 
     private var handleOpacity: Double {
@@ -381,7 +391,7 @@ struct BlockDropDelegate: DropDelegate {
     }
 
     func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [.lumenBlock])
+        model.draggingBlockId != nil || info.hasItemsConforming(to: [.lumenBlock])
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
@@ -396,20 +406,31 @@ struct BlockDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         let target = zone(at: info.location)
         zone = nil
+        if let dragged = model.draggingBlockId {
+            model.draggingBlockId = nil
+            Self.apply(target, moving: dragged, to: targetId, in: model)
+            return true
+        }
+        // Запасной путь: блок пришёл без отметки в модели, читаем его из данных перетаскивания.
         guard let provider = info.itemProviders(for: [.lumenBlock]).first else { return false }
         let targetId = targetId
         let model = model
         _ = provider.loadTransferable(type: BlockDragItem.self) { result in
             guard case .success(let item) = result else { return }
             Task { @MainActor in
-                switch target {
-                case .before: model.moveBlock(item.blockId, nextTo: targetId, after: false)
-                case .after: model.moveBlock(item.blockId, nextTo: targetId, after: true)
-                case .beside: model.placeBeside(item.blockId, targetId)
-                }
+                Self.apply(target, moving: item.blockId, to: targetId, in: model)
             }
         }
         return true
+    }
+
+    @MainActor
+    private static func apply(_ zone: BlockDropZone, moving id: UUID, to targetId: UUID, in model: PageEditorModel) {
+        switch zone {
+        case .before: model.moveBlock(id, nextTo: targetId, after: false)
+        case .after: model.moveBlock(id, nextTo: targetId, after: true)
+        case .beside: model.placeBeside(id, targetId)
+        }
     }
 }
 
