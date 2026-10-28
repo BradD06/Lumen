@@ -104,6 +104,9 @@ struct ColumnsView: View {
             HStack(alignment: .top, spacing: 0) {
                 ForEach(Array(columns.enumerated()), id: \.element.id) { index, column in
                     columnContent(column)
+                        // Слева у текста колонки место под ручку, справа такой же запас:
+                        // так разделитель стоит ровно посередине промежутка.
+                        .padding(.trailing, index < columns.count - 1 ? BlockRow.handleInset : 0)
                         .frame(width: width(of: index, fractions: fractions, count: columns.count), alignment: .topLeading)
                     if index < columns.count - 1 {
                         divider(after: index, count: columns.count)

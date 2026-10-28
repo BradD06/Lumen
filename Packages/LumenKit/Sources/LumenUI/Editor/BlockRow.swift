@@ -12,13 +12,18 @@ struct BlockRow: View {
     let model: PageEditorModel
     var focus: FocusState<EditorFocus?>.Binding
 
+    /// Сколько места слева от текста занимает ручка вместе с промежутком.
+    static let handleWidth: CGFloat = 18
+    static let handleSpacing: CGFloat = 4
+    static var handleInset: CGFloat { handleWidth + handleSpacing }
+
     @State private var isHovered = false
     @State private var size: CGSize = .zero
     @State private var isColorPickerShown = false
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
-        HStack(alignment: .top, spacing: 4) {
+        HStack(alignment: .top, spacing: Self.handleSpacing) {
             dragHandle
             VStack(alignment: .leading, spacing: 6) {
                 content
@@ -173,7 +178,7 @@ struct BlockRow: View {
         Image(systemName: "line.3.horizontal")
             .font(.caption.weight(.semibold))
             .foregroundStyle(theme.textSecondary)
-            .frame(width: 18, height: 24)
+            .frame(width: Self.handleWidth, height: 24)
             .contentShape(Rectangle())
             .opacity(handleOpacity)
             // Какой блок тянут, запоминаем в модели в момент начала перетаскивания: так приём
