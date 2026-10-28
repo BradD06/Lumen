@@ -60,6 +60,60 @@ struct BlockTreeTests {
         #expect(model.children(of: nil).map(\.id) == [ids[0], ids[1]], "Return в пустом вложенном пункте выносит его наверх")
     }
 
+    @Test func backspaceDeletesEmptyBlock() async throws {
+        let (model, pageId, ids) = try await open("а\nб\nв")
+        model.updateText(ids[1], to: "")
+
+        #expect(model.backspaceInEmptyBlock(ids[1]))
+        #expect(texts(model, in: nil) == ["а", "в"])
+        #expect(model.focusRequest == ids[0], "Курсор переходит в блок выше")
+
+        model.updateText(ids[0], to: "")
+        #expect(model.backspaceInEmptyBlock(ids[0]), "Первый пустой блок тоже удаляется")
+        #expect(texts(model, in: nil) == ["в"])
+        #expect(model.focusTitleRequest, "Выше блоков нет, курсор уходит в заголовок")
+
+        model.updateText(ids[2], to: "")
+        #expect(!model.backspaceInEmptyBlock(ids[2]), "Единственный блок остаётся")
+
+        await model.flush()
+        #expect(try await db.blocks(of: pageId).count == 1)
+    }
+
+    @Test func returnInCodeBlockAddsLineAndDoubleReturnLeaves() async throws {
+        let (model, _, ids) = try await open("let a = 1")
+        model.setType(ids[0], .code)
+
+        model.submit(ids[0])
+        #expect(texts(model, in: nil) == ["let a = 1\n"], "Return переносит строку внутри кода")
+        model.updateText(ids[0], to: "let a = 1\nlet b = 2")
+        model.submit(ids[0])
+        model.submit(ids[0])
+
+        let top = model.children(of: nil)
+        #expect(top.map(\.text) == ["let a = 1\nlet b = 2", ""], "Второй Return создаёт блок ниже")
+        #expect(top.map(\.type) == [.code, .paragraph])
+        #expect(model.focusRequest == top[1].id)
+    }
+
+    @Test func markdownShortcutKeepsCursorInBlock() async throws {
+        let (model, _, ids) = try await open("x")
+        model.updateText(ids[0], to: "")
+        model.updateText(ids[0], to: "```")
+
+        #expect(model.findBlock(ids[0])?.type == .code)
+        #expect(model.focusRequest == ids[0], "После превращения в код курсор остаётся в блоке")
+    }
+
+    @Test func doubleNewlineTypedInCodeBlockLeavesIt() async throws {
+        let (model, _, ids) = try await open("x")
+        model.setType(ids[0], .code)
+        model.updateText(ids[0], to: "x\n")
+        model.updateText(ids[0], to: "x\n\n")
+
+        #expect(model.children(of: nil).map(\.text) == ["x", ""])
+    }
+
     @Test func returnInsideOpenToggleCreatesChild() async throws {
         let (model, _, ids) = try await open("Раздел")
         model.setType(ids[0], .toggle)

@@ -27,6 +27,10 @@ final class PageEditorModel {
     private(set) var canRedo = false
     /// Блок, на который нужно перевести фокус. Вью сбрасывает его после применения.
     var focusRequest: UUID?
+    /// Блок, в котором сейчас курсор. Вью обновляет его при каждой смене фокуса.
+    @ObservationIgnored var focusedBlockId: UUID?
+    /// Курсор нужно перевести в заголовок страницы. Вью сбрасывает флаг после применения.
+    var focusTitleRequest = false
     /// Блок, который сейчас перетаскивают за ручку.
     @ObservationIgnored var draggingBlockId: UUID?
     /// Где сейчас встанет перетаскиваемый блок. Одно значение на всю страницу,
@@ -419,6 +423,13 @@ final class PageEditorModel {
             return
         }
 
+        // В коде Return переносит строку. Return на пустой последней строке выходит из блока.
+        if block.type == .code, newText.hasSuffix("\n\n"), newText.count > block.text.count {
+            recordUndo()
+            leaveCodeBlock(id, text: String(newText.dropLast(2)))
+            return
+        }
+
         if block.type == .paragraph, let shortcut = MarkdownShortcut.match(newText) {
             recordUndo()
             update(id) {
@@ -427,6 +438,9 @@ final class PageEditorModel {
             }
             if shortcut.type == .divider {
                 focusRequest = insertBlock(after: id, type: .paragraph).id
+            } else {
+                // Блок другого типа рисуется новым полем: курсор нужно вернуть в него.
+                focusRequest = id
             }
             return
         }
@@ -440,7 +454,23 @@ final class PageEditorModel {
     func submit(_ id: UUID) {
         guard let block = findBlock(id) else { return }
         recordUndo()
+        if block.type == .code {
+            if block.text.hasSuffix("\n") {
+                leaveCodeBlock(id, text: String(block.text.dropLast()))
+            } else {
+                update(id) { $0.text += "\n" }
+                // Курсор переходит на новую строку в конце блока.
+                focusRequest = id
+            }
+            return
+        }
         split(id, text: block.text + "\n")
+    }
+
+    /// Второй Return подряд в блоке кода: лишняя пустая строка убирается, ниже появляется абзац.
+    private func leaveCodeBlock(_ id: UUID, text: String) {
+        update(id) { $0.text = text }
+        focusRequest = insertBlock(after: id, type: .paragraph).id
     }
 
     /// Делит блок по переводам строки: первая строка остаётся, остальные становятся новыми блоками.
@@ -545,8 +575,17 @@ final class PageEditorModel {
             outdent(id)
             return true
         }
-        guard children(of: id).isEmpty, let index = position(of: id), index > 0 else { return false }
+        // Пустой блок удаляется, курсор встаёт в конец блока выше. Единственный блок на странице остаётся.
+        guard children(of: id).isEmpty, blocks.contains(where: { $0.id != id && $0.type.hasText }) else {
+            return false
+        }
+        let isFirst = blocks.first { $0.type.hasText }?.id == id
         deleteBlock(id)
+        if isFirst {
+            // Выше блоков нет: как в Notion, курсор уходит в заголовок.
+            focusRequest = nil
+            focusTitleRequest = true
+        }
         return true
     }
 

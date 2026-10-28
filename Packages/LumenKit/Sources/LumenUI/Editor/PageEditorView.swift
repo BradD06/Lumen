@@ -3,6 +3,9 @@ import LumenStorage
 import LumenThemes
 import PhotosUI
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 private enum PhotoTarget {
     case cover
@@ -30,6 +33,9 @@ struct PageEditorView: View {
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var isEditingBackground = false
     @State private var focusTask: Task<Void, Never>?
+    #if os(macOS)
+    @State private var keyMonitor: Any?
+    #endif
     /// Насколько прокручена страница: по ней солнце на горах опускается за гряды.
     @State private var scrollOffset: CGFloat = 0
     @Environment(\.lumenTheme) private var theme
@@ -184,10 +190,62 @@ struct PageEditorView: View {
             model.focusRequest = nil
             moveFocus(to: request)
         }
+        .onChange(of: model.focusTitleRequest) { _, requested in
+            guard requested else { return }
+            model.focusTitleRequest = false
+            focus = .title
+        }
+        .onChange(of: focus) { _, newFocus in
+            if case .block(let id) = newFocus {
+                model.focusedBlockId = id
+            } else {
+                model.focusedBlockId = nil
+            }
+        }
+        #if os(macOS)
+        .onAppear { installKeyMonitor() }
+        #endif
         .onDisappear {
+            #if os(macOS)
+            if let keyMonitor {
+                NSEvent.removeMonitor(keyMonitor)
+                self.keyMonitor = nil
+            }
+            #endif
             Task { await model.flush() }
         }
     }
+
+    #if os(macOS)
+    /// Клавиши, которые текстовое поле на Mac обрабатывает само, до SwiftUI они не доходят.
+    /// Поэтому нажатие перехватывается раньше поля, пока курсор стоит в блоке:
+    /// Backspace в пустом блоке удаляет его, Return в блоке кода переносит строку.
+    private func installKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        let model = model
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let plain = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                .subtracting([.capsLock, .numericPad, .function]).isEmpty
+            let isBackspace = plain && event.keyCode == 51
+            let isReturn = plain && (event.keyCode == 36 || event.keyCode == 76)
+            guard isBackspace || isReturn else { return event }
+            let handled = MainActor.assumeIsolated {
+                guard let id = model.focusedBlockId else { return false }
+                if isBackspace {
+                    return model.backspaceInEmptyBlock(id)
+                }
+                // Перевод строки вставляет само поле там, где стоит курсор. Второй Return
+                // на пустой последней строке модель превращает в выход из блока кода.
+                guard model.findBlock(id)?.type == .code,
+                      let textView = NSApp.keyWindow?.firstResponder as? NSTextView,
+                      !textView.hasMarkedText() else { return false }
+                textView.insertNewlineIgnoringFieldEditor(nil)
+                return true
+            }
+            return handled ? nil : event
+        }
+    }
+    #endif
 
     /// Переводит курсор в блок. Новый блок после Return появляется в ленивом списке не сразу,
     /// а поле, в котором нажали Return, на macOS ещё успевает забрать фокус обратно.
@@ -201,9 +259,22 @@ struct PageEditorView: View {
                 try? await Task.sleep(for: .milliseconds(delay))
                 // Следующий Return уже запросил другой блок: этот запрос устарел.
                 if Task.isCancelled { return }
-                if focus != target { focus = target }
+                if focus != target {
+                    focus = target
+                } else {
+                    placeCaretAtEnd()
+                }
             }
         }
+    }
+
+    /// Поле на Mac, получив фокус, выделяет весь свой текст. Курсор ставится в конец, как в Notion.
+    private func placeCaretAtEnd() {
+        #if os(macOS)
+        guard let textView = NSApp.keyWindow?.firstResponder as? NSTextView else { return }
+        let end = (textView.string as NSString).length
+        textView.setSelectedRange(NSRange(location: end, length: 0))
+        #endif
     }
 
     /// Колонка с текстом страницы: заголовок, блоки и обратные ссылки.

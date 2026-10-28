@@ -270,9 +270,9 @@ struct BlockRow: View {
             .lumenCard(padding: 12)
 
         case .code:
-            field
-                .padding(12)
-                .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            CodeBlockBody(code: block.text, isEditing: isFocused, font: font) {
+                field
+            }
 
         case .page:
             PageLinkBlock(page: model.linkedPage(block.content.pageId)) {
@@ -316,12 +316,15 @@ struct BlockRow: View {
         )
         .textFieldStyle(.plain)
         .font(font)
-        .foregroundStyle(block.content.textColor.map(\.textColor) ?? theme.textPrimary)
+        .foregroundStyle(fieldColor)
         .focused(focus, equals: .block(block.id))
         .onSubmit { model.submit(block.id) }
+        #if os(iOS)
+        // На Mac поле забирает Backspace раньше SwiftUI, там клавишу ловит редактор (PageEditorView.installKeyMonitor).
         .onKeyPress(.delete) {
             model.backspaceInEmptyBlock(block.id) ? .handled : .ignored
         }
+        #endif
         // ⌥⌘↑ и ⌥⌘↓ двигают блок, как в Notion.
         .onKeyPress(keys: [.upArrow, .downArrow]) { press in
             guard press.modifiers.contains(.command), press.modifiers.contains(.option) else { return .ignored }
@@ -345,6 +348,12 @@ struct BlockRow: View {
             model.duplicateBlock(block.id)
             return .handled
         }
+    }
+
+    /// Код вне редактирования рисует подсвеченная копия поверх поля, само поле тогда прозрачное.
+    private var fieldColor: Color {
+        if block.type == .code, !isFocused, !block.text.isEmpty { return .clear }
+        return block.content.textColor.map(\.textColor) ?? theme.textPrimary
     }
 
     private var placeholder: String {
