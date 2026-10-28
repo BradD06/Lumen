@@ -184,6 +184,11 @@ struct PageEditorView: View {
             model.focusRequest = nil
             moveFocus(to: request)
         }
+        .onChange(of: model.focusTitleRequest) { _, requested in
+            guard requested else { return }
+            model.focusTitleRequest = false
+            focus = .title
+        }
         .onDisappear {
             Task { await model.flush() }
         }

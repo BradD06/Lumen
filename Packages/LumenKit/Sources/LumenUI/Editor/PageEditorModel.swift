@@ -27,6 +27,8 @@ final class PageEditorModel {
     private(set) var canRedo = false
     /// Блок, на который нужно перевести фокус. Вью сбрасывает его после применения.
     var focusRequest: UUID?
+    /// Курсор нужно перевести в заголовок страницы. Вью сбрасывает флаг после применения.
+    var focusTitleRequest = false
     /// Блок, который сейчас перетаскивают за ручку.
     @ObservationIgnored var draggingBlockId: UUID?
     /// Где сейчас встанет перетаскиваемый блок. Одно значение на всю страницу,
@@ -545,8 +547,17 @@ final class PageEditorModel {
             outdent(id)
             return true
         }
-        guard children(of: id).isEmpty, let index = position(of: id), index > 0 else { return false }
+        // Пустой блок удаляется, курсор встаёт в конец блока выше. Единственный блок на странице остаётся.
+        guard children(of: id).isEmpty, blocks.contains(where: { $0.id != id && $0.type.hasText }) else {
+            return false
+        }
+        let isFirst = blocks.first { $0.type.hasText }?.id == id
         deleteBlock(id)
+        if isFirst {
+            // Выше блоков нет: как в Notion, курсор уходит в заголовок.
+            focusRequest = nil
+            focusTitleRequest = true
+        }
         return true
     }
 
