@@ -1,11 +1,6 @@
 import LumenCore
 import LumenThemes
 import SwiftUI
-#if canImport(UIKit)
-import UIKit
-#else
-import AppKit
-#endif
 
 /// Оттенки цветов блоков, подобранные под тёмную тему: яркий текст и приглушённый фон.
 extension BlockColor {
@@ -43,65 +38,93 @@ extension View {
     }
 }
 
-/// Цветные образцы для меню «Цвет». Системное меню перекрашивает обычные значки в один цвет,
-/// поэтому образец рисуется готовой картинкой, которую меню показывает как есть.
-enum ColorSwatch {
-    private static let size = CGSize(width: 16, height: 16)
+/// Палитра «Цвет»: образцы цвета текста и фона, как в Notion. Нарисована самим SwiftUI,
+/// поэтому цвета видны всегда, в отличие от значков в системном меню.
+struct BlockColorPicker: View {
+    let block: Block
+    let model: PageEditorModel
 
-    /// Буква «A» цветом текста в рамке.
-    static func text(_ color: Color) -> Image {
-        render { rect in
-            let path = roundedRect(rect.insetBy(dx: 0.5, dy: 0.5))
-            PlatformColor.gray.withAlphaComponent(0.5).setStroke()
-            path.lineWidth = 1
-            path.stroke()
-            let font = PlatformFont.systemFont(ofSize: 11, weight: .bold)
-            let letter = NSAttributedString(string: "A", attributes: [
-                .font: font,
-                .foregroundColor: PlatformColor(color),
-            ])
-            let letterSize = letter.size()
-            letter.draw(at: CGPoint(x: rect.midX - letterSize.width / 2, y: rect.midY - letterSize.height / 2))
+    @Environment(\.lumenTheme) private var theme
+    @Environment(\.dismiss) private var dismiss
+
+    private let columns = Array(repeating: GridItem(.fixed(30), spacing: 8), count: 5)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            section("Текст") {
+                swatch(title: "По умолчанию", isSelected: block.content.textColor == nil) {
+                    model.setTextColor(block.id, nil)
+                } label: {
+                    letter(theme.textPrimary)
+                }
+                ForEach(BlockColor.allCases) { color in
+                    swatch(title: color.title, isSelected: block.content.textColor == color) {
+                        model.setTextColor(block.id, color)
+                    } label: {
+                        letter(color.textColor)
+                    }
+                }
+            }
+            section("Фон") {
+                swatch(title: "Без фона", isSelected: block.content.backgroundColor == nil) {
+                    model.setBackgroundColor(block.id, nil)
+                } label: {
+                    Image(systemName: "nosign")
+                        .font(.system(size: 13))
+                        .foregroundStyle(theme.textSecondary)
+                }
+                ForEach(BlockColor.allCases) { color in
+                    swatch(title: color.title, isSelected: block.content.backgroundColor == color) {
+                        model.setBackgroundColor(block.id, color)
+                    } label: {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(color.textColor.opacity(0.6))
+                            .padding(4)
+                    }
+                }
+            }
+        }
+        .padding(14)
+    }
+
+    private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.textSecondary)
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                content()
+            }
         }
     }
 
-    /// Закрашенный квадратик цветом фона.
-    static func fill(_ color: Color) -> Image {
-        render { rect in
-            PlatformColor(color).withAlphaComponent(0.75).setFill()
-            roundedRect(rect.insetBy(dx: 0.5, dy: 0.5)).fill()
+    private func letter(_ color: Color) -> some View {
+        Text("A")
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(color)
+    }
+
+    private func swatch(
+        title: String,
+        isSelected: Bool,
+        action: @escaping () -> Void,
+        @ViewBuilder label: () -> some View
+    ) -> some View {
+        Button {
+            action()
+            dismiss()
+        } label: {
+            label()
+                .frame(width: 30, height: 30)
+                .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(isSelected ? theme.accent : Color.gray.opacity(0.35), lineWidth: isSelected ? 2 : 1)
+                }
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityLabel(title)
     }
-
-    #if canImport(UIKit)
-    private typealias PlatformColor = UIColor
-    private typealias PlatformFont = UIFont
-
-    private static func roundedRect(_ rect: CGRect) -> UIBezierPath {
-        UIBezierPath(roundedRect: rect, cornerRadius: 4)
-    }
-
-    private static func render(_ draw: @escaping (CGRect) -> Void) -> Image {
-        let image = UIGraphicsImageRenderer(size: size).image { _ in
-            draw(CGRect(origin: .zero, size: size))
-        }
-        return Image(uiImage: image.withRenderingMode(.alwaysOriginal))
-    }
-    #else
-    private typealias PlatformColor = NSColor
-    private typealias PlatformFont = NSFont
-
-    private static func roundedRect(_ rect: CGRect) -> NSBezierPath {
-        NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4)
-    }
-
-    private static func render(_ draw: @escaping (CGRect) -> Void) -> Image {
-        let image = NSImage(size: size, flipped: true) { rect in
-            draw(rect)
-            return true
-        }
-        image.isTemplate = false
-        return Image(nsImage: image)
-    }
-    #endif
 }

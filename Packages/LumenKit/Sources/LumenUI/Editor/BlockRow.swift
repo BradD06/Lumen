@@ -14,6 +14,7 @@ struct BlockRow: View {
 
     @State private var isHovered = false
     @State private var size: CGSize = .zero
+    @State private var isColorPickerShown = false
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
@@ -22,6 +23,10 @@ struct BlockRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 content
                     .blockBackground(block.content.backgroundColor)
+                    .popover(isPresented: $isColorPickerShown, arrowEdge: .bottom) {
+                        BlockColorPicker(block: block, model: model)
+                            .presentationCompactAdaptation(.popover)
+                    }
                 if isFocused, let query = slashQuery {
                     SlashMenu(query: query) { type in
                         model.setType(block.id, type)
@@ -71,30 +76,11 @@ struct BlockRow: View {
             }
         }
         if block.type.hasText {
-            Menu("Цвет") {
-                Button {
-                    model.setTextColor(block.id, nil)
-                } label: {
-                    Label { Text("По умолчанию") } icon: { ColorSwatch.text(theme.textPrimary) }
-                }
-                Section("Текст") {
-                    ForEach(BlockColor.allCases) { color in
-                        Button {
-                            model.setTextColor(block.id, color)
-                        } label: {
-                            Label { Text(color.title) } icon: { ColorSwatch.text(color.textColor) }
-                        }
-                    }
-                }
-                Section("Фон") {
-                    ForEach(BlockColor.allCases) { color in
-                        Button {
-                            model.setBackgroundColor(block.id, color)
-                        } label: {
-                            Label { Text(color.title) } icon: { ColorSwatch.fill(color.textColor) }
-                        }
-                    }
-                }
+            Button {
+                // Палитра открывается после того, как закроется контекстное меню.
+                DispatchQueue.main.async { isColorPickerShown = true }
+            } label: {
+                Label("Цвет…", systemImage: "paintpalette")
             }
         }
         Button {
