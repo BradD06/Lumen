@@ -80,6 +80,31 @@ struct BlockTreeTests {
         #expect(try await db.blocks(of: pageId).count == 1)
     }
 
+    @Test func returnInCodeBlockAddsLineAndDoubleReturnLeaves() async throws {
+        let (model, _, ids) = try await open("let a = 1")
+        model.setType(ids[0], .code)
+
+        model.submit(ids[0])
+        #expect(texts(model, in: nil) == ["let a = 1\n"], "Return переносит строку внутри кода")
+        model.updateText(ids[0], to: "let a = 1\nlet b = 2")
+        model.submit(ids[0])
+        model.submit(ids[0])
+
+        let top = model.children(of: nil)
+        #expect(top.map(\.text) == ["let a = 1\nlet b = 2", ""], "Второй Return создаёт блок ниже")
+        #expect(top.map(\.type) == [.code, .paragraph])
+        #expect(model.focusRequest == top[1].id)
+    }
+
+    @Test func doubleNewlineTypedInCodeBlockLeavesIt() async throws {
+        let (model, _, ids) = try await open("x")
+        model.setType(ids[0], .code)
+        model.updateText(ids[0], to: "x\n")
+        model.updateText(ids[0], to: "x\n\n")
+
+        #expect(model.children(of: nil).map(\.text) == ["x", ""])
+    }
+
     @Test func returnInsideOpenToggleCreatesChild() async throws {
         let (model, _, ids) = try await open("Раздел")
         model.setType(ids[0], .toggle)

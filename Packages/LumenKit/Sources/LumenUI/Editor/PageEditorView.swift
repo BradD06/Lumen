@@ -247,9 +247,22 @@ struct PageEditorView: View {
                 try? await Task.sleep(for: .milliseconds(delay))
                 // Следующий Return уже запросил другой блок: этот запрос устарел.
                 if Task.isCancelled { return }
-                if focus != target { focus = target }
+                if focus != target {
+                    focus = target
+                } else {
+                    placeCaretAtEnd()
+                }
             }
         }
+    }
+
+    /// Поле на Mac, получив фокус, выделяет весь свой текст. Курсор ставится в конец, как в Notion.
+    private func placeCaretAtEnd() {
+        #if os(macOS)
+        guard let textView = NSApp.keyWindow?.firstResponder as? NSTextView else { return }
+        let end = (textView.string as NSString).length
+        textView.setSelectedRange(NSRange(location: end, length: 0))
+        #endif
     }
 
     /// Колонка с текстом страницы: заголовок, блоки и обратные ссылки.

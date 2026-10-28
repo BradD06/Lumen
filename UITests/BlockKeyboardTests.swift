@@ -35,4 +35,24 @@ final class BlockKeyboardTests: XCTestCase {
         app.typeText("X")
         XCTAssertTrue(row("FirstX").waitForExistence(timeout: 5), "Курсор встал в конец блока выше")
     }
+
+    func testReturnInCodeBlockAddsLineThenLeaves() {
+        app.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(row("").waitForExistence(timeout: 10), "Не открылась новая заметка")
+        app.typeText("Test")
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(row("").waitForExistence(timeout: 5))
+        row("").click()
+        app.typeText("```")
+        app.typeText("a")
+        app.typeKey(.return, modifierFlags: [])
+        app.typeText("b")
+        XCTAssertTrue(row("a\nb").waitForExistence(timeout: 5), "Return перенёс строку внутри блока кода")
+
+        app.typeKey(.return, modifierFlags: [])
+        app.typeKey(.return, modifierFlags: [])
+        app.typeText("after")
+        XCTAssertTrue(row("after").waitForExistence(timeout: 5), "Второй Return создал новый блок")
+        XCTAssertTrue(row("a\nb").exists, "Пустая строка в конце кода убрана")
+    }
 }
