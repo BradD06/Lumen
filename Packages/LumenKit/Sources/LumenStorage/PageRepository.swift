@@ -85,6 +85,12 @@ extension AppDatabase {
         }
     }
 
+    public func setCover(_ id: UUID, cover: PageCover?) async throws {
+        try await writer.write { db in
+            try Self.updatePage(db, id) { $0.pageCover = cover }
+        }
+    }
+
     public func setFavorite(_ id: UUID, _ isFavorite: Bool) async throws {
         try await writer.write { db in
             try Self.updatePage(db, id) { $0.isFavorite = isFavorite }

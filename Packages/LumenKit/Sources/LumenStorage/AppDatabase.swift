@@ -5,26 +5,32 @@ import LumenCore
 /// Локальная база приложения. Всё хранится на устройстве (local-first), синхронизация появится позже.
 public final class AppDatabase: Sendable {
     public let writer: any DatabaseWriter
+    /// Файлы, которые блоки и обложки показывают по имени: картинки, позже книги и документы.
+    public let attachments: AttachmentStore
 
     public var reader: any DatabaseReader { writer }
 
-    public init(_ writer: any DatabaseWriter) throws {
+    public init(_ writer: any DatabaseWriter, attachments: AttachmentStore = .temporary()) throws {
         self.writer = writer
+        self.attachments = attachments
         try Self.migrator.migrate(writer)
     }
 
-    /// База в `Application Support/Lumen/lumen.sqlite`.
+    /// База в `Application Support/Lumen/lumen.sqlite`, вложения рядом в `Attachments`.
     public static func makeDefault() throws -> AppDatabase {
         let fileManager = FileManager.default
         let folder = try fileManager
             .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             .appendingPathComponent("Lumen", isDirectory: true)
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
-        return try onDisk(at: folder.appendingPathComponent("lumen.sqlite"))
+        return try onDisk(
+            at: folder.appendingPathComponent("lumen.sqlite"),
+            attachments: AttachmentStore(folder: folder.appendingPathComponent("Attachments", isDirectory: true))
+        )
     }
 
-    public static func onDisk(at url: URL) throws -> AppDatabase {
-        try AppDatabase(DatabasePool(path: url.path, configuration: configuration))
+    public static func onDisk(at url: URL, attachments: AttachmentStore = .temporary()) throws -> AppDatabase {
+        try AppDatabase(DatabasePool(path: url.path, configuration: configuration), attachments: attachments)
     }
 
     /// База в памяти для тестов и превью.
@@ -81,6 +87,20 @@ extension AppDatabase {
                     tokenize = 'unicode61 remove_diacritics 2'
                 )
                 """)
+        }
+
+        migrator.registerMigration("v2: covers, links") { db in
+            try db.alter(table: "page") { t in
+                t.add(column: "cover", .text)
+            }
+
+            // Индекс ссылок между страницами для обратных ссылок. Заполняется в `saveBlock`.
+            try db.create(table: "link") { t in
+                t.column("sourceBlockId", .blob).notNull().references("block", onDelete: .cascade)
+                t.column("sourcePageId", .blob).notNull().references("page", onDelete: .cascade).indexed()
+                t.column("targetPageId", .blob).notNull().references("page", onDelete: .cascade).indexed()
+                t.primaryKey(["sourceBlockId", "targetPageId"])
+            }
         }
 
         return migrator

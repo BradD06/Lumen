@@ -44,10 +44,35 @@ public struct BlockContent: Hashable, Codable, Sendable {
     public var runs: [TextRun]
     /// Отметка для блока-задачи.
     public var isChecked: Bool
+    /// Страница, на которую ссылается блок «Страница».
+    public var pageId: UUID?
+    /// Имя файла во вложениях для блока «Картинка».
+    public var attachment: String?
+    /// Свёрнут ли сворачиваемый блок.
+    public var isCollapsed: Bool
+    public var textColor: BlockColor?
+    public var backgroundColor: BlockColor?
+    /// Доля ширины ряда, которую занимает колонка. `nil` значит поровну с остальными.
+    public var columnWidth: Double?
 
-    public init(runs: [TextRun] = [], isChecked: Bool = false) {
+    public init(
+        runs: [TextRun] = [],
+        isChecked: Bool = false,
+        pageId: UUID? = nil,
+        attachment: String? = nil,
+        isCollapsed: Bool = false,
+        textColor: BlockColor? = nil,
+        backgroundColor: BlockColor? = nil,
+        columnWidth: Double? = nil
+    ) {
         self.runs = runs
         self.isChecked = isChecked
+        self.pageId = pageId
+        self.attachment = attachment
+        self.isCollapsed = isCollapsed
+        self.textColor = textColor
+        self.backgroundColor = backgroundColor
+        self.columnWidth = columnWidth
     }
 
     public init(text: String, isChecked: Bool = false) {
@@ -62,13 +87,42 @@ public struct BlockContent: Hashable, Codable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case runs, isChecked
+        case runs, isChecked, pageId, attachment, isCollapsed, textColor, backgroundColor, columnWidth
     }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         runs = try container.decodeIfPresent([TextRun].self, forKey: .runs) ?? []
         isChecked = try container.decodeIfPresent(Bool.self, forKey: .isChecked) ?? false
+        pageId = try container.decodeIfPresent(UUID.self, forKey: .pageId)
+        attachment = try container.decodeIfPresent(String.self, forKey: .attachment)
+        isCollapsed = try container.decodeIfPresent(Bool.self, forKey: .isCollapsed) ?? false
+        // Неизвестный цвет (например, из более новой версии) не ломает чтение блока.
+        textColor = try container.decodeIfPresent(String.self, forKey: .textColor).flatMap(BlockColor.init(rawValue:))
+        backgroundColor = try container.decodeIfPresent(String.self, forKey: .backgroundColor)
+            .flatMap(BlockColor.init(rawValue:))
+        columnWidth = try container.decodeIfPresent(Double.self, forKey: .columnWidth)
+    }
+}
+
+/// Цвета текста и фона блока, как в Notion. Конкретные оттенки задаёт тема.
+public enum BlockColor: String, Codable, Sendable, CaseIterable, Identifiable {
+    case gray, brown, orange, yellow, green, blue, purple, pink, red
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .gray: "Серый"
+        case .brown: "Коричневый"
+        case .orange: "Оранжевый"
+        case .yellow: "Жёлтый"
+        case .green: "Зелёный"
+        case .blue: "Синий"
+        case .purple: "Фиолетовый"
+        case .pink: "Розовый"
+        case .red: "Красный"
+        }
     }
 }
 

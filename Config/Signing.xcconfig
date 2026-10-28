@@ -1,0 +1,5 @@
+// Подпись приложения. Своя команда разработчика задаётся в Local.xcconfig рядом с этим файлом:
+//   DEVELOPMENT_TEAM = ABCDE12345
+// Local.xcconfig не хранится в git. Если его нет, команда остаётся пустой.
+DEVELOPMENT_TEAM =
+#include? "Local.xcconfig"

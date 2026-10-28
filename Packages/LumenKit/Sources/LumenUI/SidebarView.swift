@@ -3,6 +3,7 @@ import LumenCore
 import LumenStorage
 import LumenThemes
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SidebarView: View {
     let database: AppDatabase
@@ -10,6 +11,8 @@ struct SidebarView: View {
     var onNewPage: (UUID?) -> Void
 
     @State private var snapshot = SidebarSnapshot.empty
+    @State private var renaming: Page?
+    @State private var newTitle = ""
 
     var body: some View {
         List(selection: $selection) {
@@ -31,11 +34,18 @@ struct SidebarView: View {
                 }
             }
 
-            Section("Страницы") {
+            Section {
                 OutlineGroup(snapshot.tree, children: \.childrenOrNil) { node in
                     PageLabel(page: node.page)
                         .tag(SidebarItem.page(node.id))
                         .contextMenu { menu(for: node.page) }
+                        // Перетащите страницу на другую, чтобы сделать её подстраницей.
+                        .draggable(PageDragItem(pageId: node.id)) {
+                            PageLabel(page: node.page).padding(6)
+                        }
+                        .dropDestination(for: PageDragItem.self) { items, _ in
+                            move(items, to: node.id)
+                        }
                 }
                 Button {
                     onNewPage(nil)
@@ -44,6 +54,14 @@ struct SidebarView: View {
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
+            } header: {
+                // Бросьте страницу на заголовок раздела, чтобы поднять её на верхний уровень.
+                Text("Страницы")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .dropDestination(for: PageDragItem.self) { items, _ in
+                        move(items, to: nil)
+                    }
             }
 
             Section {
@@ -54,10 +72,43 @@ struct SidebarView: View {
         }
         .navigationTitle("Lumen")
         .task { await observe() }
+        .alert("Переименовать страницу", isPresented: isRenaming) {
+            TextField("Название", text: $newTitle)
+            Button("Готово") {
+                if let page = renaming {
+                    let title = newTitle
+                    Task { try? await database.renamePage(page.id, title: title) }
+                }
+                renaming = nil
+            }
+            Button("Отмена", role: .cancel) { renaming = nil }
+        }
+    }
+
+    private var isRenaming: Binding<Bool> {
+        Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
+    }
+
+    private func move(_ items: [PageDragItem], to parentId: UUID?) -> Bool {
+        let ids = items.map(\.pageId).filter { $0 != parentId }
+        guard !ids.isEmpty else { return false }
+        Task {
+            for id in ids {
+                // Нельзя положить страницу внутрь её же подстраницы: такие перемещения просто пропускаем.
+                try? await database.movePage(id, toParent: parentId)
+            }
+        }
+        return true
     }
 
     @ViewBuilder
     private func menu(for page: Page) -> some View {
+        Button {
+            newTitle = page.title
+            renaming = page
+        } label: {
+            Label("Переименовать", systemImage: "pencil")
+        }
         Button {
             onNewPage(page.id)
         } label: {
@@ -98,6 +149,19 @@ struct SidebarView: View {
             print("Sidebar observation failed: \(error)")
         }
     }
+}
+
+/// Что переносится при перетаскивании страницы в сайдбаре.
+struct PageDragItem: Codable, Transferable {
+    let pageId: UUID
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .lumenPage)
+    }
+}
+
+extension UTType {
+    static let lumenPage = UTType(exportedAs: "app.lumen.page")
 }
 
 /// Иконка и название страницы.

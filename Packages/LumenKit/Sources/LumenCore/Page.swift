@@ -7,6 +7,8 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
     public var title: String
     /// Эмодзи или имя SF Symbol.
     public var icon: String?
+    /// Обложка страницы, см. `PageCover`.
+    public var cover: String?
     /// Источник (книга, файл), к которому привязана заметка. Появится на этапе 3.
     public var sourceId: UUID?
     /// Быстрые заметки лежат во «Входящих», пока их не разложат по разделам.
@@ -24,6 +26,7 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
         parentId: UUID? = nil,
         title: String = "",
         icon: String? = nil,
+        cover: String? = nil,
         sourceId: UUID? = nil,
         inInbox: Bool = false,
         isFavorite: Bool = false,
@@ -36,6 +39,7 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
         self.parentId = parentId
         self.title = title
         self.icon = icon
+        self.cover = cover
         self.sourceId = sourceId
         self.inInbox = inInbox
         self.isFavorite = isFavorite
@@ -51,4 +55,33 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
     }
 
     public var isTrashed: Bool { deletedAt != nil }
+
+    public var pageCover: PageCover? {
+        get { cover.flatMap(PageCover.init(rawValue:)) }
+        set { cover = newValue?.rawValue }
+    }
+}
+
+/// Обложка страницы: градиент из палитры темы или картинка из вложений.
+/// В базе хранится строкой: `gradient:2` или `image:<имя файла>`.
+public enum PageCover: Hashable, Sendable {
+    case gradient(Int)
+    case image(String)
+
+    public init?(rawValue: String) {
+        if rawValue.hasPrefix("gradient:"), let index = Int(rawValue.dropFirst("gradient:".count)) {
+            self = .gradient(index)
+        } else if rawValue.hasPrefix("image:"), rawValue.count > "image:".count {
+            self = .image(String(rawValue.dropFirst("image:".count)))
+        } else {
+            return nil
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .gradient(let index): "gradient:\(index)"
+        case .image(let name): "image:\(name)"
+        }
+    }
 }

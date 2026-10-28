@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import LumenCore
 import LumenStorage
 import Observation
@@ -13,17 +14,55 @@ final class PageEditorModel {
 
     private(set) var page: Page?
     private(set) var title = ""
-    private(set) var blocks: [Block] = []
+    /// Все блоки страницы в порядке документа (родитель, затем его дети).
+    private(set) var blocks: [Block] = [] {
+        didSet { rebuildChildIndex() }
+    }
+    /// Дети каждого блока по порядку, `nil` это верхний уровень. Пересчитывается при каждом изменении блоков.
+    private(set) var childIndex: [UUID?: [Block]] = [:]
     private(set) var isLoaded = false
+    /// Живые страницы (для выбора ссылки и подписей блоков-ссылок) и обратные ссылки.
+    private(set) var links = PageLinksSnapshot.empty
+    private(set) var canUndo = false
+    private(set) var canRedo = false
     /// Блок, на который нужно перевести фокус. Вью сбрасывает его после применения.
     var focusRequest: UUID?
+    /// Блок, который сейчас перетаскивают за ручку.
+    @ObservationIgnored var draggingBlockId: UUID?
+    /// Где сейчас встанет перетаскиваемый блок. Одно значение на всю страницу,
+    /// поэтому подсветка не остаётся на строках, которые курсор уже покинул.
+    var dropIndicator: DropIndicator?
+    /// Страница, которую нужно открыть (ссылка или новая подстраница). Вью сбрасывает её после перехода.
+    var openRequest: UUID?
 
     @ObservationIgnored private var dirtyBlocks: Set<UUID> = []
+    /// Блоки, которые нужно удалить из базы. Удаляются после записи правок, чтобы каскадное
+    /// удаление не забрало блоки, которые только что переехали из удаляемого родителя.
+    @ObservationIgnored private var pendingDeletes: Set<UUID> = []
     @ObservationIgnored private var isTitleDirty = false
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var lastWrite: Task<Void, Never>?
 
+    @ObservationIgnored private var undoStack: [Snapshot] = []
+    @ObservationIgnored private var redoStack: [Snapshot] = []
+    /// Набор текста подряд в одном поле отменяется одним шагом, а не по букве.
+    @ObservationIgnored private var typingGroup: TypingGroup?
+    @ObservationIgnored private var lastTypingAt = Date.distantPast
+
     private static let saveDelay: Duration = .milliseconds(350)
+    private static let typingGroupInterval: TimeInterval = 1.5
+    private static let undoLimit = 200
+
+    /// Состояние страницы для отмены и повтора.
+    private struct Snapshot {
+        var title: String
+        var blocks: [Block]
+    }
+
+    private enum TypingGroup: Equatable {
+        case title
+        case block(UUID)
+    }
 
     init(database: AppDatabase, pageId: UUID) {
         self.database = database
@@ -44,17 +83,38 @@ final class PageEditorModel {
                 scheduleSave()
             }
             blocks = loaded
+            reorder()
             isLoaded = true
         } catch {
             print("Failed to load page \(pageId): \(error)")
         }
     }
 
-    /// Немедленно записывает все несохранённые правки.
+    /// Следит за списком страниц и обратными ссылками, пока страница открыта.
+    func observeLinks() async {
+        let pageId = pageId
+        let observation = ValueObservation.tracking { db in try PageLinksSnapshot.fetch(db, pageId: pageId) }
+        do {
+            for try await value in observation.values(in: database.reader) {
+                links = value
+                // Иконка, обложка и избранное могли поменяться в сайдбаре. Название не трогаем:
+                // его источник правды здесь, пока страница открыта.
+                if var fresh = value.pages.first(where: { $0.id == pageId }) {
+                    fresh.title = title
+                    page = fresh
+                }
+            }
+        } catch {
+            print("Links observation failed: \(error)")
+        }
+    }
+
+    /// Немедленно записывает все несохранённые правки и ждёт, пока очередь записей опустеет.
     func flush() async {
         saveTask?.cancel()
         saveTask = nil
         await save()
+        await lastWrite?.value
     }
 
     private func markDirty(_ id: UUID) {
@@ -80,9 +140,11 @@ final class PageEditorModel {
     private func save() async {
         let pending = blocks.filter { dirtyBlocks.contains($0.id) }
         dirtyBlocks.removeAll()
+        let deletes = pendingDeletes
+        pendingDeletes.removeAll()
         let newTitle = isTitleDirty ? title : nil
         isTitleDirty = false
-        guard newTitle != nil || !pending.isEmpty else { return }
+        guard newTitle != nil || !pending.isEmpty || !deletes.isEmpty else { return }
 
         let database = database
         let pageId = pageId
@@ -93,8 +155,12 @@ final class PageEditorModel {
                 if let newTitle {
                     try await database.renamePage(pageId, title: newTitle)
                 }
+                // Порядок документа: родитель записывается раньше детей.
                 for block in pending {
                     try await database.saveBlock(block)
+                }
+                for id in deletes {
+                    try await database.deleteBlock(id)
                 }
             } catch {
                 print("Failed to save page \(pageId): \(error)")
@@ -104,16 +170,85 @@ final class PageEditorModel {
         await write.value
     }
 
+    /// Удаление блоков из базы при следующей записи. Запоздалая запись их уже не вернёт:
+    /// они убраны из несохранённых правок.
+    private func enqueueDelete(_ ids: Set<UUID>) {
+        dirtyBlocks.subtract(ids)
+        pendingDeletes.formUnion(ids)
+        scheduleSave()
+    }
+
+    // MARK: Отмена и повтор
+
+    /// Запоминает состояние перед правкой. `typing` объединяет набор текста подряд в один шаг.
+    private func recordUndo(typing group: TypingGroup? = nil) {
+        let now = Date()
+        if let group, group == typingGroup, now.timeIntervalSince(lastTypingAt) < Self.typingGroupInterval {
+            lastTypingAt = now
+            return
+        }
+        typingGroup = group
+        lastTypingAt = now
+        undoStack.append(Snapshot(title: title, blocks: blocks))
+        if undoStack.count > Self.undoLimit {
+            undoStack.removeFirst()
+        }
+        redoStack.removeAll()
+        updateUndoState()
+    }
+
+    func undo() {
+        guard let snapshot = undoStack.popLast() else { return }
+        redoStack.append(Snapshot(title: title, blocks: blocks))
+        restore(snapshot)
+    }
+
+    func redo() {
+        guard let snapshot = redoStack.popLast() else { return }
+        undoStack.append(Snapshot(title: title, blocks: blocks))
+        restore(snapshot)
+    }
+
+    private func updateUndoState() {
+        canUndo = !undoStack.isEmpty
+        canRedo = !redoStack.isEmpty
+    }
+
+    /// Возвращает страницу к снимку и записывает в базу только то, что изменилось.
+    private func restore(_ snapshot: Snapshot) {
+        typingGroup = nil
+        let current = Dictionary(uniqueKeysWithValues: blocks.map { ($0.id, $0) })
+        let restoredIds = Set(snapshot.blocks.map(\.id))
+        let removed = blocks.map(\.id).filter { !restoredIds.contains($0) }
+        let changed = snapshot.blocks.filter { current[$0.id] != $0 }.map(\.id)
+
+        if title != snapshot.title {
+            title = snapshot.title
+            isTitleDirty = true
+        }
+        blocks = snapshot.blocks
+        enqueueDelete(Set(removed))
+        pendingDeletes.subtract(restoredIds)
+        dirtyBlocks.formUnion(changed)
+        scheduleSave()
+        updateUndoState()
+        if let first = changed.first ?? blocks.first?.id {
+            focusRequest = first
+        }
+    }
+
     // MARK: Страница
 
     func setTitle(_ value: String) {
         // Return в названии переводит курсор в первый блок.
-        if value.contains("\n") {
-            title = value.replacingOccurrences(of: "\n", with: "")
+        let hasReturn = value.contains("\n")
+        let newTitle = hasReturn ? value.replacingOccurrences(of: "\n", with: "") : value
+        if hasReturn {
             focusFirstBlock()
-        } else {
-            title = value
         }
+        guard newTitle != title else { return }
+        recordUndo(typing: .title)
+        title = newTitle
         isTitleDirty = true
         scheduleSave()
     }
@@ -140,155 +275,629 @@ final class PageEditorModel {
         try? await database.trashPage(pageId)
     }
 
+    // MARK: Дерево блоков
+
+    /// Дочерние блоки по порядку. `nil` это верхний уровень страницы.
+    func children(of parentId: UUID?) -> [Block] {
+        childIndex[parentId] ?? []
+    }
+
+    func findBlock(_ id: UUID?) -> Block? {
+        guard let id, let index = position(of: id) else { return nil }
+        return blocks[index]
+    }
+
+    private func position(of id: UUID) -> Int? {
+        blocks.firstIndex { $0.id == id }
+    }
+
+    private func update(_ id: UUID, _ change: (inout Block) -> Void) {
+        guard let index = position(of: id) else { return }
+        change(&blocks[index])
+        markDirty(id)
+    }
+
+    private func rebuildChildIndex() {
+        var index: [UUID?: [Block]] = [:]
+        for block in blocks {
+            index[block.parentBlockId, default: []].append(block)
+        }
+        childIndex = index
+    }
+
+    /// Блок и все его потомки.
+    private func subtree(of id: UUID) -> [UUID] {
+        var result = [id]
+        var cursor = 0
+        while cursor < result.count {
+            result += children(of: result[cursor]).map(\.id)
+            cursor += 1
+        }
+        return result
+    }
+
+    /// Выстраивает `blocks` в порядке документа: родитель, затем его дети по `sortKey`.
+    /// Блок, чей родитель потерялся, поднимается на верхний уровень.
+    private func reorder() {
+        let ids = Set(blocks.map(\.id))
+        for index in blocks.indices {
+            if let parent = blocks[index].parentBlockId, !ids.contains(parent) || parent == blocks[index].id {
+                blocks[index].parentBlockId = nil
+                dirtyBlocks.insert(blocks[index].id)
+            }
+        }
+        let grouped = Dictionary(grouping: blocks, by: \.parentBlockId).mapValues { siblings in
+            siblings.sorted { ($0.sortKey, $0.id.uuidString) < ($1.sortKey, $1.id.uuidString) }
+        }
+        var ordered: [Block] = []
+        var visited = Set<UUID>()
+        func visit(_ parent: UUID?) {
+            for block in grouped[parent] ?? [] where visited.insert(block.id).inserted {
+                ordered.append(block)
+                visit(block.id)
+            }
+        }
+        visit(nil)
+        // Циклы в родителях (повреждённые данные): такие блоки тоже показываем на верхнем уровне.
+        for block in blocks where !visited.contains(block.id) {
+            var block = block
+            block.parentBlockId = nil
+            dirtyBlocks.insert(block.id)
+            ordered.append(block)
+        }
+        blocks = ordered
+    }
+
+    /// Ключ для вставки среди детей `parentId` сразу после `afterId` (`nil` значит в начало).
+    private func sortKey(in parentId: UUID?, after afterId: UUID?, excluding excluded: UUID? = nil) -> String {
+        let siblings = children(of: parentId).filter { $0.id != excluded }
+        guard let afterId, let index = siblings.firstIndex(where: { $0.id == afterId }) else {
+            return SortKey.between(nil, siblings.first?.sortKey)
+        }
+        let upper = index + 1 < siblings.count ? siblings[index + 1].sortKey : nil
+        return SortKey.between(siblings[index].sortKey, upper)
+    }
+
+    /// Ключ для вставки сразу перед `beforeId`.
+    private func sortKey(in parentId: UUID?, before beforeId: UUID, excluding excluded: UUID? = nil) -> String {
+        let siblings = children(of: parentId).filter { $0.id != excluded }
+        guard let index = siblings.firstIndex(where: { $0.id == beforeId }) else {
+            return SortKey.between(siblings.last?.sortKey, nil)
+        }
+        let lower = index > 0 ? siblings[index - 1].sortKey : nil
+        return SortKey.between(lower, siblings[index].sortKey)
+    }
+
+    @discardableResult
+    private func insertBlock(
+        in parentId: UUID?,
+        after afterId: UUID?,
+        type: BlockType,
+        content: BlockContent = BlockContent()
+    ) -> Block {
+        let block = Block(
+            pageId: pageId,
+            parentBlockId: parentId,
+            type: type,
+            content: content,
+            sortKey: sortKey(in: parentId, after: afterId)
+        )
+        blocks.append(block)
+        reorder()
+        markDirty(block.id)
+        return block
+    }
+
+    /// Новый блок сразу после `id`, на том же уровне.
+    @discardableResult
+    private func insertBlock(after id: UUID, type: BlockType, content: BlockContent = BlockContent()) -> Block {
+        insertBlock(in: findBlock(id)?.parentBlockId, after: id, type: type, content: content)
+    }
+
     // MARK: Блоки
 
     func focusFirstBlock() {
-        focusRequest = blocks.first?.id
+        focusRequest = blocks.first { $0.type.hasText }?.id ?? blocks.first?.id
     }
 
     /// Нажатие на пустое место под блоками: фокус в последний пустой абзац или новый абзац в конце.
     func focusEnd() {
-        if let last = blocks.last, last.type == .paragraph, last.text.isEmpty {
+        let topLevel = children(of: nil)
+        if let last = topLevel.last, last.type == .paragraph, last.text.isEmpty {
             focusRequest = last.id
         } else {
-            focusRequest = insertBlock(after: blocks.indices.last, type: .paragraph).id
+            focusRequest = insertBlock(in: nil, after: topLevel.last?.id, type: .paragraph).id
         }
     }
 
     func updateText(_ id: UUID, to newText: String) {
-        guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
-        var block = blocks[index]
+        guard let block = findBlock(id) else { return }
 
         if newText.contains("\n"), block.type != .code {
-            split(at: index, text: newText)
+            recordUndo()
+            split(id, text: newText)
             return
         }
 
         if block.type == .paragraph, let shortcut = MarkdownShortcut.match(newText) {
-            block.type = shortcut.type
-            block.text = shortcut.remainder
-            blocks[index] = block
-            markDirty(id)
+            recordUndo()
+            update(id) {
+                $0.type = shortcut.type
+                $0.text = shortcut.remainder
+            }
             if shortcut.type == .divider {
-                focusRequest = insertBlock(after: index, type: .paragraph).id
+                focusRequest = insertBlock(after: id, type: .paragraph).id
             }
             return
         }
 
         guard block.text != newText else { return }
-        block.text = newText
-        blocks[index] = block
-        markDirty(id)
+        recordUndo(typing: .block(id))
+        update(id) { $0.text = newText }
     }
 
     /// Return в конце блока (на macOS приходит как submit, а не как перевод строки).
     func submit(_ id: UUID) {
-        guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
-        split(at: index, text: blocks[index].text + "\n")
+        guard let block = findBlock(id) else { return }
+        recordUndo()
+        split(id, text: block.text + "\n")
     }
 
     /// Делит блок по переводам строки: первая строка остаётся, остальные становятся новыми блоками.
-    /// Return в пустом пункте списка выходит из списка, как в Notion.
-    private func split(at index: Int, text: String) {
-        var block = blocks[index]
+    /// Return в пустом пункте списка выходит из списка (или из вложенности), как в Notion.
+    /// В раскрытом сворачиваемом блоке новые строки становятся его первыми детьми.
+    private func split(_ id: UUID, text: String) {
+        guard let block = findBlock(id) else { return }
         let lines = text.components(separatedBy: "\n")
 
         if block.type.continuation != .paragraph, lines.allSatisfy(\.isEmpty) {
-            block.type = .paragraph
-            block.text = ""
-            blocks[index] = block
-            markDirty(block.id)
+            if isNested(block) {
+                outdent(id, recording: false)
+            } else {
+                update(id) {
+                    $0.type = .paragraph
+                    $0.text = ""
+                }
+            }
+            focusRequest = id
             return
         }
 
-        block.text = lines[0]
-        blocks[index] = block
-        markDirty(block.id)
+        update(id) { $0.text = lines[0] }
 
-        var lastIndex = index
-        var lastId = block.id
-        for line in lines.dropFirst() {
-            lastId = insertBlock(after: lastIndex, type: block.type.continuation, text: line).id
-            lastIndex += 1
+        let opensInside = block.type == .toggle && !block.content.isCollapsed
+        var lastId = id
+        for (offset, line) in lines.dropFirst().enumerated() {
+            let content = BlockContent(text: line)
+            if opensInside && offset == 0 {
+                lastId = insertBlock(in: id, after: nil, type: .paragraph, content: content).id
+            } else {
+                let type = opensInside ? BlockType.paragraph : block.type.continuation
+                lastId = insertBlock(after: lastId, type: type, content: content).id
+            }
         }
         focusRequest = lastId
     }
 
-    @discardableResult
-    private func insertBlock(after index: Int?, type: BlockType, text: String = "") -> Block {
-        let position = index.map { $0 + 1 } ?? 0
-        let lower = position > 0 ? blocks[position - 1].sortKey : nil
-        let upper = position < blocks.count ? blocks[position].sortKey : nil
-        let block = Block(
-            pageId: pageId,
-            type: type,
-            content: BlockContent(text: text),
-            sortKey: SortKey.between(lower, upper)
-        )
-        blocks.insert(block, at: position)
-        markDirty(block.id)
-        return block
-    }
-
     /// Меняет тип блока (из slash-меню или контекстного меню).
+    /// «Страница» создаёт новую подстраницу и сразу открывает её, как в Notion.
     func setType(_ id: UUID, _ type: BlockType) {
-        guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
-        var block = blocks[index]
-        block.type = type
-        if !type.hasText || block.text.hasPrefix("/") {
-            block.text = ""
+        guard let block = findBlock(id) else { return }
+        if type == .page {
+            createSubpage(from: id, title: "", open: true)
+            return
         }
-        blocks[index] = block
-        markDirty(id)
+        recordUndo()
+        update(id) {
+            $0.type = type
+            if !type.hasText || block.text.hasPrefix("/") {
+                $0.text = ""
+            }
+        }
         if type.hasText {
             focusRequest = id
         } else {
-            focusRequest = insertBlock(after: index, type: .paragraph).id
+            focusRequest = insertBlock(after: id, type: .paragraph).id
         }
     }
 
     func toggleChecked(_ id: UUID) {
-        guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
-        blocks[index].content.isChecked.toggle()
-        markDirty(id)
+        recordUndo()
+        update(id) { $0.content.isChecked.toggle() }
     }
 
-    /// Backspace в пустом блоке: особый блок сначала становится абзацем, пустой абзац удаляется.
-    /// Возвращает `true`, если нажатие обработано.
+    /// Свернуть или раскрыть сворачиваемый блок. Это не правка текста, поэтому в историю отмены не попадает.
+    func toggleCollapsed(_ id: UUID) {
+        update(id) { $0.content.isCollapsed.toggle() }
+    }
+
+    /// Пустой раскрытый сворачиваемый блок: первый абзац внутри него.
+    func addFirstChild(to id: UUID) {
+        recordUndo()
+        update(id) { $0.content.isCollapsed = false }
+        focusRequest = insertBlock(in: id, after: nil, type: .paragraph).id
+    }
+
+    func setTextColor(_ id: UUID, _ color: BlockColor?) {
+        recordUndo()
+        update(id) {
+            $0.content.textColor = color
+        }
+    }
+
+    func setBackgroundColor(_ id: UUID, _ color: BlockColor?) {
+        recordUndo()
+        update(id) {
+            $0.content.backgroundColor = color
+        }
+    }
+
+    /// Backspace в пустом блоке: особый блок сначала становится абзацем, вложенный абзац
+    /// поднимается на уровень выше, пустой абзац удаляется. Возвращает `true`, если нажатие обработано.
     func backspaceInEmptyBlock(_ id: UUID) -> Bool {
-        guard let index = blocks.firstIndex(where: { $0.id == id }), blocks[index].text.isEmpty else { return false }
-        if blocks[index].type != .paragraph {
-            blocks[index].type = .paragraph
-            markDirty(id)
+        guard let block = findBlock(id), block.text.isEmpty else { return false }
+        if block.type != .paragraph {
+            recordUndo()
+            update(id) { $0.type = .paragraph }
             return true
         }
-        guard index > 0 else { return false }
+        if isNested(block) {
+            outdent(id)
+            return true
+        }
+        guard children(of: id).isEmpty, let index = position(of: id), index > 0 else { return false }
         deleteBlock(id)
         return true
     }
 
+    /// Удаляет блок вместе со всеми вложенными.
     func deleteBlock(_ id: UUID) {
-        guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
-        blocks.remove(at: index)
-        dirtyBlocks.remove(id)
+        guard let index = position(of: id) else { return }
+        recordUndo()
+        let removed = Set(subtree(of: id))
+        let previous = blocks[..<index].last { $0.type.hasText && !removed.contains($0.id) }
+        blocks.removeAll { removed.contains($0.id) }
+        enqueueDelete(removed)
+        normalizeColumns()
         if blocks.isEmpty {
-            insertBlock(after: nil, type: .paragraph)
+            insertBlock(in: nil, after: nil, type: .paragraph)
         }
-        focusRequest = blocks[max(index - 1, 0)].id
-        // В ту же очередь, что и сохранения, чтобы запоздалая запись не вернула удалённый блок.
-        let database = database
-        let previous = lastWrite
-        lastWrite = Task {
-            await previous?.value
-            try? await database.deleteBlock(id)
+        focusRequest = previous?.id ?? blocks.first?.id
+    }
+
+    /// Копия блока со всеми вложенными сразу под оригиналом.
+    func duplicateBlock(_ id: UUID) {
+        guard let original = findBlock(id), !original.type.isLayout else { return }
+        recordUndo()
+        var newIds: [UUID: UUID] = [:]
+        for blockId in subtree(of: id) {
+            newIds[blockId] = UUID()
+        }
+        var copies: [Block] = []
+        for blockId in subtree(of: id) {
+            guard var copy = findBlock(blockId), let newId = newIds[blockId] else { continue }
+            copy.id = newId
+            copy.createdAt = Date()
+            copy.updatedAt = copy.createdAt
+            if blockId == id {
+                copy.sortKey = sortKey(in: original.parentBlockId, after: id)
+            } else {
+                copy.parentBlockId = copy.parentBlockId.flatMap { newIds[$0] }
+            }
+            copies.append(copy)
+        }
+        blocks += copies
+        reorder()
+        dirtyBlocks.formUnion(copies.map(\.id))
+        scheduleSave()
+        focusRequest = newIds[id]
+    }
+
+    // MARK: Вложенность
+
+    /// Вложен ли блок в обычный блок (а не лежит на верхнем уровне или прямо в колонке).
+    private func isNested(_ block: Block) -> Bool {
+        guard let parent = self.findBlock(block.parentBlockId) else { return false }
+        return !parent.type.isLayout
+    }
+
+    func canIndent(_ id: UUID) -> Bool {
+        guard let block = findBlock(id) else { return false }
+        let siblings = children(of: block.parentBlockId)
+        guard let index = siblings.firstIndex(where: { $0.id == id }), index > 0 else { return false }
+        return siblings[index - 1].type.canNest
+    }
+
+    func canOutdent(_ id: UUID) -> Bool {
+        guard let block = findBlock(id) else { return false }
+        return isNested(block)
+    }
+
+    /// Tab: блок становится последним ребёнком предыдущего соседа.
+    func indent(_ id: UUID) {
+        guard canIndent(id), let block = findBlock(id) else { return }
+        let siblings = children(of: block.parentBlockId)
+        guard let index = siblings.firstIndex(where: { $0.id == id }) else { return }
+        let newParent = siblings[index - 1]
+        recordUndo()
+        if newParent.content.isCollapsed {
+            update(newParent.id) { $0.content.isCollapsed = false }
+        }
+        let key = SortKey.between(children(of: newParent.id).last?.sortKey, nil)
+        update(id) {
+            $0.parentBlockId = newParent.id
+            $0.sortKey = key
+        }
+        reorder()
+        focusRequest = id
+    }
+
+    /// ⇧Tab: блок выходит на уровень выше и встаёт сразу после бывшего родителя.
+    func outdent(_ id: UUID) {
+        outdent(id, recording: true)
+    }
+
+    private func outdent(_ id: UUID, recording: Bool) {
+        guard let block = findBlock(id), isNested(block), let parent = self.findBlock(block.parentBlockId) else { return }
+        if recording {
+            recordUndo()
+        }
+        let key = sortKey(in: parent.parentBlockId, after: parent.id)
+        update(id) {
+            $0.parentBlockId = parent.parentBlockId
+            $0.sortKey = key
+        }
+        reorder()
+        focusRequest = id
+    }
+
+    // MARK: Перемещение
+
+    /// Ставит блок рядом с другим на его уровне: перед ним или после него.
+    func moveBlock(_ id: UUID, nextTo targetId: UUID, after: Bool) {
+        guard id != targetId, let target = findBlock(targetId), findBlock(id) != nil,
+              !subtree(of: id).contains(targetId) else { return }
+        recordUndo()
+        let key = after
+            ? sortKey(in: target.parentBlockId, after: targetId, excluding: id)
+            : sortKey(in: target.parentBlockId, before: targetId, excluding: id)
+        update(id) {
+            $0.parentBlockId = target.parentBlockId
+            $0.sortKey = key
+        }
+        reorder()
+        normalizeColumns()
+    }
+
+    /// Ставит блок на место другого: при перетаскивании вниз он встаёт после цели, вверх перед ней.
+    func moveBlock(_ id: UUID, onto targetId: UUID) {
+        guard let from = position(of: id), let to = position(of: targetId) else { return }
+        moveBlock(id, nextTo: targetId, after: from < to)
+    }
+
+    /// Сдвигает блок на одну позицию среди соседей вверх (`-1`) или вниз (`+1`).
+    func moveBlock(_ id: UUID, by offset: Int) {
+        guard let block = findBlock(id) else { return }
+        let siblings = children(of: block.parentBlockId)
+        guard let index = siblings.firstIndex(where: { $0.id == id }), siblings.indices.contains(index + offset) else {
+            return
+        }
+        moveBlock(id, nextTo: siblings[index + offset].id, after: offset > 0)
+        focusRequest = id
+    }
+
+    // MARK: Колонки
+
+    /// Ставит блок в колонку рядом с другим блоком, как при перетаскивании к правому краю в Notion.
+    func placeBeside(_ id: UUID, _ targetId: UUID) {
+        guard id != targetId, let target = findBlock(targetId), let moving = findBlock(id), !moving.type.isLayout,
+              !subtree(of: id).contains(targetId) else { return }
+        recordUndo()
+
+        if let column = findBlock(target.parentBlockId), column.type == .column {
+            // Цель уже в колонке: добавляем новую колонку справа от неё.
+            let newColumn = insertBlock(in: column.parentBlockId, after: column.id, type: .column)
+            update(id) {
+                $0.parentBlockId = newColumn.id
+                $0.sortKey = SortKey.between(nil, nil)
+            }
+        } else {
+            // Ряд колонок встаёт на место цели, цель уходит в левую колонку, блок в правую.
+            let row = Block(pageId: pageId, parentBlockId: target.parentBlockId, type: .columnList, sortKey: target.sortKey)
+            let keys = SortKey.sequence(count: 2)
+            let left = Block(pageId: pageId, parentBlockId: row.id, type: .column, sortKey: keys[0])
+            let right = Block(pageId: pageId, parentBlockId: row.id, type: .column, sortKey: keys[1])
+            blocks += [row, left, right]
+            dirtyBlocks.formUnion([row.id, left.id, right.id])
+            update(targetId) { $0.parentBlockId = left.id }
+            update(id) {
+                $0.parentBlockId = right.id
+                $0.sortKey = SortKey.between(nil, nil)
+            }
+        }
+        reorder()
+        normalizeColumns()
+        focusRequest = id
+    }
+
+    /// Блок выше на том же уровне: рядом с ним встанет новая колонка из меню блока.
+    func previousSibling(of id: UUID) -> Block? {
+        guard let block = findBlock(id) else { return nil }
+        let siblings = children(of: block.parentBlockId)
+        guard let index = siblings.firstIndex(where: { $0.id == id }), index > 0 else { return nil }
+        let previous = siblings[index - 1]
+        return previous.type.isLayout ? nil : previous
+    }
+
+    /// Пункт меню «Поставить в колонку рядом»: блок встаёт справа от блока выше.
+    func placeBesidePrevious(_ id: UUID) {
+        guard let previous = previousSibling(of: id) else { return }
+        placeBeside(id, previous.id)
+    }
+
+    /// Доли ширины колонок ряда, в сумме 1. Колонка без сохранённой ширины получает среднюю долю.
+    func columnFractions(_ rowId: UUID) -> [Double] {
+        let columns = children(of: rowId)
+        guard !columns.isEmpty else { return [] }
+        let saved = columns.compactMap(\.content.columnWidth).filter { $0 > 0 }
+        let fallback = saved.isEmpty ? 1 : saved.reduce(0, +) / Double(saved.count)
+        let raw = columns.map { column -> Double in
+            guard let width = column.content.columnWidth, width > 0 else { return fallback }
+            return width
+        }
+        let total = raw.reduce(0, +)
+        return raw.map { $0 / total }
+    }
+
+    /// Сохраняет ширины колонок после перетаскивания разделителя.
+    func setColumnFractions(_ rowId: UUID, _ fractions: [Double]) {
+        let columns = children(of: rowId)
+        guard columns.count == fractions.count, fractions != columnFractions(rowId) else { return }
+        recordUndo()
+        for (column, fraction) in zip(columns, fractions) {
+            update(column.id) { $0.content.columnWidth = fraction }
         }
     }
 
-    /// Номер пункта в нумерованном списке: считаются подряд идущие нумерованные блоки.
-    func listNumber(at index: Int) -> Int {
+    /// Убирает пустые колонки, а ряд из одной колонки разворачивает обратно в обычные блоки.
+    private func normalizeColumns() {
+        var changed = true
+        while changed {
+            changed = false
+            for column in blocks where column.type == .column && children(of: column.id).isEmpty {
+                removeLayoutBlock(column.id)
+                changed = true
+                break
+            }
+            if changed { continue }
+            for row in blocks where row.type == .columnList {
+                let columns = children(of: row.id)
+                guard columns.count <= 1 else { continue }
+                let contents = columns.first.map { children(of: $0.id) } ?? []
+                let siblings = children(of: row.parentBlockId)
+                let index = siblings.firstIndex { $0.id == row.id }
+                let lower = index.flatMap { $0 > 0 ? siblings[$0 - 1].sortKey : nil }
+                let upper = index.flatMap { $0 + 1 < siblings.count ? siblings[$0 + 1].sortKey : nil }
+                let keys = SortKey.sequence(count: contents.count, after: lower, before: upper)
+                for (block, key) in zip(contents, keys) {
+                    update(block.id) {
+                        $0.parentBlockId = row.parentBlockId
+                        $0.sortKey = key
+                    }
+                }
+                for column in columns {
+                    removeLayoutBlock(column.id)
+                }
+                removeLayoutBlock(row.id)
+                reorder()
+                changed = true
+                break
+            }
+        }
+    }
+
+    /// Удаляет пустой служебный блок колонок. Детей у него к этому моменту уже нет.
+    private func removeLayoutBlock(_ id: UUID) {
+        blocks.removeAll { $0.id == id }
+        enqueueDelete([id])
+    }
+
+    // MARK: Ссылки на страницы
+
+    /// Страницы для меню по `[[` и `@`: сначала недавно изменённые.
+    func linkCandidates(_ query: String, limit: Int = 8) -> [Page] {
+        let query = query.trimmingCharacters(in: .whitespaces).lowercased()
+        return links.pages
+            .filter { $0.id != pageId }
+            .filter { query.isEmpty || $0.displayTitle.lowercased().contains(query) }
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    func linkedPage(_ id: UUID?) -> Page? {
+        guard let id else { return nil }
+        return links.pages.first { $0.id == id }
+    }
+
+    /// Заменяет набранный `[[запрос` или `@запрос` ссылкой на страницу. Если до триггера
+    /// был текст, он остаётся в блоке, а ссылка встаёт следующим блоком.
+    func linkPage(from id: UUID, to targetId: UUID) {
+        guard let block = findBlock(id) else { return }
+        recordUndo()
+        let prefix = MentionTrigger.match(block.text)?.prefix ?? ""
+        let remaining = prefix.trimmingCharacters(in: .whitespaces)
+        let linkId: UUID
+        if remaining.isEmpty {
+            update(id) {
+                $0.type = .page
+                $0.content = BlockContent(pageId: targetId)
+            }
+            linkId = id
+        } else {
+            update(id) { $0.text = remaining }
+            linkId = insertBlock(after: id, type: .page, content: BlockContent(pageId: targetId)).id
+        }
+        focusRequest = insertBlock(after: linkId, type: .paragraph).id
+    }
+
+    /// Новая подстраница этой страницы со ссылкой на неё вместо блока `id`.
+    func createSubpage(from id: UUID, title: String, open: Bool) {
+        Task {
+            do {
+                let child = try await database.createPage(title: title, parentId: pageId)
+                linkPage(from: id, to: child.id)
+                if open {
+                    await flush()
+                    openRequest = child.id
+                }
+            } catch {
+                print("Failed to create subpage: \(error)")
+            }
+        }
+    }
+
+    func open(_ pageId: UUID) {
+        Task {
+            await flush()
+            openRequest = pageId
+        }
+    }
+
+    // MARK: Картинки
+
+    /// Сохраняет картинку во вложения и показывает её в блоке.
+    func setImage(_ id: UUID, data: Data, fileExtension: String?) {
+        guard findBlock(id) != nil else { return }
+        do {
+            let name = try database.attachments.save(data, fileExtension: fileExtension)
+            recordUndo()
+            update(id) { $0.content.attachment = name }
+        } catch {
+            print("Failed to save image: \(error)")
+        }
+    }
+
+    func setCover(_ cover: PageCover?) {
+        page?.pageCover = cover
+        Task { try? await database.setCover(pageId, cover: cover) }
+    }
+
+    func setCoverImage(data: Data) {
+        do {
+            setCover(.image(try database.attachments.save(data)))
+        } catch {
+            print("Failed to save cover: \(error)")
+        }
+    }
+
+    /// Номер пункта в нумерованном списке: считаются подряд идущие нумерованные соседи.
+    func listNumber(for id: UUID) -> Int {
+        guard let block = findBlock(id) else { return 1 }
+        let siblings = children(of: block.parentBlockId)
+        guard let index = siblings.firstIndex(where: { $0.id == id }) else { return 1 }
         var number = 1
         var current = index - 1
-        while current >= 0, blocks[current].type == .numberedList {
+        while current >= 0, siblings[current].type == .numberedList {
             number += 1
             current -= 1
         }

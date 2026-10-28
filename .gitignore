@@ -14,3 +14,7 @@ Package.resolved.bak
 .DS_Store
 xcuserdata/
 *.xcuserstate
+App/Info.plist
+
+# Своя команда для подписи (Config/Signing.xcconfig)
+Config/Local.xcconfig
