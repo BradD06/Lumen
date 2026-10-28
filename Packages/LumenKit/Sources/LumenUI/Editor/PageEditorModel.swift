@@ -890,6 +890,19 @@ final class PageEditorModel {
         }
     }
 
+    func setBackground(_ background: PageBackground?) {
+        page?.pageBackground = background
+        Task { try? await database.setBackground(pageId, background: background) }
+    }
+
+    func setBackgroundImage(data: Data) {
+        do {
+            setBackground(.image(try database.attachments.save(data)))
+        } catch {
+            print("Failed to save background: \(error)")
+        }
+    }
+
     /// Номер пункта в нумерованном списке: считаются подряд идущие нумерованные соседи.
     func listNumber(for id: UUID) -> Int {
         guard let block = findBlock(id) else { return 1 }

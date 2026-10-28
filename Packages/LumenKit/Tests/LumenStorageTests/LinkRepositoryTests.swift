@@ -53,6 +53,15 @@ struct LinkRepositoryTests {
         #expect(try await db.blocks(of: source.id).contains { $0.id == link.id })
     }
 
+    @Test func backgroundIsSaved() async throws {
+        let page = try await db.createPage(title: "Фон")
+        let background = PageBackground.wallpaper(Wallpaper(palette: 1, layers: 4, hasSun: true, seed: 99))
+        try await db.setBackground(page.id, background: background)
+        #expect(try await db.page(page.id)?.pageBackground == background)
+        try await db.setBackground(page.id, background: nil)
+        #expect(try await db.page(page.id)?.background == nil)
+    }
+
     @Test func coverIsSaved() async throws {
         let page = try await db.createPage(title: "С обложкой")
         try await db.setCover(page.id, cover: .gradient(2))

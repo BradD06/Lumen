@@ -24,7 +24,7 @@ struct MentionTriggerTests {
 
 struct PageCoverTests {
     @Test func roundTrip() {
-        for cover in [PageCover.gradient(3), .image("ABC.jpg")] {
+        for cover in [PageCover.gradient(3), .wallpaper(Wallpaper(palette: 4, layers: 3, isFaceted: true, seed: 11)), .image("ABC.jpg")] {
             #expect(PageCover(rawValue: cover.rawValue) == cover)
         }
     }
@@ -32,6 +32,29 @@ struct PageCoverTests {
     @Test(arguments: ["", "gradient:", "gradient:x", "image:", "что-то"])
     func invalid(raw: String) {
         #expect(PageCover(rawValue: raw) == nil)
+    }
+}
+
+struct PageBackgroundTests {
+    @Test func roundTrip() {
+        let backgrounds: [PageBackground] = [
+            .wallpaper(Wallpaper(palette: 2, layers: 6, hasSun: false, seed: 1234)),
+            .wallpaper(Wallpaper(palette: 1, layers: 3, hasSun: true, isFaceted: true, seed: 8)),
+            .image("BG.png"),
+        ]
+        for background in backgrounds {
+            #expect(PageBackground(rawValue: background.rawValue) == background)
+        }
+    }
+
+    @Test func layersAreClamped() {
+        #expect(Wallpaper(layers: 40).layers == Wallpaper.layerRange.upperBound)
+        #expect(PageBackground(rawValue: "wallpaper:0,1,1,5") == .wallpaper(Wallpaper(palette: 0, layers: 2, hasSun: true, seed: 5)))
+    }
+
+    @Test(arguments: ["", "wallpaper:", "wallpaper:1,2,3", "wallpaper:1,2,3,4,5,6", "wallpaper:a,b,c,d", "image:", "gradient:1"])
+    func invalid(raw: String) {
+        #expect(PageBackground(rawValue: raw) == nil)
     }
 }
 

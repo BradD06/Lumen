@@ -54,16 +54,27 @@ struct AttachmentImage: View {
     }
 }
 
-/// Обложка страницы над названием.
+/// Обложка страницы над названием: на всю ширину окна, без скруглений.
 struct PageCoverView: View {
     let cover: PageCover
     let attachments: AttachmentStore
+    /// Насколько зашло солнце на горной обложке, см. `LayeredWallpaper.sunset`.
+    var sunset: Double = 0
 
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
         Group {
             switch cover {
+            case .wallpaper(let wallpaper):
+                LayeredWallpaper(
+                    palette: wallpaper.palette,
+                    layers: wallpaper.layers,
+                    hasSun: wallpaper.hasSun,
+                    isFaceted: wallpaper.isFaceted,
+                    seed: wallpaper.seed,
+                    sunset: sunset
+                )
             case .gradient(let index):
                 LinearGradient(
                     colors: theme.vividCard(index).colors,
@@ -76,8 +87,8 @@ struct PageCoverView: View {
                 }
             }
         }
-        .frame(height: 190)
+        .frame(height: 240)
         .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous))
+        .clipped()
     }
 }
