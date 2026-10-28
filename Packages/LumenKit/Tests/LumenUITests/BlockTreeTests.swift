@@ -171,7 +171,7 @@ struct BlockTreeTests {
 
         let saved = try #require(try await db.blocks(of: pageId).first)
         #expect(saved.content.backgroundColor == .yellow)
-        #expect(saved.content.textColor == nil, "Как в Notion: цвет либо у текста, либо у фона")
+        #expect(saved.content.textColor == .red, "Цвет текста и фон задаются вместе")
     }
 
     @Test func numberingRestartsInsideNestedList() async throws {

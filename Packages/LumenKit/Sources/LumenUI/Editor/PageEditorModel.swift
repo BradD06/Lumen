@@ -522,7 +522,6 @@ final class PageEditorModel {
         recordUndo()
         update(id) {
             $0.content.textColor = color
-            if color != nil { $0.content.backgroundColor = nil }
         }
     }
 
@@ -530,7 +529,6 @@ final class PageEditorModel {
         recordUndo()
         update(id) {
             $0.content.backgroundColor = color
-            if color != nil { $0.content.textColor = nil }
         }
     }
 

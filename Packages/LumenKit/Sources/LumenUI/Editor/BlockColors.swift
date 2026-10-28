@@ -40,12 +40,12 @@ extension View {
 
 /// Палитра «Цвет»: образцы цвета текста и фона, как в Notion. Нарисована самим SwiftUI,
 /// поэтому цвета видны всегда, в отличие от значков в системном меню.
+/// Цвет текста и фон независимы, их можно задать вместе.
 struct BlockColorPicker: View {
     let block: Block
     let model: PageEditorModel
 
     @Environment(\.lumenTheme) private var theme
-    @Environment(\.dismiss) private var dismiss
 
     private let columns = Array(repeating: GridItem(.fixed(30), spacing: 8), count: 5)
 
@@ -110,10 +110,8 @@ struct BlockColorPicker: View {
         action: @escaping () -> Void,
         @ViewBuilder label: () -> some View
     ) -> some View {
-        Button {
-            action()
-            dismiss()
-        } label: {
+        // Палитра остаётся открытой: можно выбрать и цвет текста, и фон, а закрыть кликом мимо.
+        Button(action: action) {
             label()
                 .frame(width: 30, height: 30)
                 .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
