@@ -72,15 +72,27 @@ struct BlockRow: View {
         }
         if block.type.hasText {
             Menu("Цвет") {
-                Button("По умолчанию") { model.setTextColor(block.id, nil) }
+                Button {
+                    model.setTextColor(block.id, nil)
+                } label: {
+                    Label { Text("По умолчанию") } icon: { ColorSwatch.text(theme.textPrimary) }
+                }
                 Section("Текст") {
                     ForEach(BlockColor.allCases) { color in
-                        Button(color.title) { model.setTextColor(block.id, color) }
+                        Button {
+                            model.setTextColor(block.id, color)
+                        } label: {
+                            Label { Text(color.title) } icon: { ColorSwatch.text(color.textColor) }
+                        }
                     }
                 }
                 Section("Фон") {
                     ForEach(BlockColor.allCases) { color in
-                        Button(color.title) { model.setBackgroundColor(block.id, color) }
+                        Button {
+                            model.setBackgroundColor(block.id, color)
+                        } label: {
+                            Label { Text(color.title) } icon: { ColorSwatch.fill(color.textColor) }
+                        }
                     }
                 }
             }

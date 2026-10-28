@@ -1,6 +1,11 @@
 import LumenCore
 import LumenThemes
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#else
+import AppKit
+#endif
 
 /// Оттенки цветов блоков, подобранные под тёмную тему: яркий текст и приглушённый фон.
 extension BlockColor {
@@ -36,4 +41,67 @@ extension View {
             self
         }
     }
+}
+
+/// Цветные образцы для меню «Цвет». Системное меню перекрашивает обычные значки в один цвет,
+/// поэтому образец рисуется готовой картинкой, которую меню показывает как есть.
+enum ColorSwatch {
+    private static let size = CGSize(width: 16, height: 16)
+
+    /// Буква «A» цветом текста в рамке.
+    static func text(_ color: Color) -> Image {
+        render { rect in
+            let path = roundedRect(rect.insetBy(dx: 0.5, dy: 0.5))
+            PlatformColor.gray.withAlphaComponent(0.5).setStroke()
+            path.lineWidth = 1
+            path.stroke()
+            let font = PlatformFont.systemFont(ofSize: 11, weight: .bold)
+            let letter = NSAttributedString(string: "A", attributes: [
+                .font: font,
+                .foregroundColor: PlatformColor(color),
+            ])
+            let letterSize = letter.size()
+            letter.draw(at: CGPoint(x: rect.midX - letterSize.width / 2, y: rect.midY - letterSize.height / 2))
+        }
+    }
+
+    /// Закрашенный квадратик цветом фона.
+    static func fill(_ color: Color) -> Image {
+        render { rect in
+            PlatformColor(color).withAlphaComponent(0.75).setFill()
+            roundedRect(rect.insetBy(dx: 0.5, dy: 0.5)).fill()
+        }
+    }
+
+    #if canImport(UIKit)
+    private typealias PlatformColor = UIColor
+    private typealias PlatformFont = UIFont
+
+    private static func roundedRect(_ rect: CGRect) -> UIBezierPath {
+        UIBezierPath(roundedRect: rect, cornerRadius: 4)
+    }
+
+    private static func render(_ draw: @escaping (CGRect) -> Void) -> Image {
+        let image = UIGraphicsImageRenderer(size: size).image { _ in
+            draw(CGRect(origin: .zero, size: size))
+        }
+        return Image(uiImage: image.withRenderingMode(.alwaysOriginal))
+    }
+    #else
+    private typealias PlatformColor = NSColor
+    private typealias PlatformFont = NSFont
+
+    private static func roundedRect(_ rect: CGRect) -> NSBezierPath {
+        NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4)
+    }
+
+    private static func render(_ draw: @escaping (CGRect) -> Void) -> Image {
+        let image = NSImage(size: size, flipped: true) { rect in
+            draw(rect)
+            return true
+        }
+        image.isTemplate = false
+        return Image(nsImage: image)
+    }
+    #endif
 }
