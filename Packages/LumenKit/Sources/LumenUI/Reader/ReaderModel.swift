@@ -97,7 +97,10 @@ final class ReaderModel {
             section = source.locator?.section ?? 0
             sectionProgression = source.locator?.progression ?? 0
             highlights = try await database.reader.read { [sourceId] db in
-                try Highlight.filter(Column("sourceId") == sourceId).order(Column("createdAt")).fetchAll(db)
+                try Highlight
+                    .filter(Column("sourceId") == sourceId && Column("deletedAt") == nil)
+                    .order(Column("createdAt"))
+                    .fetchAll(db)
             }
             let page = try await database.notesPage(for: sourceId)
             bookNotesPageId = page.id
@@ -157,7 +160,10 @@ final class ReaderModel {
     func observeHighlights() async {
         let sourceId = sourceId
         let observation = ValueObservation.tracking { db in
-            try Highlight.filter(Column("sourceId") == sourceId).order(Column("createdAt")).fetchAll(db)
+            try Highlight
+                .filter(Column("sourceId") == sourceId && Column("deletedAt") == nil)
+                .order(Column("createdAt"))
+                .fetchAll(db)
         }
         do {
             for try await value in observation.values(in: database.reader) {
@@ -488,6 +494,13 @@ final class ReaderModel {
     @discardableResult
     func highlightSelection(_ color: HighlightColor) async -> Highlight? {
         guard let selection else { return nil }
+        // То же место уже выделено: новое выделение поверх не нужно, только цвет.
+        if let existing = highlights.first(where: { $0.matches(selection.locator, text: selection.text) }) {
+            if existing.color != color { setColor(color, of: existing.id) }
+            self.selection = nil
+            clearSelection()
+            return existing
+        }
         let highlight = Highlight(
             sourceId: sourceId,
             locator: selection.locator,
@@ -571,5 +584,15 @@ final class ReaderModel {
             )
         }
         await notes?.flush()
+    }
+}
+
+private extension Highlight {
+    /// Совпадает ли выделение с только что выделенным местом.
+    func matches(_ other: SourceLocator, text: String) -> Bool {
+        self.text == text
+            && locator.section == other.section
+            && locator.textOffset == other.textOffset
+            && locator.rects?.first?.page == other.rects?.first?.page
     }
 }

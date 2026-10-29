@@ -202,6 +202,9 @@ public struct Highlight: Identifiable, Hashable, Codable, Sendable {
     public var label: String
     public var createdAt: Date
     public var updatedAt: Date
+    /// Когда удалили последнюю выписку из этого выделения. Такое выделение в книге не видно,
+    /// но вернётся, если удаление выписки отменить.
+    public var deletedAt: Date?
 
     public init(
         id: UUID = UUID(),
@@ -212,7 +215,8 @@ public struct Highlight: Identifiable, Hashable, Codable, Sendable {
         color: HighlightColor = .yellow,
         label: String,
         createdAt: Date = Date(),
-        updatedAt: Date? = nil
+        updatedAt: Date? = nil,
+        deletedAt: Date? = nil
     ) {
         self.id = id
         self.sourceId = sourceId
@@ -223,7 +227,10 @@ public struct Highlight: Identifiable, Hashable, Codable, Sendable {
         self.label = label
         self.createdAt = createdAt
         self.updatedAt = updatedAt ?? createdAt
+        self.deletedAt = deletedAt
     }
+
+    public var isTrashed: Bool { deletedAt != nil }
 }
 
 /// Цвета выделений. Конкретные оттенки задаёт читалка.

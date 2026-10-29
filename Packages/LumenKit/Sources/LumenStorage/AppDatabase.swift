@@ -167,6 +167,19 @@ extension AppDatabase {
             try db.create(index: "page_on_sourceId", on: "page", columns: ["sourceId"])
         }
 
+        migrator.registerMigration("v6: highlight deletedAt") { db in
+            try db.alter(table: "highlight") { t in
+                t.add(column: "deletedAt", .datetime)
+            }
+            // До этой версии удалённые выписки оставляли выделение в книге. Выделения, которых
+            // нет ни в одной выписке, прячутся так же, как теперь при удалении выписки.
+            let quoted = Set(try Data
+                .fetchAll(db, sql: "SELECT content FROM block WHERE type = 'excerpt'")
+                .compactMap { try? JSONDecoder().decode(BlockContent.self, from: $0).excerpt?.highlightId })
+            let orphans = try UUID.fetchAll(db, sql: "SELECT id FROM highlight").filter { !quoted.contains($0) }
+            try Highlight.filter(keys: orphans).updateAll(db, Column("deletedAt").set(to: Date()))
+        }
+
         return migrator
     }
 }

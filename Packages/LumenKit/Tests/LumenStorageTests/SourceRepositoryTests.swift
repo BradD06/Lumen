@@ -132,4 +132,42 @@ struct SourceRepositoryTests {
         #expect(saved.content.excerpt?.label == "Глава 24")
         #expect(try await db.search("рукописи").map(\.pageId) == [page.id])
     }
+
+    @Test func deletingTheLastExcerptHidesItsHighlight() async throws {
+        let book = try await addBook()
+        let highlight = try await db.addHighlight(Highlight(
+            sourceId: book.id, locator: SourceLocator(section: 0), text: "Цитата", label: "Глава 1"
+        ))
+        let page = try await db.createPage(title: "Конспект")
+        func excerpt(_ sortKey: String) -> Block {
+            Block(
+                pageId: page.id,
+                type: .excerpt,
+                content: BlockContent(
+                    runs: [TextRun("Цитата")],
+                    excerpt: ExcerptReference(sourceId: book.id, highlightId: highlight.id, label: "Глава 1")
+                ),
+                sortKey: sortKey
+            )
+        }
+        let first = excerpt("b")
+        let second = excerpt("c")
+        try await db.saveBlock(first)
+        try await db.saveBlock(second)
+
+        try await db.deleteBlock(first.id)
+        #expect(try await db.highlight(highlight.id)?.isTrashed == false)
+
+        try await db.deleteBlock(second.id)
+        #expect(try await db.highlight(highlight.id)?.isTrashed == true)
+        #expect(try await library().sources.first?.highlightCount == 0)
+
+        // Отмена удаления возвращает выписку, а с ней и выделение.
+        try await db.saveBlock(second)
+        #expect(try await db.highlight(highlight.id)?.isTrashed == false)
+
+        try await db.deleteBlock(second.id)
+        try await db.emptyTrash()
+        #expect(try await db.highlight(highlight.id) == nil)
+    }
 }

@@ -158,7 +158,9 @@ public struct LibrarySnapshot: Equatable, Sendable {
             .map { source in
                 LibrarySource(
                     source: source,
-                    highlightCount: try Highlight.filter(Column("sourceId") == source.id).fetchCount(db)
+                    highlightCount: try Highlight
+                        .filter(Column("sourceId") == source.id && Column("deletedAt") == nil)
+                        .fetchCount(db)
                 )
             }
 
