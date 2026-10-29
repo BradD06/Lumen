@@ -15,6 +15,7 @@ struct LibraryView: View {
     var onOpenFolder: (UUID?) -> Void
     var onOpenPage: (UUID) -> Void
     var onOpenSource: (UUID) -> Void
+    var onShowSourceInfo: (UUID) -> Void = { _ in }
 
     @State private var snapshot = LibrarySnapshot.empty
     @State private var hasLoaded = false
@@ -411,7 +412,13 @@ struct LibraryView: View {
                 isRenaming: renaming == item.id,
                 onCommitRename: commitRename
             ) {
-                SourceCoverArt(source: entry.source, attachments: database.attachments)
+                // Полоска прогресса под обложкой, а не поверх неё: так её видно на любой картинке.
+                VStack(spacing: 6) {
+                    SourceCoverArt(source: entry.source, attachments: database.attachments, width: 88, height: 122)
+                    ReadingProgressBar(progress: entry.source.progress)
+                        .frame(width: 80)
+                        .opacity(entry.source.progress > 0.005 ? 1 : 0)
+                }
             }
             .modifier(TileInteraction(
                 onSelect: { select(item.id) },
@@ -740,6 +747,9 @@ struct LibraryView: View {
                 .action(GlassMenuAction(title: "Заметки к книге", systemImage: "note.text") {
                     openNotes(of: source.id)
                 }),
+                .action(GlassMenuAction(title: "О книге", systemImage: "chart.bar") {
+                    onShowSourceInfo(source.id)
+                }),
                 .action(GlassMenuAction(title: "Переименовать", systemImage: "pencil") {
                     startRename(.source(source.id), current: source.displayTitle)
                 }),
@@ -871,6 +881,11 @@ struct LibraryView: View {
             openNotes(of: source.id)
         } label: {
             Label("Заметки к книге", systemImage: "note.text")
+        }
+        Button {
+            onShowSourceInfo(source.id)
+        } label: {
+            Label("О книге", systemImage: "chart.bar")
         }
         Button {
             startRename(.source(source.id), current: source.displayTitle)

@@ -180,6 +180,16 @@ extension AppDatabase {
             try Highlight.filter(keys: orphans).updateAll(db, Column("deletedAt").set(to: Date()))
         }
 
+        migrator.registerMigration("v7: reading sessions") { db in
+            try db.create(table: "readingSession") { t in
+                t.primaryKey("id", .blob)
+                t.column("sourceId", .blob).notNull().references("source", onDelete: .cascade).indexed()
+                t.column("startedAt", .datetime).notNull()
+                t.column("endedAt", .datetime).notNull()
+                t.column("seconds", .double).notNull()
+            }
+        }
+
         return migrator
     }
 }
@@ -204,4 +214,8 @@ extension Source: FetchableRecord, PersistableRecord {
 
 extension Highlight: FetchableRecord, PersistableRecord {
     public static let databaseTableName = "highlight"
+}
+
+extension ReadingSession: FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "readingSession"
 }
