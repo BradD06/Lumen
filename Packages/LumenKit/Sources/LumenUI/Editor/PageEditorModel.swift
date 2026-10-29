@@ -286,6 +286,29 @@ final class PageEditorModel {
         childIndex[parentId] ?? []
     }
 
+    /// Заголовки страницы по порядку для карты документа. Заголовок внутри тоггла или колонки
+    /// прокручивается к своему блоку верхнего уровня: только они видны прокрутке.
+    var outline: [OutlineItem] {
+        var items: [OutlineItem] = []
+        func walk(_ parentId: UUID?, anchor: UUID?) {
+            for block in children(of: parentId) {
+                let anchorId = anchor ?? block.id
+                if let level = block.type.headingLevel {
+                    let title = block.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    items.append(OutlineItem(
+                        id: block.id,
+                        title: title.isEmpty ? "Без названия" : title,
+                        level: level,
+                        anchorId: anchorId
+                    ))
+                }
+                walk(block.id, anchor: anchorId)
+            }
+        }
+        walk(nil, anchor: nil)
+        return items
+    }
+
     func findBlock(_ id: UUID?) -> Block? {
         guard let id, let index = position(of: id) else { return nil }
         return blocks[index]
@@ -979,5 +1002,27 @@ final class PageEditorModel {
             current -= 1
         }
         return number
+    }
+}
+
+/// Заголовок на карте документа.
+struct OutlineItem: Identifiable, Equatable {
+    let id: UUID
+    let title: String
+    /// 1, 2 или 3: чем меньше, тем длиннее полоска.
+    let level: Int
+    /// Блок верхнего уровня, к которому прокручивать.
+    let anchorId: UUID
+}
+
+extension BlockType {
+    /// Уровень заголовка или `nil` для остальных блоков.
+    var headingLevel: Int? {
+        switch self {
+        case .heading1: 1
+        case .heading2: 2
+        case .heading3: 3
+        default: nil
+        }
     }
 }
