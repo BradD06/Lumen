@@ -5,29 +5,32 @@ import SwiftUI
 import UIKit
 #endif
 
-/// Звуки интерфейса. Все синтезируются в коде: файлов со звуками в приложении нет.
+/// Звуки интерфейса в духе бумаги и книг: перелистывание, шорох, стук книги о стол.
+/// Все синтезируются в коде из отфильтрованного шума и низких тонов, файлов со звуками нет.
 public enum LumenSound: CaseIterable, Sendable {
-    /// Мягкий щелчок.
+    /// Карандашный тик по бумаге.
     case tap
-    /// Плитку подняли на холсте библиотеки.
+    /// Плитку подняли: короткий шорох листа.
     case pickUp
-    /// Плитку отпустили.
+    /// Плитку отпустили: книгу положили на стол.
     case drop
-    /// Плитку положили в папку: шорох бумаги и мягкий стук.
+    /// Плитку положили в папку: лист скользит внутрь и мягко стукает картон.
     case dropIntoFolder
-    /// Новая страница, папка или подстраница.
+    /// Новая страница, папка или подстраница: мягкий бумажный хлопок.
     case create
-    /// В корзину: шорох вниз.
+    /// В корзину: бумагу сминают.
     case trash
-    /// Из корзины обратно.
+    /// Из корзины: лист расправляют, шорох вверх.
     case restore
+    /// Панель открылась: страницу перелистнули.
     case panelOpen
+    /// Панель закрылась: страницу перелистнули обратно.
     case panelClose
-    /// Галочка задачи.
+    /// Галочка задачи: карандашный тик.
     case toggle
-    /// Плитки разложили по сетке.
+    /// Плитки разложили по сетке: колоду карточек перетасовали.
     case arrange
-    /// Почти неслышный тик при переходе в папку или на страницу.
+    /// Переход в папку или на страницу: лёгкий щелчок уголка страницы.
     case navigate
 
     /// Длительность в секундах: конец последнего голоса.
@@ -35,64 +38,121 @@ public enum LumenSound: CaseIterable, Sendable {
         voices.map { $0.start + $0.length }.max() ?? 0
     }
 
-    /// Из чего собран звук: тоны со скольжением частоты и мягкий шум.
+    /// Пиковая громкость звука после нормализации, от 0 до 1.
+    fileprivate var level: Double {
+        switch self {
+        case .navigate, .tap: 0.45
+        case .toggle, .pickUp, .arrange: 0.55
+        case .panelOpen, .panelClose, .restore: 0.6
+        case .create, .trash, .dropIntoFolder: 0.7
+        case .drop: 0.8
+        }
+    }
+
+    /// Из чего собран звук.
     fileprivate var voices: [SoundVoice] {
         switch self {
         case .tap:
-            [SoundVoice(start: 0, length: 0.05, from: 1800, to: 1200, gain: 0.5, decay: 90, noise: 0.5)]
+            [
+                .rustle(at: 0, length: 0.03, band: 3000, to: 2800, decay: 150, width: 0.45),
+                .tone(at: 0, length: 0.02, from: 2200, to: 2000, gain: 0.15, decay: 220),
+            ]
+        case .toggle:
+            [
+                .rustle(at: 0, length: 0.035, band: 4200, to: 3800, decay: 130, width: 0.4),
+                .tone(at: 0, length: 0.02, from: 2600, to: 2400, gain: 0.12, decay: 200),
+            ]
         case .navigate:
-            [SoundVoice(start: 0, length: 0.04, from: 2400, to: 2000, gain: 0.22, decay: 120, noise: 0.3)]
+            [
+                .rustle(at: 0, length: 0.08, band: 2500, to: 4500, attack: 0.01, decay: 30, crackle: 0.15),
+                .rustle(at: 0.06, length: 0.03, band: 3200, to: 3000, gain: 0.6, decay: 120),
+            ]
         case .pickUp:
-            [SoundVoice(start: 0, length: 0.12, from: 420, to: 760, gain: 0.45, decay: 25)]
+            [.rustle(at: 0, length: 0.12, band: 1800, to: 3200, attack: 0.02, decay: 25, crackle: 0.2)]
         case .drop:
-            [SoundVoice(start: 0, length: 0.14, from: 260, to: 140, gain: 0.6, decay: 35, noise: 0.25)]
+            [
+                // Глухой деревянный стук: низкий тон быстро гаснет.
+                .tone(at: 0, length: 0.16, from: 165, to: 115, gain: 1, decay: 38),
+                .tone(at: 0, length: 0.05, from: 330, to: 230, gain: 0.25, decay: 80),
+                .rustle(at: 0, length: 0.05, band: 700, to: 400, gain: 0.35, decay: 70, width: 1.2),
+            ]
         case .dropIntoFolder:
             [
-                SoundVoice(start: 0, length: 0.12, from: 900, to: 500, gain: 0.35, decay: 20, noise: 0.9),
-                SoundVoice(start: 0.08, length: 0.14, from: 520, to: 330, gain: 0.5, decay: 30),
+                .rustle(at: 0, length: 0.16, band: 1500, to: 2600, gain: 0.8, attack: 0.03, decay: 12, crackle: 0.1),
+                .tone(at: 0.13, length: 0.13, from: 140, to: 100, gain: 0.9, decay: 40),
+                .rustle(at: 0.13, length: 0.04, band: 500, to: 450, gain: 0.4, decay: 80, width: 1.2),
             ]
         case .create:
             [
-                SoundVoice(start: 0, length: 0.08, from: 500, to: 900, gain: 0.4, decay: 30),
-                SoundVoice(start: 0.06, length: 0.1, from: 760, to: 1300, gain: 0.35, decay: 35),
+                .tone(at: 0, length: 0.09, from: 320, to: 260, gain: 0.7, decay: 45),
+                .rustle(at: 0, length: 0.04, band: 1200, to: 1100, gain: 0.6, decay: 90, width: 1.1),
+                .rustle(at: 0.03, length: 0.08, band: 2400, to: 3200, gain: 0.35, decay: 40),
             ]
         case .trash:
-            [SoundVoice(start: 0, length: 0.25, from: 700, to: 180, gain: 0.4, decay: 12, noise: 0.8)]
+            // Комок бумаги: короткие случайные шорохи разной высоты.
+            zip(
+                [0, 0.03, 0.055, 0.09, 0.12, 0.15, 0.19, 0.22],
+                [2200, 3600, 1800, 4200, 2600, 3200, 2000, 3800]
+            ).enumerated().map { index, grain in
+                .rustle(
+                    at: grain.0, length: 0.04, band: grain.1, to: grain.1 * 0.85,
+                    gain: index.isMultiple(of: 2) ? 1 : 0.7, decay: 60, crackle: 0.4
+                )
+            }
         case .restore:
-            [
-                SoundVoice(start: 0, length: 0.1, from: 523, to: 523, gain: 0.35, decay: 28),
-                SoundVoice(start: 0.08, length: 0.12, from: 784, to: 784, gain: 0.35, decay: 26),
-            ]
+            [.rustle(at: 0, length: 0.22, band: 1400, to: 3600, attack: 0.05, decay: 9, crackle: 0.15)]
         case .panelOpen:
-            [SoundVoice(start: 0, length: 0.22, from: 300, to: 1200, gain: 0.3, decay: 10, noise: 0.85)]
-        case .panelClose:
-            [SoundVoice(start: 0, length: 0.2, from: 1100, to: 280, gain: 0.3, decay: 12, noise: 0.85)]
-        case .toggle:
             [
-                SoundVoice(start: 0, length: 0.04, from: 1500, to: 1400, gain: 0.4, decay: 80, noise: 0.3),
-                SoundVoice(start: 0.03, length: 0.06, from: 1047, to: 1047, gain: 0.35, decay: 45),
+                // Страница поднимается, проходит дугу и шлёпает краем.
+                .rustle(at: 0, length: 0.26, band: 1200, to: 3800, attack: 0.12, decay: 6, crackle: 0.1),
+                .rustle(at: 0.24, length: 0.06, band: 3500, to: 3000, gain: 0.7, decay: 60),
+            ]
+        case .panelClose:
+            [
+                .rustle(at: 0, length: 0.05, band: 3500, to: 3200, gain: 0.7, decay: 60),
+                .rustle(at: 0.02, length: 0.28, band: 3500, to: 1100, attack: 0.05, decay: 10, crackle: 0.1),
             ]
         case .arrange:
-            [
-                SoundVoice(start: 0, length: 0.06, from: 1300, to: 1200, gain: 0.3, decay: 60, noise: 0.5),
-                SoundVoice(start: 0.05, length: 0.06, from: 1100, to: 1000, gain: 0.3, decay: 60, noise: 0.5),
-                SoundVoice(start: 0.1, length: 0.06, from: 1500, to: 1400, gain: 0.3, decay: 60, noise: 0.5),
-            ]
+            // Колода карточек: быстрые щелчки краёв друг о друга.
+            zip([0, 0.04, 0.08, 0.12, 0.16], [3000, 3400, 2800, 3600, 3200]).map { start, band in
+                .rustle(at: start, length: 0.05, band: band, to: band * 0.9, gain: 0.8, decay: 70, crackle: 0.25)
+            }
         }
     }
 }
 
-/// Один голос звука: тон, частота которого плавно скользит, с затуханием и долей шума.
+/// Один голос звука: низкий тон (стук, хлопок) или полосовой шум (бумага).
 private struct SoundVoice {
+    enum Kind {
+        case tone
+        /// `width` это затухание фильтра: меньше значит уже полоса и «звонче» шорох.
+        case rustle(width: Double, crackle: Double)
+    }
+
+    var kind: Kind
     var start: Double
     var length: Double
+    /// Частота тона или середина полосы шума в начале и в конце.
     var from: Double
     var to: Double
     var gain: Double
+    var attack: Double
     /// Скорость экспоненциального затухания, в единицах за секунду.
     var decay: Double
-    /// 0 это чистый тон, 1 только шум.
-    var noise: Double = 0
+
+    static func tone(at start: Double, length: Double, from: Double, to: Double, gain: Double, decay: Double) -> SoundVoice {
+        SoundVoice(kind: .tone, start: start, length: length, from: from, to: to, gain: gain, attack: 0.002, decay: decay)
+    }
+
+    static func rustle(
+        at start: Double, length: Double, band: Double, to: Double,
+        gain: Double = 1, attack: Double = 0.003, decay: Double, width: Double = 0.8, crackle: Double = 0
+    ) -> SoundVoice {
+        SoundVoice(
+            kind: .rustle(width: width, crackle: crackle),
+            start: start, length: length, from: band, to: to, gain: gain, attack: attack, decay: decay
+        )
+    }
 }
 
 public enum LumenSounds {
@@ -134,36 +194,55 @@ public enum LumenSounds {
               let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames),
               let samples = buffer.floatChannelData?[0] else { return nil }
         buffer.frameLength = frames
-        for index in 0..<Int(frames) { samples[index] = 0 }
+        var mix = [Double](repeating: 0, count: Int(frames))
 
         var seed: UInt32 = 0x9E37_79B9
+        func random() -> Double {
+            seed = seed &* 1_664_525 &+ 1_013_904_223
+            return Double(seed) / Double(UInt32.max)
+        }
+
         for voice in sound.voices {
             let first = Int(voice.start * sampleRate)
-            let count = min(Int(voice.length * sampleRate), Int(frames) - first)
+            let count = min(Int(voice.length * sampleRate), mix.count - first)
             guard count > 0 else { continue }
             var phase = 0.0
-            var filtered = 0.0
+            // Состояние полосового фильтра (state variable filter).
+            var low = 0.0
+            var band = 0.0
             for offset in 0..<count {
                 let t = Double(offset) / sampleRate
                 let progress = Double(offset) / Double(count)
                 // Частота скользит по экспоненте: на слух это ровное движение.
                 let frequency = voice.from * pow(voice.to / voice.from, progress)
-                phase += 2 * .pi * frequency / sampleRate
-                // Немного второй гармоники делает тон теплее.
-                let tone = sin(phase) + 0.25 * sin(2 * phase)
-                seed = seed &* 1_664_525 &+ 1_013_904_223
-                let white = Double(seed) / Double(UInt32.max) * 2 - 1
-                // Простой фильтр низких частот: шум становится мягким шорохом.
-                filtered += 0.3 * (white - filtered)
-                let attack = min(t / 0.004, 1)
-                let release = min(Double(count - offset) / (0.005 * sampleRate), 1)
-                let envelope = attack * release * exp(-voice.decay * t)
-                let value = voice.gain * envelope * ((1 - voice.noise) * tone + voice.noise * filtered * 2)
-                samples[first + offset] += Float(value)
+                let value: Double
+                switch voice.kind {
+                case .tone:
+                    phase += 2 * .pi * frequency / sampleRate
+                    value = sin(phase) + 0.2 * sin(2 * phase)
+                case .rustle(let width, let crackle):
+                    var input = random() * 2 - 1
+                    // Редкие щелчки внутри шума: бумага потрескивает.
+                    if crackle > 0, random() < crackle * 0.004 {
+                        input += random() < 0.5 ? -6 : 6
+                    }
+                    let f = 2 * sin(.pi * min(frequency, sampleRate / 7) / sampleRate)
+                    low += f * band
+                    let high = input - low - width * band
+                    band += f * high
+                    value = band
+                }
+                let attack = min(t / voice.attack, 1)
+                let release = min(Double(count - offset) / (0.004 * sampleRate), 1)
+                mix[first + offset] += voice.gain * attack * release * exp(-voice.decay * t) * value
             }
         }
-        for index in 0..<Int(frames) {
-            samples[index] = max(-1, min(1, samples[index]))
+
+        // Голоса разной природы громче или тише друг друга, поэтому звук приводится к своему уровню.
+        let peak = mix.map(abs).max() ?? 0
+        let scale = peak > 0 ? sound.level / peak : 0
+        for index in mix.indices {
+            samples[index] = Float(max(-1, min(1, mix[index] * scale)))
         }
         return buffer
     }

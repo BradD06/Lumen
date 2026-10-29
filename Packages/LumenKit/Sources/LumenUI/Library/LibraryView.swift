@@ -24,6 +24,9 @@ struct LibraryView: View {
     @State private var renaming: LibraryItemID?
     @State private var renameText = ""
     @State private var moving: LibraryItemID?
+    /// Открытое стеклянное меню: у какого предмета и где на холсте.
+    @State private var contextMenu: ContextMenuState?
+    @State private var contextMenuHeight: CGFloat = 0
     @State private var canvasWidth: CGFloat = 900
     @AppStorage("library.snapToGrid") private var snapToGrid = false
     @Environment(\.lumenTheme) private var theme
@@ -43,6 +46,11 @@ struct LibraryView: View {
     private enum Content: Hashable {
         case folder(LibraryFolder)
         case page(LibraryPage)
+    }
+
+    private struct ContextMenuState: Equatable {
+        var item: LibraryItemID
+        var point: CGPoint
     }
 
     private struct PlacedItem: Identifiable, Hashable {
@@ -168,6 +176,25 @@ struct LibraryView: View {
                             .offset(x: item.position.x, y: item.position.y)
                             .zIndex(drag?.item == item.id ? 1 : 0)
                     }
+                    if let contextMenu {
+                        // Щелчок мимо меню закрывает его.
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { closeContextMenu() }
+                            .zIndex(2)
+                        GlassMenu(entries: menuEntries(for: contextMenu.item), onDismiss: closeContextMenu)
+                            .fixedSize()
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contextMenuHeight = $0 }
+                            .offset(menuOrigin(
+                                contextMenu.point,
+                                in: CGSize(
+                                    width: max(geometry.size.width, contentExtent(items).width),
+                                    height: max(geometry.size.height, contentExtent(items).height)
+                                )
+                            ))
+                            .transition(.scale(scale: 0.9, anchor: .topLeading).combined(with: .opacity))
+                            .zIndex(3)
+                    }
                 }
                 .frame(
                     width: max(geometry.size.width, contentExtent(items).width),
@@ -275,7 +302,9 @@ struct LibraryView: View {
                 },
                 drag: dragGesture(for: item)
             ))
-            .contextMenu { folderMenu(entry.folder) }
+            .modifier(LibraryTileMenu(onSecondaryClick: { openContextMenu(for: item, at: $0) }) {
+                folderMenu(entry.folder)
+            })
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Папка \(entry.folder.displayName), \(entry.itemCount.objectCountText)")
             .accessibilityAction(named: "Открыть") { onOpenFolder(entry.id) }
@@ -300,7 +329,9 @@ struct LibraryView: View {
                 },
                 drag: dragGesture(for: item)
             ))
-            .contextMenu { pageMenu(entry) }
+            .modifier(LibraryTileMenu(onSecondaryClick: { openContextMenu(for: item, at: $0) }) {
+                pageMenu(entry)
+            })
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Заметка \(entry.page.displayTitle)")
             .accessibilityAction(named: "Открыть") { onOpenPage(entry.id) }
@@ -460,6 +491,112 @@ struct LibraryView: View {
         }
     }
 
+    // MARK: Стеклянное меню
+
+    private func openContextMenu(for item: PlacedItem, at local: CGPoint) {
+        commitRename()
+        selection = item.id
+        LumenSounds.play(.tap)
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            contextMenu = ContextMenuState(
+                item: item.id,
+                point: CGPoint(x: item.position.x + local.x, y: item.position.y + local.y)
+            )
+        }
+    }
+
+    private func closeContextMenu() {
+        withAnimation(.easeOut(duration: 0.12)) { contextMenu = nil }
+    }
+
+    /// Меню встаёт правее и ниже точки щелчка, но не вылезает за край холста.
+    private func menuOrigin(_ point: CGPoint, in size: CGSize) -> CGSize {
+        let x = min(point.x + 4, size.width - GlassMenu.width - 8)
+        let y = min(point.y + 4, size.height - contextMenuHeight - 8)
+        return CGSize(width: max(8, x), height: max(8, y))
+    }
+
+    private func menuEntries(for item: LibraryItemID) -> [GlassMenuEntry] {
+        switch item {
+        case .folder(let id):
+            guard let folder = snapshot.folders.first(where: { $0.id == id })?.folder else { return [] }
+            return [
+                .action(GlassMenuAction(title: "Открыть", systemImage: "folder", shortcut: "⏎") {
+                    LumenSounds.play(.navigate)
+                    onOpenFolder(folder.id)
+                }),
+                .action(GlassMenuAction(title: "Переименовать", systemImage: "pencil") {
+                    startRename(.folder(folder.id), current: folder.name)
+                }),
+                .action(GlassMenuAction(title: "Переместить в…", systemImage: "arrow.right") {
+                    moving = .folder(folder.id)
+                }),
+                .divider,
+                .label("Цвет папки"),
+                .swatches(selected: folder.color) { color in
+                    Task { try? await database.setFolderColor(folder.id, color: color) }
+                },
+                .divider,
+                .action(GlassMenuAction(title: "В корзину", systemImage: "trash", shortcut: "⌫", isDestructive: true) {
+                    selection = nil
+                    LumenSounds.play(.trash)
+                    Task { try? await database.trashFolder(folder.id) }
+                }),
+            ]
+        case .page(let id):
+            guard let entry = snapshot.pages.first(where: { $0.id == id }) else { return [] }
+            let page = entry.page
+            var entries: [GlassMenuEntry] = [
+                .action(GlassMenuAction(title: "Открыть", systemImage: "doc.text", shortcut: "⏎") {
+                    LumenSounds.play(.navigate)
+                    onOpenPage(page.id)
+                }),
+                .action(GlassMenuAction(title: "Переименовать", systemImage: "pencil") {
+                    startRename(.page(page.id), current: page.title)
+                }),
+            ]
+            if !entry.subpages.isEmpty {
+                entries.append(.divider)
+                entries.append(.label("Подстраницы"))
+                for subpage in entry.subpages {
+                    entries.append(.action(GlassMenuAction(title: subpage.displayTitle, systemImage: "doc") {
+                        LumenSounds.play(.navigate)
+                        onOpenPage(subpage.id)
+                    }))
+                }
+            }
+            entries += [
+                .action(GlassMenuAction(title: "Новая подстраница", systemImage: "doc.badge.plus") {
+                    Task {
+                        if let subpage = try? await database.createPage(parentId: page.id) {
+                            LumenSounds.play(.create)
+                            onOpenPage(subpage.id)
+                        }
+                    }
+                }),
+                .divider,
+                .action(GlassMenuAction(
+                    title: page.isFavorite ? "Убрать из избранного" : "В избранное",
+                    systemImage: page.isFavorite ? "star.slash" : "star"
+                ) {
+                    Task { try? await database.setFavorite(page.id, !page.isFavorite) }
+                }),
+                .action(GlassMenuAction(title: "Переместить в…", systemImage: "arrow.right") {
+                    moving = .page(page.id)
+                }),
+                .divider,
+                .action(GlassMenuAction(title: "В корзину", systemImage: "trash", shortcut: "⌫", isDestructive: true) {
+                    selection = nil
+                    LumenSounds.play(.trash)
+                    Task { try? await database.trashPage(page.id) }
+                }),
+            ]
+            return entries
+        }
+    }
+
+    // MARK: Системное меню (iPhone и iPad)
+
     @ViewBuilder
     private func folderMenu(_ folder: Folder) -> some View {
         Button {
@@ -565,6 +702,21 @@ struct LibraryView: View {
         } catch {
             print("Library observation failed: \(error)")
         }
+    }
+}
+
+/// Меню плитки. На Mac правый щелчок открывает стеклянное меню библиотеки,
+/// на iPhone и iPad долгое нажатие показывает системное: оно там родное и с превью.
+private struct LibraryTileMenu<MenuItems: View>: ViewModifier {
+    var onSecondaryClick: (CGPoint) -> Void
+    @ViewBuilder var menuItems: () -> MenuItems
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        content.overlay(SecondaryClickCatcher(onSecondaryClick: onSecondaryClick))
+        #else
+        content.contextMenu { menuItems() }
+        #endif
     }
 }
 
