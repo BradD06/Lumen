@@ -29,7 +29,7 @@ public enum SyncTable: String, CaseIterable, Codable, Sendable {
 
     /// Поля записи с файлами-вложениями: имя поля в записи и колонка с именем файла.
     /// Файлы книг едут в iCloud вместе с книгой, их не скачать заново из другого места.
-    var assetFields: [(field: String, column: String)] {
+    public var assetFields: [(field: String, column: String)] {
         switch self {
         case .source: [("fileAsset", "file"), ("coverAsset", "cover")]
         default: []
