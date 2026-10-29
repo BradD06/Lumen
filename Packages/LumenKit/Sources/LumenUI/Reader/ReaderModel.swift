@@ -42,8 +42,11 @@ final class ReaderModel {
     private(set) var source: Source?
     private(set) var content: Content = .loading
     private(set) var highlights: [Highlight] = []
-    /// Заметки к книге: редактор рядом с текстом.
+    /// Заметка в правой панели: по умолчанию заметки к книге, но можно открыть любую страницу.
+    /// В неё же идут выписки.
     private(set) var notes: PageEditorModel?
+    /// Страница заметок к этой книге: к ней панель возвращается одной кнопкой.
+    private(set) var bookNotesPageId: UUID?
     var documentMode: DocumentMode = .text {
         didSet {
             guard documentMode != oldValue else { return }
@@ -97,13 +100,56 @@ final class ReaderModel {
                 try Highlight.filter(Column("sourceId") == sourceId).order(Column("createdAt")).fetchAll(db)
             }
             let page = try await database.notesPage(for: sourceId)
-            let notes = PageEditorModel(database: database, pageId: page.id)
+            bookNotesPageId = page.id
+            // Последняя открытая рядом страница, если её не удалили. Иначе заметки к книге.
+            var sidePageId = page.id
+            if let saved = UserDefaults.standard.string(forKey: sidePageKey).flatMap(UUID.init(uuidString:)),
+               let savedPage = try await database.page(saved), !savedPage.isTrashed {
+                sidePageId = saved
+            }
+            let notes = PageEditorModel(database: database, pageId: sidePageId)
             // Заметки загружаются сразу: выписку можно сделать, даже пока панель заметок закрыта.
             await notes.load()
             self.notes = notes
             await openContent()
         } catch {
             content = .failed("Не удалось открыть: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: Заметка рядом
+
+    private var sidePageKey: String { "reader.sidePage.\(sourceId.uuidString)" }
+
+    /// Открыта ли в панели страница заметок к этой книге.
+    var showsBookNotes: Bool { notes?.pageId == bookNotesPageId }
+
+    /// Открывает страницу в правой панели. Выбор запоминается для этой книги.
+    func openSidePage(_ pageId: UUID) async {
+        guard pageId != notes?.pageId else { return }
+        await notes?.flush()
+        let model = PageEditorModel(database: database, pageId: pageId)
+        await model.load()
+        notes = model
+        if pageId == bookNotesPageId {
+            UserDefaults.standard.removeObject(forKey: sidePageKey)
+        } else {
+            UserDefaults.standard.set(pageId.uuidString, forKey: sidePageKey)
+        }
+    }
+
+    func openBookNotes() async {
+        if let bookNotesPageId { await openSidePage(bookNotesPageId) }
+    }
+
+    /// Новая пустая заметка в папке книги, сразу открытая рядом.
+    func createSidePage() async {
+        do {
+            let page = try await database.createPage(folderId: source?.folderId)
+            LumenSounds.play(.create)
+            await openSidePage(page.id)
+        } catch {
+            print("Failed to create a page: \(error)")
         }
     }
 
@@ -478,7 +524,12 @@ final class ReaderModel {
         )
         Task { await notes.flush() }
         LumenSounds.play(.create)
-        showToast("Выписка добавлена в заметки")
+        if showsBookNotes {
+            showToast("Выписка добавлена в заметки")
+        } else {
+            let title = notes.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            showToast(title.isEmpty ? "Выписка добавлена в заметку" : "Выписка добавлена в «\(title)»")
+        }
     }
 
     func setColor(_ color: HighlightColor, of id: UUID) {
@@ -512,12 +563,13 @@ final class ReaderModel {
     /// Записывает место чтения сразу, например когда уходят с экрана.
     func flush() async {
         saveTask?.cancel()
-        guard hasRestoredPosition else { return }
-        try? await database.saveReadingPosition(
-            sourceId,
-            locator: SourceLocator(section: section, progression: sectionProgression),
-            progress: progress
-        )
+        if hasRestoredPosition {
+            try? await database.saveReadingPosition(
+                sourceId,
+                locator: SourceLocator(section: section, progression: sectionProgression),
+                progress: progress
+            )
+        }
         await notes?.flush()
     }
 }

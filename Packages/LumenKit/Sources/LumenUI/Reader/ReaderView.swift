@@ -29,6 +29,7 @@ struct ReaderView: View {
     @AppStorage("reader.tocOpen") private var showsToc = false
     @State private var isTocSheetPresented = false
     @State private var dragStartFraction: Double?
+    @State private var isPagePickerPresented = false
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -82,8 +83,15 @@ struct ReaderView: View {
         .sheet(isPresented: $isNotesSheetPresented) {
             if let notes = model.notes {
                 NavigationStack {
-                    PageEditorView(model: notes, onOpenPage: openPage, onOpenSource: openSource)
-                        .navigationTitle("Заметки")
+                    VStack(spacing: 0) {
+                        notesHeader(notes, closes: false)
+                        Divider().opacity(0.4)
+                        PageEditorView(model: notes, onOpenPage: openSidePage, onOpenSource: openSource)
+                            .id(notes.pageId)
+                    }
+                    #if os(iOS)
+                    .toolbar(.hidden, for: .navigationBar)
+                    #endif
                 }
                 .presentationDetents([.medium, .large])
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
@@ -125,6 +133,13 @@ struct ReaderView: View {
     private func openPage(_ id: UUID) {
         isNotesSheetPresented = false
         onOpenPage(id)
+    }
+
+    /// Ссылки из заметки рядом открываются там же, рядом с книгой.
+    private func openSidePage(_ id: UUID) {
+        isPagePickerPresented = false
+        LumenSounds.play(.navigate)
+        Task { await model.openSidePage(id) }
     }
 
     /// Выписка из этой же книги прокручивает к месту, из другой открывает ту книгу.
@@ -291,33 +306,90 @@ struct ReaderView: View {
 
     private func notesPane(_ notes: PageEditorModel) -> some View {
         VStack(spacing: 0) {
-            HStack {
-                Label("Заметки", systemImage: "note.text")
-                    .font(.headline)
-                    .foregroundStyle(theme.textPrimary)
-                Spacer()
-                Text("\(model.highlights.count) выдел.")
-                    .font(.caption)
-                    .foregroundStyle(theme.textSecondary)
-                Button {
-                    setNotes(false)
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(theme.textSecondary)
-                        .frame(width: 24, height: 24)
-                        .background(theme.cardFill, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Скрыть заметки")
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            notesHeader(notes, closes: true)
             Divider().opacity(0.4)
-            PageEditorView(model: notes, onOpenPage: openPage, onOpenSource: openSource)
+            PageEditorView(model: notes, onOpenPage: openSidePage, onOpenSource: openSource)
+                .id(notes.pageId)
         }
         .background(.ultraThinMaterial)
         .background(theme.cardFill.opacity(0.4))
+    }
+
+    /// Шапка панели заметок: какая заметка открыта и кнопка выбрать другую.
+    private func notesHeader(_ notes: PageEditorModel, closes: Bool) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                isPagePickerPresented.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    if model.showsBookNotes {
+                        Image(systemName: "note.text")
+                        Text("Заметки к книге").lineLimit(1)
+                    } else {
+                        Text(notes.page?.icon ?? "📄")
+                        Text(notes.isLoaded ? sideTitle(notes) : "").lineLimit(1)
+                    }
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(theme.textSecondary)
+                }
+                .font(.headline)
+                .foregroundStyle(theme.textPrimary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Открыть рядом другую заметку")
+            .popover(isPresented: $isPagePickerPresented, arrowEdge: .bottom) {
+                SidePagePicker(
+                    database: model.database,
+                    source: model.source,
+                    currentPageId: notes.pageId,
+                    bookNotesPageId: model.bookNotesPageId,
+                    onOpen: openSidePage,
+                    onCreate: {
+                        isPagePickerPresented = false
+                        Task { await model.createSidePage() }
+                    }
+                )
+                .presentationCompactAdaptation(.sheet)
+            }
+            Spacer(minLength: 4)
+            if model.showsBookNotes {
+                Text("\(model.highlights.count) выдел.")
+                    .font(.caption)
+                    .foregroundStyle(theme.textSecondary)
+            } else {
+                headerButton("note.text", help: "Вернуться к заметкам к книге") {
+                    LumenSounds.play(.navigate)
+                    Task { await model.openBookNotes() }
+                }
+                headerButton("arrow.up.forward.square", help: "Открыть заметку целиком") {
+                    openPage(notes.pageId)
+                }
+            }
+            if closes {
+                headerButton("xmark", help: "Скрыть заметки") { setNotes(false) }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private func sideTitle(_ notes: PageEditorModel) -> String {
+        let title = notes.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? "Без названия" : title
+    }
+
+    private func headerButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(theme.textSecondary)
+                .frame(width: 24, height: 24)
+                .background(theme.cardFill, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     /// Ручка между книгой и заметками: тянется, чтобы поменять ширину колонок.
