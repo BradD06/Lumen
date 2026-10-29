@@ -60,6 +60,8 @@ struct PageCoverView: View {
     let attachments: AttachmentStore
     /// Насколько зашло солнце на горной обложке, см. `LayeredWallpaper.sunset`.
     var sunset: Double = 0
+    /// Высота полосы: в редакторе обложка большая, на плитке библиотеки маленькая.
+    var height: CGFloat = 240
 
     @Environment(\.lumenTheme) private var theme
 
@@ -87,7 +89,7 @@ struct PageCoverView: View {
                 }
             }
         }
-        .frame(height: 240)
+        .frame(height: height)
         .frame(maxWidth: .infinity)
         .clipped()
     }

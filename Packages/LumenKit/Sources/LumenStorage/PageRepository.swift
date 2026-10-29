@@ -4,7 +4,8 @@ import LumenCore
 
 public enum StorageError: Error, Equatable {
     case pageNotFound
-    /// Попытка переместить страницу внутрь самой себя.
+    case folderNotFound
+    /// Попытка переместить страницу или папку внутрь самой себя.
     case invalidMove
 }
 
@@ -12,10 +13,20 @@ extension AppDatabase {
     // MARK: Создание
 
     /// Новая пустая страница с одним пустым абзацем.
+    /// `folderId` и `position` кладут страницу в папку библиотеки на нужное место холста.
     @discardableResult
-    public func createPage(title: String = "", parentId: UUID? = nil, inInbox: Bool = false) async throws -> Page {
+    public func createPage(
+        title: String = "",
+        parentId: UUID? = nil,
+        inInbox: Bool = false,
+        folderId: UUID? = nil,
+        position: LibraryPoint? = nil
+    ) async throws -> Page {
         try await writer.write { db in
-            try Self.insertPage(db, title: title, parentId: parentId, inInbox: inInbox, bodyLines: [])
+            try Self.insertPage(
+                db, title: title, parentId: parentId, inInbox: inInbox,
+                folderId: folderId, position: position, bodyLines: []
+            )
         }
     }
 
@@ -39,8 +50,12 @@ extension AppDatabase {
         title: String,
         parentId: UUID?,
         inInbox: Bool,
+        folderId: UUID? = nil,
+        position: LibraryPoint? = nil,
         bodyLines: [String]
     ) throws -> Page {
+        // В папке лежат только страницы верхнего уровня, не из «Входящих».
+        let inFolder = parentId == nil && !inInbox
         let lastKey = try String.fetchOne(
             db,
             sql: "SELECT MAX(sortKey) FROM page WHERE parentId IS ? AND inInbox = ?",
@@ -50,6 +65,8 @@ extension AppDatabase {
         let page = Page(
             parentId: parentId,
             title: title,
+            folderId: inFolder ? folderId : nil,
+            position: inFolder ? position : nil,
             inInbox: inInbox && parentId == nil,
             sortKey: SortKey.between(lastKey, nil),
             createdAt: now
@@ -119,6 +136,11 @@ extension AppDatabase {
                 page.parentId = parentId
                 page.inInbox = false
                 page.sortKey = SortKey.between(lastKey, nil)
+                // Подстраница живёт внутри родителя, а не в папке библиотеки.
+                if parentId != nil {
+                    page.folderId = nil
+                    page.position = nil
+                }
             }
         }
     }
@@ -149,6 +171,14 @@ extension AppDatabase {
                try Page.fetchOne(db, key: parentId)?.isTrashed ?? true {
                 try Self.updatePage(db, id) { $0.parentId = nil }
             }
+            // Папка тоже могла остаться в корзине: тогда страница возвращается в корень библиотеки.
+            if let folderId = page.folderId,
+               try Folder.fetchOne(db, key: folderId)?.isTrashed ?? true {
+                try Self.updatePage(db, id) { page in
+                    page.folderId = nil
+                    page.position = nil
+                }
+            }
             let ids = try Self.subtreeIds(db, root: id)
             try Page.filter(keys: ids).updateAll(db, [
                 Column("deletedAt").set(to: nil),
@@ -160,10 +190,11 @@ extension AppDatabase {
         }
     }
 
-    /// Удаляет из корзины всё навсегда. Блоки удаляются каскадом.
+    /// Удаляет из корзины всё навсегда: страницы и папки. Блоки и вложенные папки удаляются каскадом.
     public func emptyTrash() async throws {
         _ = try await writer.write { db in
             try Page.filter(Column("deletedAt") != nil).deleteAll(db)
+            try Folder.filter(Column("deletedAt") != nil).deleteAll(db)
         }
     }
 

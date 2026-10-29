@@ -24,7 +24,8 @@ struct PageRepositoryTests {
 
         let sidebar = try await db.reader.read { try SidebarSnapshot.fetch($0) }
         #expect(sidebar.inboxCount == 1)
-        #expect(sidebar.tree.isEmpty, "Входящие не показываются в дереве страниц")
+        let library = try await db.reader.read { try LibrarySnapshot.fetch($0, folderId: nil) }
+        #expect(library.pages.isEmpty, "Входящие не показываются в библиотеке")
     }
 
     @Test func newPageHasOneEmptyParagraph() async throws {
@@ -41,10 +42,10 @@ struct PageRepositoryTests {
         let lecture2 = try await db.createPage(title: "Лекция 2", parentId: course.id)
         let other = try await db.createPage(title: "Другое")
 
-        let tree = try await db.reader.read { try SidebarSnapshot.fetch($0) }.tree
-        #expect(tree.map(\.id) == [course.id, other.id])
-        #expect(tree.first?.children.map(\.id) == [lecture1.id, lecture2.id])
-        #expect(tree.last?.childrenOrNil == nil)
+        let library = try await db.reader.read { try LibrarySnapshot.fetch($0, folderId: nil) }
+        #expect(library.pages.map(\.id) == [course.id, other.id])
+        #expect(library.pages.first?.subpages.map(\.id) == [lecture1.id, lecture2.id])
+        #expect(library.pages.last?.subpages.isEmpty == true)
     }
 
     @Test func moveFromInboxToPage() async throws {
@@ -71,14 +72,14 @@ struct PageRepositoryTests {
 
         try await db.trashPage(parent.id)
         #expect(try await db.page(child.id)?.isTrashed == true)
-        var sidebar = try await db.reader.read { try SidebarSnapshot.fetch($0) }
-        #expect(sidebar.tree.isEmpty)
+        let sidebar = try await db.reader.read { try SidebarSnapshot.fetch($0) }
+        #expect(try await db.reader.read { try LibrarySnapshot.fetch($0, folderId: nil) }.pages.isEmpty)
         #expect(sidebar.trashCount == 2)
         #expect(try await db.search("Матанализ").isEmpty, "Страницы в корзине не ищутся")
 
         try await db.restorePage(parent.id)
-        sidebar = try await db.reader.read { try SidebarSnapshot.fetch($0) }
-        #expect(sidebar.tree.first?.children.map(\.id) == [child.id])
+        let library = try await db.reader.read { try LibrarySnapshot.fetch($0, folderId: nil) }
+        #expect(library.pages.first?.subpages.map(\.id) == [child.id])
         #expect(try await db.search("Матанализ").map(\.pageId) == [child.id])
     }
 

@@ -13,6 +13,11 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
     public var background: String?
     /// Источник (книга, файл), к которому привязана заметка. Появится на этапе 3.
     public var sourceId: UUID?
+    /// Папка библиотеки. Только у страниц верхнего уровня: подстраницы живут внутри своей страницы.
+    public var folderId: UUID?
+    /// Место на холсте папки, см. `Folder.position`.
+    public var canvasX: Double?
+    public var canvasY: Double?
     /// Быстрые заметки лежат во «Входящих», пока их не разложат по разделам.
     public var inInbox: Bool
     public var isFavorite: Bool
@@ -31,6 +36,8 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
         cover: String? = nil,
         background: String? = nil,
         sourceId: UUID? = nil,
+        folderId: UUID? = nil,
+        position: LibraryPoint? = nil,
         inInbox: Bool = false,
         isFavorite: Bool = false,
         sortKey: String,
@@ -45,6 +52,9 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
         self.cover = cover
         self.background = background
         self.sourceId = sourceId
+        self.folderId = folderId
+        self.canvasX = position?.x
+        self.canvasY = position?.y
         self.inInbox = inInbox
         self.isFavorite = isFavorite
         self.sortKey = sortKey
@@ -59,6 +69,14 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
     }
 
     public var isTrashed: Bool { deletedAt != nil }
+
+    public var position: LibraryPoint? {
+        get { LibraryPoint(x: canvasX, y: canvasY) }
+        set {
+            canvasX = newValue?.x
+            canvasY = newValue?.y
+        }
+    }
 
     public var pageCover: PageCover? {
         get { cover.flatMap(PageCover.init(rawValue:)) }

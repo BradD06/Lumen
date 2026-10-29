@@ -7,6 +7,8 @@ import SwiftUI
 public enum SidebarItem: Hashable, Sendable {
     case home
     case inbox
+    /// Библиотека, открытая на папке (`nil` это корень).
+    case library(UUID?)
     case trash
     case page(UUID)
 }
@@ -25,7 +27,7 @@ public struct RootView: View {
 
     public var body: some View {
         NavigationSplitView {
-            SidebarView(database: database, selection: $selection, onNewPage: openNewPage)
+            SidebarView(database: database, selection: $selection, onNewPage: openNewPage, onNewFolder: openNewFolder)
         } detail: {
             detail
                 .toolbar {
@@ -66,6 +68,14 @@ public struct RootView: View {
             )
         case .inbox:
             InboxView(database: database, onOpen: { selection = .page($0) }, onNewNote: newQuickNote)
+        case .library(let folderId):
+            LibraryView(
+                database: database,
+                folderId: folderId,
+                onOpenFolder: { selection = .library($0) },
+                onOpenPage: { selection = .page($0) }
+            )
+            .id(folderId)
         case .trash:
             TrashView(database: database)
         case .page(let id):
@@ -84,6 +94,14 @@ public struct RootView: View {
         Task {
             if let page = try? await database.createPage(inInbox: true) {
                 selection = .page(page.id)
+            }
+        }
+    }
+
+    private func openNewFolder(parentId: UUID?) {
+        Task {
+            if let folder = try? await database.createFolder(name: "Новая папка", parentId: parentId) {
+                selection = .library(folder.id)
             }
         }
     }

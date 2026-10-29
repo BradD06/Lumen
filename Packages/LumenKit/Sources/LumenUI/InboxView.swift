@@ -26,7 +26,7 @@ struct InboxView: View {
                         Button {
                             Task { try? await database.movePage(note.page.id, toParent: nil) }
                         } label: {
-                            Label("Перенести в страницы", systemImage: "folder")
+                            Label("Перенести в библиотеку", systemImage: "books.vertical")
                         }
                         Button(role: .destructive) {
                             Task { try? await database.trashPage(note.page.id) }
@@ -69,16 +69,27 @@ struct InboxView: View {
     }
 }
 
-/// Корзина: восстановить страницу или удалить всё навсегда.
+/// Корзина: восстановить папку или страницу, или удалить всё навсегда.
 struct TrashView: View {
     let database: AppDatabase
 
-    @State private var pages: [Page] = []
+    @State private var trash = TrashSnapshot.empty
     @State private var isConfirmingEmpty = false
 
     var body: some View {
         List {
-            ForEach(pages) { page in
+            ForEach(trash.folders) { folder in
+                HStack {
+                    FolderLabel(folder: folder)
+                    Spacer()
+                    Button("Восстановить") {
+                        Task { try? await database.restoreFolder(folder.id) }
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .listRowBackground(Color.clear)
+            }
+            ForEach(trash.pages) { page in
                 HStack {
                     PageLabel(page: page)
                     Spacer()
@@ -92,7 +103,7 @@ struct TrashView: View {
         }
         .scrollContentBackground(.hidden)
         .overlay {
-            if pages.isEmpty {
+            if trash.isEmpty {
                 ContentUnavailableView("Корзина пуста", systemImage: "trash")
             }
         }
@@ -101,10 +112,10 @@ struct TrashView: View {
         .toolbar {
             ToolbarItem(placement: .destructiveAction) {
                 Button("Очистить", role: .destructive) { isConfirmingEmpty = true }
-                    .disabled(pages.isEmpty)
+                    .disabled(trash.isEmpty)
             }
         }
-        .confirmationDialog("Удалить все страницы из корзины навсегда?", isPresented: $isConfirmingEmpty) {
+        .confirmationDialog("Удалить всё из корзины навсегда?", isPresented: $isConfirmingEmpty) {
             Button("Удалить навсегда", role: .destructive) {
                 Task { try? await database.emptyTrash() }
             }
@@ -113,10 +124,10 @@ struct TrashView: View {
     }
 
     private func observe() async {
-        let observation = ValueObservation.tracking { db in try TrashQuery.fetch(db) }
+        let observation = ValueObservation.tracking { db in try TrashSnapshot.fetch(db) }
         do {
             for try await value in observation.values(in: database.reader) {
-                pages = value
+                trash = value
             }
         } catch {
             print("Trash observation failed: \(error)")
