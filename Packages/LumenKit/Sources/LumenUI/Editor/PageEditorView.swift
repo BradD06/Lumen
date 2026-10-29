@@ -72,7 +72,7 @@ struct PageEditorView: View {
             }
             .overlay(alignment: .trailing) {
                 let outline = model.outline
-                if showsOutline, outline.count >= 2 {
+                if showsOutline, !showsSubpages, outline.count >= 2 {
                     PageOutlineView(items: outline, currentId: currentHeadingId(in: outline)) { item in
                         withAnimation(.easeInOut(duration: 0.35)) {
                             proxy.scrollTo(item.anchorId, anchor: .top)
@@ -167,20 +167,29 @@ struct PageEditorView: View {
             }
             ToolbarItem {
                 Button {
-                    withAnimation(.spring(duration: 0.3)) { showsSubpages.toggle() }
+                    withAnimation(.spring(duration: 0.35)) { showsSubpages.toggle() }
                 } label: {
                     Label("Подстраницы", systemImage: "sidebar.right")
                 }
                 .help(model.subpages.isEmpty ? "Подстраницы" : "Подстраницы: \(model.subpages.count)")
             }
         }
-        .inspector(isPresented: $showsSubpages) {
-            SubpagesPanel(
-                subpages: model.subpages,
-                onOpen: { model.open($0) },
-                onAdd: { model.addSubpage() }
-            )
-            .inspectorColumnWidth(min: 220, ideal: 260, max: 340)
+        .overlay(alignment: .trailing) {
+            // Панель плавает над текстом и не сдвигает его: 80% высоты окна редактора.
+            GeometryReader { geometry in
+                if showsSubpages {
+                    SubpagesPanel(
+                        subpages: model.subpages,
+                        onOpen: { model.open($0) },
+                        onAdd: { model.addSubpage() },
+                        onClose: { withAnimation(.spring(duration: 0.35)) { showsSubpages = false } }
+                    )
+                    .frame(width: min(300, geometry.size.width - 32), height: geometry.size.height * 0.8)
+                    .padding(.trailing, 16)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
         }
         .task {
             await model.load()

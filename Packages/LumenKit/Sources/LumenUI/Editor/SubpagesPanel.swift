@@ -2,11 +2,12 @@ import LumenCore
 import LumenThemes
 import SwiftUI
 
-/// Панель справа со списком подстраниц открытой страницы и кнопкой для новой.
+/// Стеклянная панель поверх страницы со списком подстраниц и кнопкой для новой.
 struct SubpagesPanel: View {
     let subpages: [Page]
     var onOpen: (UUID) -> Void
     var onAdd: () -> Void
+    var onClose: () -> Void
 
     @Environment(\.lumenTheme) private var theme
 
@@ -26,6 +27,17 @@ struct SubpagesPanel: View {
                             .padding(.vertical, 2)
                             .background(theme.cardFill, in: Capsule())
                     }
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(theme.textSecondary)
+                            .frame(width: 24, height: 24)
+                            .background(theme.cardFill, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    // Escape на Mac закрывает панель.
+                    .keyboardShortcut(.cancelAction)
+                    .help("Закрыть")
                 }
                 .padding(.bottom, 4)
 
@@ -60,9 +72,20 @@ struct SubpagesPanel: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(14)
+            .padding(16)
         }
-        .background(theme.backgroundGradient.opacity(0.6))
+        .scrollBounceBehavior(.basedOnSize)
+        .background {
+            let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+            shape.fill(.ultraThinMaterial)
+            shape.fill(theme.cardFill.opacity(0.35))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(
+            LinearGradient(colors: [.white.opacity(0.35), .white.opacity(0.06)], startPoint: .top, endPoint: .bottom),
+            lineWidth: 1
+        ))
+        .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
     }
 }
 
