@@ -6,6 +6,8 @@ import SwiftUI
 /// Быстрый переход по ⌘K: полнотекстовый поиск по названиям и тексту страниц.
 struct SearchView: View {
     let database: AppDatabase
+    /// Вкладка «Поиск» на iPhone: без своего стека навигации и кнопки «Закрыть».
+    var isEmbedded = false
     var onOpen: (UUID) -> Void
 
     @State private var query = ""
@@ -13,47 +15,55 @@ struct SearchView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            List(results) { result in
-                Button {
-                    onOpen(result.pageId)
-                } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(result.title.isEmpty ? "Без названия" : result.title)
-                            .font(.headline)
-                        if !result.snippet.isEmpty {
-                            Text(result.snippet)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
+        if isEmbedded {
+            content
+        } else {
+            NavigationStack {
+                content
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Закрыть") { dismiss() }
                         }
                     }
-                }
-                .buttonStyle(.plain)
             }
-            .overlay {
-                if query.trimmingCharacters(in: .whitespaces).isEmpty {
-                    ContentUnavailableView(
-                        "Поиск по заметкам",
-                        systemImage: "magnifyingglass",
-                        description: Text("Ищет по названиям и тексту всех страниц")
-                    )
-                } else if results.isEmpty {
-                    ContentUnavailableView.search(text: query)
+            #if os(macOS)
+            .frame(minWidth: 460, minHeight: 420)
+            #endif
+        }
+    }
+
+    private var content: some View {
+        List(results) { result in
+            Button {
+                onOpen(result.pageId)
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(result.title.isEmpty ? "Без названия" : result.title)
+                        .font(.headline)
+                    if !result.snippet.isEmpty {
+                        Text(result.snippet)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
                 }
             }
-            .searchable(text: $query, prompt: "Найти страницу или текст")
-            .task(id: query) { await runSearch() }
-            .navigationTitle("Поиск")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Закрыть") { dismiss() }
-                }
+            .buttonStyle(.plain)
+        }
+        .overlay {
+            if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                ContentUnavailableView(
+                    "Поиск по заметкам",
+                    systemImage: "magnifyingglass",
+                    description: Text("Ищет по названиям и тексту всех страниц")
+                )
+            } else if results.isEmpty {
+                ContentUnavailableView.search(text: query)
             }
         }
-        #if os(macOS)
-        .frame(minWidth: 460, minHeight: 420)
-        #endif
+        .searchable(text: $query, prompt: "Найти страницу или текст")
+        .task(id: query) { await runSearch() }
+        .navigationTitle("Поиск")
     }
 
     private func runSearch() async {

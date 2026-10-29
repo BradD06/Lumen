@@ -16,11 +16,14 @@ public enum SidebarItem: Hashable, Sendable {
 }
 
 /// Корневой экран: сайдбар с разделами и деревом страниц, справа выбранный раздел.
-/// На iPhone `NavigationSplitView` сам превращается в стек.
+/// На iPhone (узкий экран) вместо сайдбара вкладки внизу, см. `PhoneRootView`.
 public struct RootView: View {
     private let database: AppDatabase
     @State private var selection: SidebarItem? = .home
     @State private var isSearchPresented = false
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     @Environment(\.lumenTheme) private var theme
 
     public init(database: AppDatabase) {
@@ -28,6 +31,22 @@ public struct RootView: View {
     }
 
     public var body: some View {
+        Group {
+            #if os(iOS)
+            if horizontalSizeClass == .compact {
+                PhoneRootView(database: database)
+            } else {
+                splitView
+            }
+            #else
+            splitView
+            #endif
+        }
+        .tint(theme.accent)
+        .preferredColorScheme(.dark)
+    }
+
+    private var splitView: some View {
         NavigationSplitView {
             SidebarView(database: database, selection: $selection, onNewPage: openNewPage, onNewFolder: openNewFolder)
         } detail: {
@@ -54,8 +73,6 @@ public struct RootView: View {
                 selection = .page(pageId)
             }
         }
-        .tint(theme.accent)
-        .preferredColorScheme(.dark)
     }
 
     @ViewBuilder
