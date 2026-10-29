@@ -93,6 +93,7 @@ public struct RootView: View {
     private func newQuickNote() {
         Task {
             if let page = try? await database.createPage(inInbox: true) {
+                LumenSounds.play(.create)
                 selection = .page(page.id)
             }
         }
@@ -101,6 +102,7 @@ public struct RootView: View {
     private func openNewFolder(parentId: UUID?) {
         Task {
             if let folder = try? await database.createFolder(name: "Новая папка", parentId: parentId) {
+                LumenSounds.play(.create)
                 selection = .library(folder.id)
             }
         }
@@ -109,6 +111,7 @@ public struct RootView: View {
     private func openNewPage(parentId: UUID?) {
         Task {
             if let page = try? await database.createPage(parentId: parentId) {
+                LumenSounds.play(.create)
                 selection = .page(page.id)
             }
         }

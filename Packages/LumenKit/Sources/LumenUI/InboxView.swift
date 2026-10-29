@@ -29,6 +29,7 @@ struct InboxView: View {
                             Label("Перенести в библиотеку", systemImage: "books.vertical")
                         }
                         Button(role: .destructive) {
+                            LumenSounds.play(.trash)
                             Task { try? await database.trashPage(note.page.id) }
                         } label: {
                             Label("Удалить", systemImage: "trash")
@@ -83,6 +84,7 @@ struct TrashView: View {
                     FolderLabel(folder: folder)
                     Spacer()
                     Button("Восстановить") {
+                        LumenSounds.play(.restore)
                         Task { try? await database.restoreFolder(folder.id) }
                     }
                     .buttonStyle(.bordered)
@@ -94,6 +96,7 @@ struct TrashView: View {
                     PageLabel(page: page)
                     Spacer()
                     Button("Восстановить") {
+                        LumenSounds.play(.restore)
                         Task { try? await database.restorePage(page.id) }
                     }
                     .buttonStyle(.bordered)

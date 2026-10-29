@@ -108,6 +108,7 @@ struct SidebarView: View {
     private func move(_ items: [PageDragItem], toFolder folderId: UUID?) -> Bool {
         let ids = items.map(\.pageId)
         guard !ids.isEmpty else { return false }
+        LumenSounds.play(.dropIntoFolder)
         Task {
             for id in ids {
                 try? await database.movePage(id, toFolder: folderId)
@@ -149,6 +150,7 @@ struct SidebarView: View {
         Divider()
         Button(role: .destructive) {
             if selection == .library(folder.id) { selection = .library(nil) }
+            LumenSounds.play(.trash)
             Task { try? await database.trashFolder(folder.id) }
         } label: {
             Label("В корзину", systemImage: "trash")
@@ -187,6 +189,7 @@ struct SidebarView: View {
         Divider()
         Button(role: .destructive) {
             if selection == .page(page.id) { selection = .home }
+            LumenSounds.play(.trash)
             Task { try? await database.trashPage(page.id) }
         } label: {
             Label("Удалить", systemImage: "trash")

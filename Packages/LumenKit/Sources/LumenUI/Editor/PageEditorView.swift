@@ -38,8 +38,11 @@ struct PageEditorView: View {
     #endif
     /// Насколько прокручена страница: по ней солнце на горах опускается за гряды.
     @State private var scrollOffset: CGFloat = 0
-    /// Открыта ли панель подстраниц справа. Запоминается между страницами и запусками.
-    @AppStorage("editor.subpagesPanel") private var showsSubpages = false
+    /// Открыта ли панель подстраниц справа. Запоминается между страницами и запусками,
+    /// а анимируется копия в `showsSubpages`: изменение `@AppStorage` анимацию не несёт.
+    @AppStorage("editor.subpagesPanel") private var remembersSubpages = false
+    @State private var showsSubpages = false
+    @AppStorage(LumenSounds.enabledKey) private var soundsEnabled = true
     /// Блоки верхнего уровня, видные на экране: по ним подсвечивается заголовок на карте.
     @State private var visibleBlockIds: [UUID] = []
     #if os(iOS)
@@ -74,6 +77,7 @@ struct PageEditorView: View {
                 let outline = model.outline
                 if showsOutline, !showsSubpages, outline.count >= 2 {
                     PageOutlineView(items: outline, currentId: currentHeadingId(in: outline)) { item in
+                        LumenSounds.play(.navigate)
                         withAnimation(.easeInOut(duration: 0.35)) {
                             proxy.scrollTo(item.anchorId, anchor: .top)
                         }
@@ -152,8 +156,10 @@ struct PageEditorView: View {
                             Label("Перенести в страницы", systemImage: "folder")
                         }
                     }
+                    Toggle("Звуки", isOn: $soundsEnabled)
                     Divider()
                     Button(role: .destructive) {
+                        LumenSounds.play(.trash)
                         Task {
                             await model.trash()
                             onClose()
@@ -167,7 +173,7 @@ struct PageEditorView: View {
             }
             ToolbarItem {
                 Button {
-                    withAnimation(.spring(duration: 0.35)) { showsSubpages.toggle() }
+                    setSubpagesPanel(!showsSubpages)
                 } label: {
                     Label("Подстраницы", systemImage: "sidebar.right")
                 }
@@ -176,21 +182,30 @@ struct PageEditorView: View {
         }
         .overlay(alignment: .trailing) {
             // Панель плавает над текстом и не сдвигает его: 80% высоты окна редактора.
+            // Она всегда в дереве и уезжает за правый край: так выезд анимируется в обе стороны.
             GeometryReader { geometry in
-                if showsSubpages {
-                    SubpagesPanel(
-                        subpages: model.subpages,
-                        onOpen: { model.open($0) },
-                        onAdd: { model.addSubpage() },
-                        onClose: { withAnimation(.spring(duration: 0.35)) { showsSubpages = false } }
-                    )
-                    .frame(width: min(300, geometry.size.width - 32), height: geometry.size.height * 0.8)
-                    .padding(.trailing, 16)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                }
+                let width = min(300, geometry.size.width - 32)
+                SubpagesPanel(
+                    subpages: model.subpages,
+                    onOpen: { model.open($0) },
+                    onAdd: {
+                        LumenSounds.play(.create)
+                        model.addSubpage()
+                    },
+                    onClose: { setSubpagesPanel(false) }
+                )
+                .frame(width: width, height: geometry.size.height * 0.8)
+                .padding(.trailing, 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                .offset(x: showsSubpages ? 0 : width + 60)
+                .opacity(showsSubpages ? 1 : 0)
+                .allowsHitTesting(showsSubpages)
+                // Закрытая панель не ловит Escape и не видна VoiceOver.
+                .disabled(!showsSubpages)
+                .accessibilityHidden(!showsSubpages)
             }
         }
+        .onAppear { showsSubpages = remembersSubpages }
         .task {
             await model.load()
             if model.title.isEmpty {
@@ -314,6 +329,15 @@ struct PageEditorView: View {
                 }
             }
         }
+    }
+
+    private func setSubpagesPanel(_ isOpen: Bool) {
+        guard isOpen != showsSubpages else { return }
+        LumenSounds.play(isOpen ? .panelOpen : .panelClose)
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) {
+            showsSubpages = isOpen
+        }
+        remembersSubpages = isOpen
     }
 
     /// На узком iPhone карта заняла бы поля текста, там её нет.

@@ -269,7 +269,10 @@ struct LibraryView: View {
             }
             .modifier(TileInteraction(
                 onSelect: { select(item.id) },
-                onOpen: { onOpenFolder(entry.id) },
+                onOpen: {
+                    LumenSounds.play(.navigate)
+                    onOpenFolder(entry.id)
+                },
                 drag: dragGesture(for: item)
             ))
             .contextMenu { folderMenu(entry.folder) }
@@ -291,7 +294,10 @@ struct LibraryView: View {
             }
             .modifier(TileInteraction(
                 onSelect: { select(item.id) },
-                onOpen: { onOpenPage(entry.id) },
+                onOpen: {
+                    LumenSounds.play(.navigate)
+                    onOpenPage(entry.id)
+                },
                 drag: dragGesture(for: item)
             ))
             .contextMenu { pageMenu(entry) }
@@ -322,6 +328,7 @@ struct LibraryView: View {
                     commitRename()
                     selection = item.id
                     drag = DragState(item: item.id, origin: item.position)
+                    LumenSounds.play(.pickUp)
                 }
                 drag?.translation = value.translation
                 if let drag {
@@ -357,6 +364,7 @@ struct LibraryView: View {
         let target = dropTarget
         self.drag = nil
         dropTarget = nil
+        LumenSounds.play(target == nil ? .drop : .dropIntoFolder)
 
         var position = LibraryPoint(x: max(0, drag.position.x), y: max(0, drag.position.y))
         if snapToGrid, target == nil {
@@ -384,9 +392,11 @@ struct LibraryView: View {
     private func toggleGrid() {
         if snapToGrid {
             snapToGrid = false
+            LumenSounds.play(.tap)
             return
         }
         snapToGrid = true
+        LumenSounds.play(.arrange)
         // Включили сетку: раскладываем всё по ячейкам, сначала папки, потом заметки.
         var positions: [LibraryItemID: LibraryPoint?] = [:]
         for (index, item) in placedItems.enumerated() {
@@ -414,6 +424,7 @@ struct LibraryView: View {
                 color: (snapshot.folders.count + 1) % Folder.colorCount,
                 position: position
             ) else { return }
+            LumenSounds.play(.create)
             selection = .folder(folder.id)
             renameText = folder.name
             renaming = .folder(folder.id)
@@ -424,6 +435,7 @@ struct LibraryView: View {
         let position = freePosition()
         Task {
             if let page = try? await database.createPage(folderId: folderId, position: position) {
+                LumenSounds.play(.create)
                 onOpenPage(page.id)
             }
         }
@@ -478,6 +490,7 @@ struct LibraryView: View {
         Divider()
         Button(role: .destructive) {
             selection = nil
+            LumenSounds.play(.trash)
             Task { try? await database.trashFolder(folder.id) }
         } label: {
             Label("В корзину", systemImage: "trash")
@@ -509,6 +522,7 @@ struct LibraryView: View {
         Button {
             Task {
                 if let subpage = try? await database.createPage(parentId: page.id) {
+                    LumenSounds.play(.create)
                     onOpenPage(subpage.id)
                 }
             }
@@ -532,6 +546,7 @@ struct LibraryView: View {
         Divider()
         Button(role: .destructive) {
             selection = nil
+            LumenSounds.play(.trash)
             Task { try? await database.trashPage(page.id) }
         } label: {
             Label("В корзину", systemImage: "trash")
