@@ -38,6 +38,16 @@ struct PageEditorView: View {
     #endif
     /// Насколько прокручена страница: по ней солнце на горах опускается за гряды.
     @State private var scrollOffset: CGFloat = 0
+    /// Открыта ли панель подстраниц справа. Запоминается между страницами и запусками,
+    /// а анимируется копия в `showsSubpages`: изменение `@AppStorage` анимацию не несёт.
+    @AppStorage("editor.subpagesPanel") private var remembersSubpages = false
+    @State private var showsSubpages = false
+    @AppStorage(LumenSounds.enabledKey) private var soundsEnabled = true
+    /// Блоки верхнего уровня, видные на экране: по ним подсвечивается заголовок на карте.
+    @State private var visibleBlockIds: [UUID] = []
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     @Environment(\.lumenTheme) private var theme
 
     private static let icons = ["📝", "📘", "📚", "🎓", "💡", "✅", "🧠", "🌅", "🗂️", "⭐️"]
@@ -50,13 +60,30 @@ struct PageEditorView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // Обложка на всю ширину окна, от края до края, как в Notion.
-                if let cover = model.page?.pageCover {
-                    PageCoverView(cover: cover, attachments: model.database.attachments, sunset: scrollOffset / 220)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Обложка на всю ширину окна, от края до края, как в Notion.
+                    if let cover = model.page?.pageCover {
+                        PageCoverView(cover: cover, attachments: model.database.attachments, sunset: scrollOffset / 220)
+                    }
+                    content
                 }
-                content
+            }
+            .onScrollTargetVisibilityChange(idType: UUID.self) { ids in
+                visibleBlockIds = ids
+            }
+            .overlay(alignment: .trailing) {
+                let outline = model.outline
+                if showsOutline, !showsSubpages, outline.count >= 2 {
+                    PageOutlineView(items: outline, currentId: currentHeadingId(in: outline)) { item in
+                        LumenSounds.play(.navigate)
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            proxy.scrollTo(item.anchorId, anchor: .top)
+                        }
+                    }
+                    .padding(.trailing, 6)
+                }
             }
         }
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
@@ -129,8 +156,10 @@ struct PageEditorView: View {
                             Label("Перенести в страницы", systemImage: "folder")
                         }
                     }
+                    Toggle("Звуки", isOn: $soundsEnabled)
                     Divider()
                     Button(role: .destructive) {
+                        LumenSounds.play(.trash)
                         Task {
                             await model.trash()
                             onClose()
@@ -142,7 +171,41 @@ struct PageEditorView: View {
                     Label("Ещё", systemImage: "ellipsis.circle")
                 }
             }
+            ToolbarItem {
+                Button {
+                    setSubpagesPanel(!showsSubpages)
+                } label: {
+                    Label("Подстраницы", systemImage: "sidebar.right")
+                }
+                .help(model.subpages.isEmpty ? "Подстраницы" : "Подстраницы: \(model.subpages.count)")
+            }
         }
+        .overlay(alignment: .trailing) {
+            // Панель плавает над текстом и не сдвигает его: 80% высоты окна редактора.
+            // Она всегда в дереве и уезжает за правый край: так выезд анимируется в обе стороны.
+            GeometryReader { geometry in
+                let width = min(300, geometry.size.width - 32)
+                SubpagesPanel(
+                    subpages: model.subpages,
+                    onOpen: { model.open($0) },
+                    onAdd: {
+                        LumenSounds.play(.create)
+                        model.addSubpage()
+                    },
+                    onClose: { setSubpagesPanel(false) }
+                )
+                .frame(width: width, height: geometry.size.height * 0.8)
+                .padding(.trailing, 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                .offset(x: showsSubpages ? 0 : width + 60)
+                .opacity(showsSubpages ? 1 : 0)
+                .allowsHitTesting(showsSubpages)
+                // Закрытая панель не ловит Escape и не видна VoiceOver.
+                .disabled(!showsSubpages)
+                .accessibilityHidden(!showsSubpages)
+            }
+        }
+        .onAppear { showsSubpages = remembersSubpages }
         .task {
             await model.load()
             if model.title.isEmpty {
@@ -268,6 +331,35 @@ struct PageEditorView: View {
         }
     }
 
+    private func setSubpagesPanel(_ isOpen: Bool) {
+        guard isOpen != showsSubpages else { return }
+        LumenSounds.play(isOpen ? .panelOpen : .panelClose)
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) {
+            showsSubpages = isOpen
+        }
+        remembersSubpages = isOpen
+    }
+
+    /// На узком iPhone карта заняла бы поля текста, там её нет.
+    private var showsOutline: Bool {
+        #if os(iOS)
+        horizontalSizeClass != .compact
+        #else
+        true
+        #endif
+    }
+
+    /// Заголовок, в разделе которого сейчас верх экрана: последний, что начинается не ниже
+    /// первого видного блока. Пока виден текст до первого заголовка, не подсвечен ни один.
+    private func currentHeadingId(in outline: [OutlineItem]) -> UUID? {
+        let topLevel = model.children(of: nil).map(\.id)
+        let visible = visibleBlockIds.compactMap { topLevel.firstIndex(of: $0) }
+        guard let first = visible.min() else { return nil }
+        return outline.last { item in
+            (topLevel.firstIndex(of: item.anchorId) ?? .max) <= first
+        }?.id
+    }
+
     /// Поле на Mac, получив фокус, выделяет весь свой текст. Курсор ставится в конец, как в Notion.
     private func placeCaretAtEnd() {
         #if os(macOS)
@@ -284,6 +376,7 @@ struct PageEditorView: View {
                 .padding(.bottom, 12)
             ForEach(model.children(of: nil)) { block in
                 BlockTree(block: block, depth: 0, model: model, focus: $focus)
+                    .id(block.id)
             }
             Color.clear
                 .frame(height: model.links.backlinks.isEmpty ? 200 : 60)
@@ -293,6 +386,7 @@ struct PageEditorView: View {
                 backlinks
             }
         }
+        .scrollTargetLayout()
         .padding(.horizontal, 28)
         .padding(.vertical, 24)
         .frame(maxWidth: 780, alignment: .leading)
@@ -306,6 +400,21 @@ struct PageEditorView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let parent = model.parentPage {
+                Button {
+                    model.open(parent.id)
+                } label: {
+                    Label {
+                        Text(parent.displayTitle).lineLimit(1)
+                    } icon: {
+                        Image(systemName: "arrow.turn.left.up")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .help("Открыть страницу, в которую вложена эта")
+            }
             HStack(spacing: 8) {
                 Menu {
                     ForEach(Self.icons, id: \.self) { icon in

@@ -1,4 +1,5 @@
 import Foundation
+import LumenCore
 import LumenStorage
 
 extension AppDatabase {
@@ -9,10 +10,11 @@ extension AppDatabase {
         Task {
             _ = try? await database.createQuickNote("Идея для курсовой\nСобрать литературу и составить план")
             _ = try? await database.createQuickNote("Купить тетради")
-            let study = try? await database.createPage(title: "Учёба")
-            _ = try? await database.createPage(title: "Матанализ", parentId: study?.id)
-            _ = try? await database.createPage(title: "История", parentId: study?.id)
-            _ = try? await database.createPage(title: "Чтение")
+            let study = try? await database.createFolder(name: "Учёба", color: 0)
+            _ = try? await database.createFolder(name: "Матанализ", parentId: study?.id, color: 4)
+            _ = try? await database.createFolder(name: "Чтение", color: 2, position: LibraryPoint(x: 260, y: 60))
+            _ = try? await database.createPage(title: "Лекция 1. Пределы", folderId: study?.id)
+            _ = try? await database.createPage(title: "План на неделю", position: LibraryPoint(x: 90, y: 260))
         }
         return database
     }

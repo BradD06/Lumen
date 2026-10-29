@@ -2,15 +2,18 @@ import Foundation
 import GRDB
 import LumenCore
 
-/// Узел дерева страниц для сайдбара.
-public struct PageNode: Identifiable, Hashable, Sendable {
-    public var page: Page
-    public var children: [PageNode]
+/// Узел дерева папок для сайдбара и окна «Переместить в…».
+public struct FolderNode: Identifiable, Hashable, Sendable {
+    public var folder: Folder
+    public var children: [FolderNode]
 
-    public var id: UUID { page.id }
+    public var id: UUID { folder.id }
 
-    /// Для `OutlineGroup`: у листа нет стрелки раскрытия.
-    public var childrenOrNil: [PageNode]? { children.isEmpty ? nil : children }
+    /// Для `OutlineGroup`: у папки без вложенных папок нет стрелки раскрытия.
+    public var childrenOrNil: [FolderNode]? { children.isEmpty ? nil : children }
+
+    /// Все папки этого узла и его потомков подряд.
+    public var flattened: [Folder] { [folder] + children.flatMap(\.flattened) }
 }
 
 /// Страница с началом текста для списков.
@@ -21,44 +24,133 @@ public struct PagePreview: Identifiable, Hashable, Sendable {
     public var id: UUID { page.id }
 }
 
-/// Всё, что нужно сайдбару. Пересчитывается при любом изменении страниц.
+/// Всё, что нужно сайдбару. Пересчитывается при любом изменении страниц и папок.
 public struct SidebarSnapshot: Equatable, Sendable {
     public var favorites: [Page]
-    public var tree: [PageNode]
+    public var folders: [FolderNode]
     public var inboxCount: Int
     public var trashCount: Int
 
-    public static let empty = SidebarSnapshot(favorites: [], tree: [], inboxCount: 0, trashCount: 0)
+    public static let empty = SidebarSnapshot(favorites: [], folders: [], inboxCount: 0, trashCount: 0)
 
     public static func fetch(_ db: Database) throws -> SidebarSnapshot {
         let alive = Page.filter(Column("deletedAt") == nil)
-        let pages = try alive
-            .filter(Column("inInbox") == false)
-            .order(Column("sortKey"))
-            .fetchAll(db)
         let favorites = try alive
             .filter(Column("isFavorite") == true)
             .order(Column("title"))
             .fetchAll(db)
+        let trashedPages = try Page.filter(Column("deletedAt") != nil).fetchCount(db)
+        let trashedFolders = try Folder.filter(Column("deletedAt") != nil).fetchCount(db)
         return SidebarSnapshot(
             favorites: favorites,
-            tree: buildTree(pages),
+            folders: try FolderTreeQuery.fetch(db),
             inboxCount: try alive.filter(Column("inInbox") == true).fetchCount(db),
-            trashCount: try Page.filter(Column("deletedAt") != nil).fetchCount(db)
+            trashCount: trashedPages + trashedFolders
         )
     }
+}
 
-    static func buildTree(_ pages: [Page]) -> [PageNode] {
-        let ids = Set(pages.map(\.id))
-        let byParent = Dictionary(grouping: pages) { page -> UUID? in
-            // Страница, чей родитель не попал в выборку, показывается на верхнем уровне.
-            guard let parentId = page.parentId, ids.contains(parentId) else { return nil }
+public enum FolderTreeQuery {
+    /// Живые папки деревом, по названию.
+    public static func fetch(_ db: Database) throws -> [FolderNode] {
+        let folders = try Folder
+            .filter(Column("deletedAt") == nil)
+            .order(Column("name").collating(.localizedCaseInsensitiveCompare))
+            .fetchAll(db)
+        let ids = Set(folders.map(\.id))
+        let byParent = Dictionary(grouping: folders) { folder -> UUID? in
+            // Папка, чей родитель в корзине, показывается в корне.
+            guard let parentId = folder.parentId, ids.contains(parentId) else { return nil }
             return parentId
         }
-        func nodes(under parentId: UUID?) -> [PageNode] {
-            (byParent[parentId] ?? []).map { PageNode(page: $0, children: nodes(under: $0.id)) }
+        func nodes(under parentId: UUID?) -> [FolderNode] {
+            (byParent[parentId] ?? []).map { FolderNode(folder: $0, children: nodes(under: $0.id)) }
         }
         return nodes(under: nil)
+    }
+}
+
+/// Папка на холсте библиотеки и сколько в ней лежит.
+public struct LibraryFolder: Identifiable, Hashable, Sendable {
+    public var folder: Folder
+    public var itemCount: Int
+
+    public var id: UUID { folder.id }
+}
+
+/// Страница на холсте библиотеки. Подстраницы показываются в её меню.
+public struct LibraryPage: Identifiable, Hashable, Sendable {
+    public var preview: PagePreview
+    public var subpages: [Page]
+
+    public var page: Page { preview.page }
+    public var id: UUID { preview.page.id }
+}
+
+/// Содержимое одной папки библиотеки (`folder == nil` это корень).
+public struct LibrarySnapshot: Equatable, Sendable {
+    public var folder: Folder?
+    /// Папки от корня до открытой, без неё самой: для «хлебных крошек».
+    public var path: [Folder]
+    public var folders: [LibraryFolder]
+    public var pages: [LibraryPage]
+    /// Открытую папку удалили, пока она была на экране.
+    public var isMissing: Bool
+
+    public static let empty = LibrarySnapshot(folder: nil, path: [], folders: [], pages: [], isMissing: false)
+
+    public static func fetch(_ db: Database, folderId: UUID?) throws -> LibrarySnapshot {
+        var folder: Folder?
+        var path: [Folder] = []
+        if let folderId {
+            guard let found = try Folder.fetchOne(db, key: folderId), !found.isTrashed else {
+                return LibrarySnapshot(folder: nil, path: [], folders: [], pages: [], isMissing: true)
+            }
+            folder = found
+            var parentId = found.parentId
+            while let id = parentId, let parent = try Folder.fetchOne(db, key: id), !path.contains(parent) {
+                path.insert(parent, at: 0)
+                parentId = parent.parentId
+            }
+        }
+
+        let folders = try Folder
+            .filter(Column("parentId") == folderId)
+            .filter(Column("deletedAt") == nil)
+            .order(Column("createdAt"))
+            .fetchAll(db)
+            .map { LibraryFolder(folder: $0, itemCount: try itemCount(db, in: $0.id)) }
+
+        let pages = try previews(db, sql: """
+            SELECT page.*, pageSearch.body AS excerpt
+            FROM page
+            LEFT JOIN pageSearch ON pageSearch.pageId = \(uuidText("page.id"))
+            WHERE page.folderId IS ? AND page.parentId IS NULL AND page.inInbox = 0 AND page.deletedAt IS NULL
+            ORDER BY page.sortKey
+            """, arguments: [folderId])
+            .map { preview in
+                LibraryPage(
+                    preview: preview,
+                    subpages: try Page
+                        .filter(Column("parentId") == preview.page.id)
+                        .filter(Column("deletedAt") == nil)
+                        .order(Column("sortKey"))
+                        .fetchAll(db)
+                )
+            }
+
+        return LibrarySnapshot(folder: folder, path: path, folders: folders, pages: pages, isMissing: false)
+    }
+
+    static func itemCount(_ db: Database, in folderId: UUID) throws -> Int {
+        let folders = try Folder
+            .filter(Column("parentId") == folderId && Column("deletedAt") == nil)
+            .fetchCount(db)
+        let pages = try Page
+            .filter(Column("folderId") == folderId && Column("parentId") == nil)
+            .filter(Column("inInbox") == false && Column("deletedAt") == nil)
+            .fetchCount(db)
+        return folders + pages
     }
 }
 
@@ -99,12 +191,32 @@ public struct PageLinksSnapshot: Equatable, Sendable {
     }
 }
 
-public enum TrashQuery {
-    public static func fetch(_ db: Database) throws -> [Page] {
-        try Page
-            .filter(Column("deletedAt") != nil)
-            .order(Column("deletedAt").desc)
-            .fetchAll(db)
+/// Корзина: удалённые папки (только верхние, вложенные вернутся вместе с ними) и страницы.
+public struct TrashSnapshot: Equatable, Sendable {
+    public var folders: [Folder]
+    public var pages: [Page]
+
+    public static let empty = TrashSnapshot(folders: [], pages: [])
+
+    public var isEmpty: Bool { folders.isEmpty && pages.isEmpty }
+
+    public static func fetch(_ db: Database) throws -> TrashSnapshot {
+        let folders = try Folder.fetchAll(db, sql: """
+            SELECT folder.*
+            FROM folder
+            LEFT JOIN folder AS parent ON parent.id = folder.parentId
+            WHERE folder.deletedAt IS NOT NULL AND (parent.id IS NULL OR parent.deletedAt IS NULL)
+            ORDER BY folder.deletedAt DESC
+            """)
+        // Страницы из удалённой папки вернутся вместе с ней, отдельно их не показываем.
+        let pages = try Page.fetchAll(db, sql: """
+            SELECT page.*
+            FROM page
+            LEFT JOIN folder ON folder.id = page.folderId
+            WHERE page.deletedAt IS NOT NULL AND (folder.id IS NULL OR folder.deletedAt IS NULL)
+            ORDER BY page.deletedAt DESC
+            """)
+        return TrashSnapshot(folders: folders, pages: pages)
     }
 }
 
@@ -136,8 +248,8 @@ public struct HomeSnapshot: Equatable, Sendable {
     }
 }
 
-private func previews(_ db: Database, sql: String) throws -> [PagePreview] {
-    try Row.fetchAll(db, sql: sql).map { row in
+private func previews(_ db: Database, sql: String, arguments: StatementArguments = StatementArguments()) throws -> [PagePreview] {
+    try Row.fetchAll(db, sql: sql, arguments: arguments).map { row in
         let body: String = row["excerpt"] ?? ""
         return PagePreview(page: try Page(row: row), excerpt: String(body.prefix(240)))
     }

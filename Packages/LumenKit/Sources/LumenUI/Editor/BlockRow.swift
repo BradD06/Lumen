@@ -241,6 +241,7 @@ struct BlockRow: View {
         case .todo:
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Button {
+                    LumenSounds.play(block.content.isChecked ? .tap : .toggle)
                     model.toggleChecked(block.id)
                 } label: {
                     Image(systemName: block.content.isChecked ? "checkmark.square.fill" : "square")

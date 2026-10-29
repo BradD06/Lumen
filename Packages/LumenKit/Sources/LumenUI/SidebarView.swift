@@ -9,9 +9,11 @@ struct SidebarView: View {
     let database: AppDatabase
     @Binding var selection: SidebarItem?
     var onNewPage: (UUID?) -> Void
+    var onNewFolder: (UUID?) -> Void
 
     @State private var snapshot = SidebarSnapshot.empty
     @State private var renaming: Page?
+    @State private var renamingFolder: Folder?
     @State private var newTitle = ""
 
     var body: some View {
@@ -22,6 +24,11 @@ struct SidebarView: View {
                 Label("Входящие", systemImage: "tray")
                     .badge(snapshot.inboxCount)
                     .tag(SidebarItem.inbox)
+                Label("Библиотека", systemImage: "books.vertical")
+                    .tag(SidebarItem.library(nil))
+                    .dropDestination(for: PageDragItem.self) { items, _ in
+                        move(items, toFolder: nil)
+                    }
             }
 
             if !snapshot.favorites.isEmpty {
@@ -30,38 +37,32 @@ struct SidebarView: View {
                         PageLabel(page: page)
                             .tag(SidebarItem.page(page.id))
                             .contextMenu { menu(for: page) }
+                            .draggable(PageDragItem(pageId: page.id)) {
+                                PageLabel(page: page).padding(6)
+                            }
                     }
                 }
             }
 
             Section {
-                OutlineGroup(snapshot.tree, children: \.childrenOrNil) { node in
-                    PageLabel(page: node.page)
-                        .tag(SidebarItem.page(node.id))
-                        .contextMenu { menu(for: node.page) }
-                        // Перетащите страницу на другую, чтобы сделать её подстраницей.
-                        .draggable(PageDragItem(pageId: node.id)) {
-                            PageLabel(page: node.page).padding(6)
-                        }
+                OutlineGroup(snapshot.folders, children: \.childrenOrNil) { node in
+                    FolderLabel(folder: node.folder)
+                        .tag(SidebarItem.library(node.id))
+                        .contextMenu { folderMenu(for: node.folder) }
+                        // Перетащите страницу из избранного на папку, чтобы положить её туда.
                         .dropDestination(for: PageDragItem.self) { items, _ in
-                            move(items, to: node.id)
+                            move(items, toFolder: node.id)
                         }
                 }
                 Button {
-                    onNewPage(nil)
+                    onNewFolder(nil)
                 } label: {
-                    Label("Новая страница", systemImage: "plus")
+                    Label("Новая папка", systemImage: "plus")
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
             } header: {
-                // Бросьте страницу на заголовок раздела, чтобы поднять её на верхний уровень.
-                Text("Страницы")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .dropDestination(for: PageDragItem.self) { items, _ in
-                        move(items, to: nil)
-                    }
+                Text("Папки")
             }
 
             Section {
@@ -83,22 +84,77 @@ struct SidebarView: View {
             }
             Button("Отмена", role: .cancel) { renaming = nil }
         }
+        .alert("Переименовать папку", isPresented: isRenamingFolder) {
+            TextField("Название", text: $newTitle)
+            Button("Готово") {
+                if let folder = renamingFolder {
+                    let name = newTitle
+                    Task { try? await database.renameFolder(folder.id, name: name) }
+                }
+                renamingFolder = nil
+            }
+            Button("Отмена", role: .cancel) { renamingFolder = nil }
+        }
+    }
+
+    private var isRenamingFolder: Binding<Bool> {
+        Binding(get: { renamingFolder != nil }, set: { if !$0 { renamingFolder = nil } })
     }
 
     private var isRenaming: Binding<Bool> {
         Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
     }
 
-    private func move(_ items: [PageDragItem], to parentId: UUID?) -> Bool {
-        let ids = items.map(\.pageId).filter { $0 != parentId }
+    private func move(_ items: [PageDragItem], toFolder folderId: UUID?) -> Bool {
+        let ids = items.map(\.pageId)
         guard !ids.isEmpty else { return false }
+        LumenSounds.play(.dropIntoFolder)
         Task {
             for id in ids {
-                // Нельзя положить страницу внутрь её же подстраницы: такие перемещения просто пропускаем.
-                try? await database.movePage(id, toParent: parentId)
+                try? await database.movePage(id, toFolder: folderId)
             }
         }
         return true
+    }
+
+    @ViewBuilder
+    private func folderMenu(for folder: Folder) -> some View {
+        Button {
+            newTitle = folder.name
+            renamingFolder = folder
+        } label: {
+            Label("Переименовать", systemImage: "pencil")
+        }
+        Button {
+            onNewFolder(folder.id)
+        } label: {
+            Label("Новая папка внутри", systemImage: "folder.badge.plus")
+        }
+        Picker(selection: Binding(
+            get: { folder.color },
+            set: { color in Task { try? await database.setFolderColor(folder.id, color: color) } }
+        )) {
+            ForEach(FolderPalette.names.indices, id: \.self) { index in
+                Text(FolderPalette.names[index]).tag(index)
+            }
+        } label: {
+            Label("Цвет", systemImage: "paintpalette")
+        }
+        if folder.parentId != nil {
+            Button {
+                Task { try? await database.moveFolder(folder.id, toParent: nil) }
+            } label: {
+                Label("В корень библиотеки", systemImage: "arrow.up.to.line")
+            }
+        }
+        Divider()
+        Button(role: .destructive) {
+            if selection == .library(folder.id) { selection = .library(nil) }
+            LumenSounds.play(.trash)
+            Task { try? await database.trashFolder(folder.id) }
+        } label: {
+            Label("В корзину", systemImage: "trash")
+        }
     }
 
     @ViewBuilder
@@ -133,6 +189,7 @@ struct SidebarView: View {
         Divider()
         Button(role: .destructive) {
             if selection == .page(page.id) { selection = .home }
+            LumenSounds.play(.trash)
             Task { try? await database.trashPage(page.id) }
         } label: {
             Label("Удалить", systemImage: "trash")
@@ -147,6 +204,20 @@ struct SidebarView: View {
             }
         } catch {
             print("Sidebar observation failed: \(error)")
+        }
+    }
+}
+
+/// Значок и название папки.
+struct FolderLabel: View {
+    let folder: Folder
+
+    var body: some View {
+        Label {
+            Text(folder.displayName)
+                .lineLimit(1)
+        } icon: {
+            FolderGlyph(color: folder.color)
         }
     }
 }

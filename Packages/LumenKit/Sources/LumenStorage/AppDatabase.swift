@@ -109,6 +109,28 @@ extension AppDatabase {
             }
         }
 
+        migrator.registerMigration("v4: folders, library canvas") { db in
+            try db.create(table: "folder") { t in
+                t.primaryKey("id", .blob)
+                t.column("parentId", .blob).references("folder", onDelete: .cascade).indexed()
+                t.column("name", .text).notNull().defaults(to: "")
+                t.column("color", .integer).notNull().defaults(to: 0)
+                t.column("canvasX", .double)
+                t.column("canvasY", .double)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+                t.column("deletedAt", .datetime)
+            }
+
+            // Страница остаётся без папки, если папку удалили навсегда: она просто появится в корне библиотеки.
+            try db.alter(table: "page") { t in
+                t.add(column: "folderId", .blob).references("folder", onDelete: .setNull)
+                t.add(column: "canvasX", .double)
+                t.add(column: "canvasY", .double)
+            }
+            try db.create(index: "page_on_folderId", on: "page", columns: ["folderId"])
+        }
+
         return migrator
     }
 }
@@ -117,6 +139,10 @@ extension AppDatabase {
 
 extension Page: FetchableRecord, PersistableRecord {
     public static let databaseTableName = "page"
+}
+
+extension Folder: FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "folder"
 }
 
 extension Block: FetchableRecord, PersistableRecord {

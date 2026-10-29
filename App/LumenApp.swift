@@ -15,6 +15,7 @@ struct LumenApp: App {
         #endif
         .commands {
             EditorCommands()
+            SoundCommands()
         }
     }
 }

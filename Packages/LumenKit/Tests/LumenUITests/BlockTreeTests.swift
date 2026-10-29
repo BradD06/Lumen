@@ -238,4 +238,21 @@ struct BlockTreeTests {
         #expect(model.listNumber(for: ids[2]) == 1)
         #expect(model.listNumber(for: ids[3]) == 3)
     }
+
+    @Test func outlineListsHeadingsInDocumentOrder() async throws {
+        let (model, _, ids) = try await open("Введение\nтекст\nПределы\nСвойства\nпод тогглом\nИтоги")
+        model.setType(ids[0], .heading1)
+        model.setType(ids[2], .heading2)
+        model.setType(ids[3], .toggle)
+        model.setType(ids[4], .heading3)
+        model.indent(ids[4])
+        model.setType(ids[5], .heading2)
+
+        let outline = model.outline
+        #expect(outline.map(\.title) == ["Введение", "Пределы", "под тогглом", "Итоги"])
+        #expect(outline.map(\.level) == [1, 2, 3, 2])
+        // Заголовок внутри тоггла прокручивается к самому тогглу.
+        #expect(outline[2].anchorId == ids[3])
+        #expect(outline[1].anchorId == ids[2])
+    }
 }
