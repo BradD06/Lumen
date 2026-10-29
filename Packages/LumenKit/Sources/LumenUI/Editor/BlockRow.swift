@@ -285,6 +285,17 @@ struct BlockRow: View {
         case .image:
             ImageBlock(block: block, model: model)
 
+        case .excerpt:
+            ExcerptBlock(
+                text: block.text,
+                reference: block.content.excerpt,
+                source: model.source(block.content.excerpt?.sourceId)
+            ) {
+                if let reference = block.content.excerpt {
+                    model.openExcerpt(reference)
+                }
+            }
+
         case .toggle:
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Button {
@@ -369,7 +380,7 @@ struct BlockRow: View {
         case .callout: "Выноска"
         case .code: "Код"
         case .toggle: "Сворачиваемый блок"
-        case .divider, .page, .image, .columnList, .column: ""
+        case .divider, .page, .image, .columnList, .column, .excerpt: ""
         }
     }
 
@@ -505,6 +516,60 @@ private struct PageLinkBlock: View {
         }
         .buttonStyle(.plain)
         .disabled(page == nil)
+    }
+}
+
+/// Выписка из книги: цитата, книга и место. Нажатие открывает книгу на этом месте.
+private struct ExcerptBlock: View {
+    let text: String
+    let reference: ExcerptReference?
+    let source: Source?
+    var onOpen: () -> Void
+
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(alignment: .top, spacing: 12) {
+                Capsule()
+                    .fill(LinearGradient(colors: theme.vividCard(1).colors, startPoint: .top, endPoint: .bottom))
+                    .frame(width: 4)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(text)
+                        .font(.system(size: 17, design: .serif))
+                        .italic()
+                        .foregroundStyle(theme.textPrimary)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 6) {
+                        Image(systemName: source?.format.symbolName ?? "book.closed")
+                        Text(caption)
+                            .lineLimit(1)
+                        if source != nil {
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption2.weight(.bold))
+                        }
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(source == nil ? theme.textSecondary.opacity(0.7) : theme.accent)
+                }
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
+            .background(theme.cardFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(theme.cardStroke, lineWidth: 1))
+            .fixedSize(horizontal: false, vertical: true)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(source == nil)
+        .help(source == nil ? "Книгу удалили" : "Открыть книгу на этом месте")
+    }
+
+    private var caption: String {
+        guard let source else { return "Книга удалена" }
+        let label = reference?.label ?? ""
+        return label.isEmpty ? source.displayTitle : "\(source.displayTitle) · \(label)"
     }
 }
 

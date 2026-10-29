@@ -4,7 +4,7 @@ import LumenStorage
 import LumenThemes
 import SwiftUI
 
-/// Окно «Переместить в…»: дерево папок, куда положить папку или заметку.
+/// Окно «Переместить в…»: дерево папок, куда положить папку, заметку или книгу.
 /// Папку нельзя положить в неё саму или во вложенную в неё папку, такие строки выключены.
 struct MoveToFolderSheet: View {
     let database: AppDatabase
@@ -108,6 +108,7 @@ struct MoveToFolderSheet: View {
             switch item {
             case .folder(let id): try? await database.moveFolder(id, toParent: folderId)
             case .page(let id): try? await database.movePage(id, toFolder: folderId)
+            case .source(let id): try? await database.moveSource(id, toFolder: folderId)
             }
             onDone()
         }

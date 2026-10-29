@@ -83,6 +83,10 @@ extension AppDatabase {
                     guard var page = try Page.fetchOne(db, key: id) else { throw StorageError.pageNotFound }
                     page.position = position
                     try page.update(db)
+                case .source(let id):
+                    guard var source = try Source.fetchOne(db, key: id) else { throw StorageError.sourceNotFound }
+                    source.position = position
+                    try source.update(db)
                 }
             }
         }
@@ -94,20 +98,32 @@ extension AppDatabase {
     public func trashFolder(_ id: UUID) async throws {
         try await writer.write { db in
             let folderIds = try Self.folderSubtreeIds(db, root: id)
-            let now = Date()
+            // Время удаления строго позже всего, что в папке удалили раньше: по нему восстановление
+            // отличает удалённое вместе с папкой. База хранит время с точностью до миллисекунды.
+            var now = Date()
+            let pageIds = try Self.pageIdsInFolders(db, folderIds)
+            let latest = try [
+                Folder.filter(keys: folderIds).select(max(Column("deletedAt")), as: Date?.self).fetchOne(db) ?? nil,
+                Page.filter(keys: pageIds).select(max(Column("deletedAt")), as: Date?.self).fetchOne(db) ?? nil,
+                Source.filter(folderIds.contains(Column("folderId"))).select(max(Column("deletedAt")), as: Date?.self).fetchOne(db) ?? nil,
+            ].compactMap { $0 }.max()
+            if let latest, now < latest.addingTimeInterval(0.0015) {
+                now = latest.addingTimeInterval(0.0015)
+            }
             try Folder.filter(keys: folderIds).filter(Column("deletedAt") == nil).updateAll(db, [
                 Column("deletedAt").set(to: now),
                 Column("updatedAt").set(to: now),
             ])
-            let pageIds = try Self.pageIdsInFolders(db, folderIds)
-                .filter { try Page.fetchOne(db, key: $0)?.isTrashed == false }
-            try Page.filter(keys: pageIds).updateAll(db, [
+            let livePageIds = try pageIds.filter { try Page.fetchOne(db, key: $0)?.isTrashed == false }
+            try Page.filter(keys: livePageIds).updateAll(db, [
                 Column("deletedAt").set(to: now),
                 Column("updatedAt").set(to: now),
             ])
-            for pageId in pageIds {
+            for pageId in livePageIds {
                 try Self.reindex(db, pageId: pageId)
             }
+            let sourceIds = try Source.filter(folderIds.contains(Column("folderId"))).fetchAll(db).map(\.id)
+            try Self.trashSources(db, sourceIds, at: now)
         }
     }
 
@@ -127,7 +143,8 @@ extension AppDatabase {
             // То, что удалили раньше папки отдельно, остаётся в корзине.
             let folderIds = try Self.folderSubtreeIds(db, root: id)
             let restoredFolders = Folder.filter(keys: folderIds).filter(Column("deletedAt") >= trashedAt)
-            let pageIds = try Self.pageIdsInFolders(db, try restoredFolders.fetchAll(db).map(\.id))
+            let restoredFolderIds = try restoredFolders.fetchAll(db).map(\.id)
+            let pageIds = try Self.pageIdsInFolders(db, restoredFolderIds)
             let restoredPages = try Page.filter(keys: pageIds).filter(Column("deletedAt") >= trashedAt).fetchAll(db).map(\.id)
             let now = Date()
             try restoredFolders.updateAll(db, [
@@ -141,6 +158,12 @@ extension AppDatabase {
             for pageId in restoredPages {
                 try Self.reindex(db, pageId: pageId)
             }
+            let restoredSources = try Source
+                .filter(restoredFolderIds.contains(Column("folderId")))
+                .filter(Column("deletedAt") >= trashedAt)
+                .fetchAll(db)
+                .map(\.id)
+            try Self.restoreSources(db, restoredSources)
         }
     }
 

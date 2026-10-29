@@ -3,8 +3,9 @@ import LumenCore
 import LumenStorage
 import LumenThemes
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// Библиотека: папки и страницы лежат на свободном холсте, как бумаги на столе.
+/// Библиотека: папки, страницы и книги лежат на свободном холсте, как бумаги на столе.
 /// Предмет можно положить куда угодно, бросить на папку, чтобы убрать внутрь,
 /// а кнопка «Сетка» выравнивает всё по ячейкам и дальше примагничивает к ним.
 struct LibraryView: View {
@@ -13,6 +14,7 @@ struct LibraryView: View {
     let folderId: UUID?
     var onOpenFolder: (UUID?) -> Void
     var onOpenPage: (UUID) -> Void
+    var onOpenSource: (UUID) -> Void
 
     @State private var snapshot = LibrarySnapshot.empty
     @State private var hasLoaded = false
@@ -28,6 +30,11 @@ struct LibraryView: View {
     @State private var contextMenu: ContextMenuState?
     @State private var contextMenuHeight: CGFloat = 0
     @State private var canvasWidth: CGFloat = 900
+    @State private var isImporting = false
+    /// Файлы добавляются: на холсте крутится индикатор.
+    @State private var importingCount = 0
+    /// Над холстом держат файлы из Finder.
+    @State private var isDropTargeted = false
     @AppStorage("library.snapToGrid") private var snapToGrid = false
     @Environment(\.lumenTheme) private var theme
 
@@ -46,6 +53,7 @@ struct LibraryView: View {
     private enum Content: Hashable {
         case folder(LibraryFolder)
         case page(LibraryPage)
+        case source(LibrarySource)
     }
 
     private struct ContextMenuState: Equatable {
@@ -81,6 +89,15 @@ struct LibraryView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .fileImporter(
+            isPresented: $isImporting,
+            allowedContentTypes: SourceImporter.contentTypes,
+            allowsMultipleSelection: true
+        ) { result in
+            if case .success(let urls) = result {
+                importFiles(urls, at: nil)
+            }
+        }
         .sheet(item: $moving) { item in
             MoveToFolderSheet(database: database, item: item, currentFolderId: folderId) {
                 moving = nil
@@ -126,6 +143,14 @@ struct LibraryView: View {
                     Label("Заметка", systemImage: "plus")
                 }
                 .buttonStyle(LibraryButtonStyle())
+
+                Button {
+                    isImporting = true
+                } label: {
+                    Label("Книга", systemImage: "book.closed")
+                }
+                .buttonStyle(LibraryButtonStyle())
+                .help("Добавить книгу или файл: EPUB, PDF, FB2, Word, PowerPoint, текст и другие")
 
                 Button(action: newFolder) {
                     Label("Папка", systemImage: "folder.badge.plus")
@@ -203,18 +228,57 @@ struct LibraryView: View {
                 )
                 .background(dotGrid)
                 .coordinateSpace(name: Self.canvasSpace)
+                // Файлы из Finder или «Файлов» можно бросить прямо на холст, туда, куда отпустили.
+                .dropDestination(for: URL.self) { urls, location in
+                    let files = urls.filter(\.isFileURL)
+                    guard !files.isEmpty else { return false }
+                    importFiles(files, at: LibraryPoint(
+                        x: max(0, location.x - LibraryLayout.tileWidth / 2),
+                        y: max(0, location.y - LibraryLayout.tileHeight / 2)
+                    ))
+                    return true
+                } isTargeted: { isDropTargeted = $0 }
             }
             .scrollIndicators(.automatic)
             .overlay {
-                if hasLoaded && items.isEmpty {
+                if hasLoaded && items.isEmpty && importingCount == 0 {
                     ContentUnavailableView {
                         Label("Пока пусто", systemImage: "folder")
                     } description: {
-                        Text("Создайте папку или заметку и положите куда удобно.")
+                        Text("Создайте папку или заметку, добавьте книгу или перетащите сюда файл.")
                     } actions: {
                         Button("Новая папка", action: newFolder)
                             .buttonStyle(.borderedProminent)
+                        Button("Добавить книгу") { isImporting = true }
+                            .buttonStyle(.bordered)
                     }
+                }
+            }
+            .overlay {
+                if isDropTargeted {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(theme.accent, style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+                        .background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .overlay {
+                            Label("Отпустите, чтобы добавить в библиотеку", systemImage: "tray.and.arrow.down")
+                                .font(.headline)
+                                .foregroundStyle(theme.textPrimary)
+                        }
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if importingCount > 0 {
+                    Label {
+                        Text(importingCount == 1 ? "Добавляю книгу…" : "Добавляю файлы: \(importingCount)…")
+                    } icon: {
+                        ProgressView().controlSize(.small)
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.bottom, 16)
                 }
             }
             .onAppear { canvasWidth = geometry.size.width }
@@ -257,6 +321,7 @@ struct LibraryView: View {
         let contents: [(LibraryItemID, LibraryPoint?, Content)] =
             snapshot.folders.map { (.folder($0.id), $0.folder.position, .folder($0)) }
             + snapshot.pages.map { (.page($0.id), $0.page.position, .page($0)) }
+            + snapshot.sources.map { (.source($0.id), $0.source.position, .source($0)) }
 
         var placed: [PlacedItem] = []
         var unplaced: [(LibraryItemID, Content)] = []
@@ -335,7 +400,53 @@ struct LibraryView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Заметка \(entry.page.displayTitle)")
             .accessibilityAction(named: "Открыть") { onOpenPage(entry.id) }
+
+        case .source(let entry):
+            LibraryTile(
+                title: entry.source.displayTitle,
+                caption: caption(for: entry),
+                isSelected: selection == item.id,
+                isDragging: drag?.item == item.id,
+                renameText: $renameText,
+                isRenaming: renaming == item.id,
+                onCommitRename: commitRename
+            ) {
+                SourceCoverArt(source: entry.source, attachments: database.attachments)
+            }
+            .modifier(TileInteraction(
+                onSelect: { select(item.id) },
+                onOpen: { openSource(entry.id) },
+                drag: dragGesture(for: item)
+            ))
+            .modifier(LibraryTileMenu(onSecondaryClick: { openContextMenu(for: item, at: $0) }) {
+                sourceMenu(entry.source)
+            })
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(entry.source.format.isBook ? "Книга" : "Файл") \(entry.source.displayTitle)")
+            .accessibilityAction(named: "Открыть") { openSource(entry.id) }
         }
+    }
+
+    private func caption(for entry: LibrarySource) -> String {
+        let source = entry.source
+        var parts: [String] = []
+        if source.progress > 0.005 {
+            parts.append("\(Int((source.progress * 100).rounded()))%")
+        }
+        if let author = source.author, parts.isEmpty {
+            parts.append(author)
+        } else {
+            parts.append(source.format.label)
+        }
+        if entry.highlightCount > 0 {
+            parts.append("выделений: \(entry.highlightCount)")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func openSource(_ id: UUID) {
+        LumenSounds.play(.navigate)
+        onOpenSource(id)
     }
 
     private func caption(for entry: LibraryPage) -> String {
@@ -410,6 +521,7 @@ struct LibraryView: View {
                 switch drag.item {
                 case .folder(let id): try? await database.moveFolder(id, toParent: target)
                 case .page(let id): try? await database.movePage(id, toFolder: target)
+                case .source(let id): try? await database.moveSource(id, toFolder: target)
                 }
                 selection = nil
             } else {
@@ -487,6 +599,33 @@ struct LibraryView: View {
             switch item {
             case .folder(let id): try? await database.renameFolder(id, name: name)
             case .page(let id): try? await database.renamePage(id, title: name)
+            case .source(let id): try? await database.renameSource(id, title: name)
+            }
+        }
+    }
+
+    /// Добавляет файлы: в точку, куда их бросили, или в свободные ячейки.
+    private func importFiles(_ urls: [URL], at point: LibraryPoint?) {
+        guard !urls.isEmpty else { return }
+        var positions = LibraryLayout.freeCells(count: urls.count, avoiding: placedItems.map(\.position), columns: columns)
+        if let point {
+            let first = snapToGrid ? LibraryLayout.snapped(point) : point
+            positions = [first] + LibraryLayout.freeCells(
+                count: urls.count - 1,
+                avoiding: placedItems.map(\.position) + [first],
+                columns: columns
+            )
+        }
+        importingCount += urls.count
+        let folderId = folderId
+        Task {
+            let sources = await SourceImporter.importFiles(urls, into: database, folderId: folderId, positions: positions)
+            importingCount -= urls.count
+            if !sources.isEmpty {
+                LumenSounds.play(.dropIntoFolder)
+            }
+            if sources.count == 1, let source = sources.first {
+                selection = .source(source.id)
             }
         }
     }
@@ -592,6 +731,37 @@ struct LibraryView: View {
                 }),
             ]
             return entries
+        case .source(let id):
+            guard let source = snapshot.sources.first(where: { $0.id == id })?.source else { return [] }
+            return [
+                .action(GlassMenuAction(title: "Читать", systemImage: "book", shortcut: "⏎") {
+                    openSource(source.id)
+                }),
+                .action(GlassMenuAction(title: "Заметки к книге", systemImage: "note.text") {
+                    openNotes(of: source.id)
+                }),
+                .action(GlassMenuAction(title: "Переименовать", systemImage: "pencil") {
+                    startRename(.source(source.id), current: source.displayTitle)
+                }),
+                .action(GlassMenuAction(title: "Переместить в…", systemImage: "arrow.right") {
+                    moving = .source(source.id)
+                }),
+                .divider,
+                .action(GlassMenuAction(title: "В корзину", systemImage: "trash", shortcut: "⌫", isDestructive: true) {
+                    selection = nil
+                    LumenSounds.play(.trash)
+                    Task { try? await database.trashSource(source.id) }
+                }),
+            ]
+        }
+    }
+
+    private func openNotes(of sourceId: UUID) {
+        Task {
+            if let page = try? await database.notesPage(for: sourceId) {
+                LumenSounds.play(.navigate)
+                onOpenPage(page.id)
+            }
         }
     }
 
@@ -690,6 +860,38 @@ struct LibraryView: View {
         }
     }
 
+    @ViewBuilder
+    private func sourceMenu(_ source: Source) -> some View {
+        Button {
+            openSource(source.id)
+        } label: {
+            Label("Читать", systemImage: "book")
+        }
+        Button {
+            openNotes(of: source.id)
+        } label: {
+            Label("Заметки к книге", systemImage: "note.text")
+        }
+        Button {
+            startRename(.source(source.id), current: source.displayTitle)
+        } label: {
+            Label("Переименовать", systemImage: "pencil")
+        }
+        Button {
+            moving = .source(source.id)
+        } label: {
+            Label("Переместить в…", systemImage: "arrow.right.doc.on.clipboard")
+        }
+        Divider()
+        Button(role: .destructive) {
+            selection = nil
+            LumenSounds.play(.trash)
+            Task { try? await database.trashSource(source.id) }
+        } label: {
+            Label("В корзину", systemImage: "trash")
+        }
+    }
+
     private func observe() async {
         let folderId = folderId
         let observation = ValueObservation.tracking { db in try LibrarySnapshot.fetch(db, folderId: folderId) }
@@ -774,7 +976,7 @@ struct LibraryButtonStyle: ButtonStyle {
 
 #Preview {
     NavigationStack {
-        LibraryView(database: .preview(), folderId: nil, onOpenFolder: { _ in }, onOpenPage: { _ in })
+        LibraryView(database: .preview(), folderId: nil, onOpenFolder: { _ in }, onOpenPage: { _ in }, onOpenSource: { _ in })
     }
     .preferredColorScheme(.dark)
 }

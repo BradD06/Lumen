@@ -5,7 +5,7 @@ import LumenCore
 /// Локальная база приложения. Всё хранится на устройстве (local-first), синхронизация появится позже.
 public final class AppDatabase: Sendable {
     public let writer: any DatabaseWriter
-    /// Файлы, которые блоки и обложки показывают по имени: картинки, позже книги и документы.
+    /// Файлы, которые блоки и обложки показывают по имени: картинки, книги и документы.
     public let attachments: AttachmentStore
 
     public var reader: any DatabaseReader { writer }
@@ -131,6 +131,55 @@ extension AppDatabase {
             try db.create(index: "page_on_folderId", on: "page", columns: ["folderId"])
         }
 
+        migrator.registerMigration("v5: sources, highlights") { db in
+            try db.create(table: "source") { t in
+                t.primaryKey("id", .blob)
+                t.column("title", .text).notNull().defaults(to: "")
+                t.column("author", .text)
+                t.column("format", .text).notNull()
+                t.column("file", .text).notNull()
+                t.column("originalName", .text).notNull()
+                t.column("cover", .text)
+                t.column("folderId", .blob).references("folder", onDelete: .setNull).indexed()
+                t.column("canvasX", .double)
+                t.column("canvasY", .double)
+                t.column("locator", .text)
+                t.column("progress", .double).notNull().defaults(to: 0)
+                t.column("lastOpenedAt", .datetime)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+                t.column("deletedAt", .datetime)
+            }
+
+            try db.create(table: "highlight") { t in
+                t.primaryKey("id", .blob)
+                t.column("sourceId", .blob).notNull().references("source", onDelete: .cascade).indexed()
+                t.column("locator", .text).notNull()
+                t.column("text", .text).notNull()
+                t.column("note", .text)
+                t.column("color", .text).notNull()
+                t.column("label", .text).notNull().defaults(to: "")
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+
+            // Страница заметок источника. Колонка sourceId была с первой схемы, индекса не было.
+            try db.create(index: "page_on_sourceId", on: "page", columns: ["sourceId"])
+        }
+
+        migrator.registerMigration("v6: highlight deletedAt") { db in
+            try db.alter(table: "highlight") { t in
+                t.add(column: "deletedAt", .datetime)
+            }
+            // До этой версии удалённые выписки оставляли выделение в книге. Выделения, которых
+            // нет ни в одной выписке, прячутся так же, как теперь при удалении выписки.
+            let quoted = Set(try Data
+                .fetchAll(db, sql: "SELECT content FROM block WHERE type = 'excerpt'")
+                .compactMap { try? JSONDecoder().decode(BlockContent.self, from: $0).excerpt?.highlightId })
+            let orphans = try UUID.fetchAll(db, sql: "SELECT id FROM highlight").filter { !quoted.contains($0) }
+            try Highlight.filter(keys: orphans).updateAll(db, Column("deletedAt").set(to: Date()))
+        }
+
         return migrator
     }
 }
@@ -147,4 +196,12 @@ extension Folder: FetchableRecord, PersistableRecord {
 
 extension Block: FetchableRecord, PersistableRecord {
     public static let databaseTableName = "block"
+}
+
+extension Source: FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "source"
+}
+
+extension Highlight: FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "highlight"
 }

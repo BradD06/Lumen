@@ -27,6 +27,23 @@ public struct AttachmentStore: Sendable {
         return name
     }
 
+    /// Копирует файл под новым уникальным именем с тем же расширением. Книги бывают большими,
+    /// поэтому файл копируется, а не читается в память.
+    public func importFile(at source: URL) throws -> String {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var name = UUID().uuidString
+        let fileExtension = source.pathExtension
+        if !fileExtension.isEmpty {
+            name += ".\(fileExtension.lowercased())"
+        }
+        try FileManager.default.copyItem(at: source, to: url(for: name))
+        return name
+    }
+
+    public func remove(_ name: String) {
+        try? FileManager.default.removeItem(at: url(for: name))
+    }
+
     public func url(for name: String) -> URL {
         // Только имя файла: вложение не может указывать за пределы папки.
         folder.appendingPathComponent((name as NSString).lastPathComponent)
