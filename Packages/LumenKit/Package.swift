@@ -8,10 +8,12 @@ let package = Package(
         .library(name: "LumenCore", targets: ["LumenCore"]),
         .library(name: "LumenStorage", targets: ["LumenStorage"]),
         .library(name: "LumenThemes", targets: ["LumenThemes"]),
+        .library(name: "LumenReader", targets: ["LumenReader"]),
         .library(name: "LumenUI", targets: ["LumenUI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
+        .package(url: "https://github.com/weichsel/ZIPFoundation.git", from: "0.9.19"),
     ],
     targets: [
         // Модели и чистая логика без зависимостей: страницы, блоки, порядок, markdown-сокращения.
@@ -26,6 +28,15 @@ let package = Package(
         ),
         // Дизайн-токены, темы, фон и карточки-виджеты.
         .target(name: "LumenThemes"),
+        // Читалка: EPUB, FB2, Word, презентации и текст переводятся в HTML для общего экрана чтения,
+        // PDF показывает PDFKit, остальное системный просмотр.
+        .target(
+            name: "LumenReader",
+            dependencies: [
+                "LumenCore",
+                .product(name: "ZIPFoundation", package: "ZIPFoundation"),
+            ]
+        ),
         // Экраны приложения на SwiftUI.
         .target(
             name: "LumenUI",
@@ -33,11 +44,16 @@ let package = Package(
                 "LumenCore",
                 "LumenStorage",
                 "LumenThemes",
+                "LumenReader",
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
         .testTarget(name: "LumenCoreTests", dependencies: ["LumenCore"]),
         .testTarget(name: "LumenStorageTests", dependencies: ["LumenStorage", "LumenCore"]),
+        .testTarget(
+            name: "LumenReaderTests",
+            dependencies: ["LumenReader", "LumenCore", .product(name: "ZIPFoundation", package: "ZIPFoundation")]
+        ),
         .testTarget(name: "LumenUITests", dependencies: ["LumenUI", "LumenStorage", "LumenCore"]),
     ]
 )

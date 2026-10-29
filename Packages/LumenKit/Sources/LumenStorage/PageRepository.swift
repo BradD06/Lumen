@@ -5,6 +5,8 @@ import LumenCore
 public enum StorageError: Error, Equatable {
     case pageNotFound
     case folderNotFound
+    case sourceNotFound
+    case highlightNotFound
     /// Попытка переместить страницу или папку внутрь самой себя.
     case invalidMove
 }
@@ -190,11 +192,18 @@ extension AppDatabase {
         }
     }
 
-    /// Удаляет из корзины всё навсегда: страницы и папки. Блоки и вложенные папки удаляются каскадом.
+    /// Удаляет из корзины всё навсегда: страницы, папки, книги и их файлы.
+    /// Блоки, выделения и вложенные папки удаляются каскадом.
     public func emptyTrash() async throws {
-        _ = try await writer.write { db in
+        let files = try await writer.write { db in
+            let sources = try Source.filter(Column("deletedAt") != nil).fetchAll(db)
+            try Source.filter(keys: sources.map(\.id)).deleteAll(db)
             try Page.filter(Column("deletedAt") != nil).deleteAll(db)
             try Folder.filter(Column("deletedAt") != nil).deleteAll(db)
+            return sources.flatMap { [$0.file] + ($0.cover.map { [$0] } ?? []) }
+        }
+        for file in files {
+            attachments.remove(file)
         }
     }
 

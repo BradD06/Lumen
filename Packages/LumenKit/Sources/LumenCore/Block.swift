@@ -54,6 +54,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
     public var backgroundColor: BlockColor?
     /// Доля ширины ряда, которую занимает колонка. `nil` значит поровну с остальными.
     public var columnWidth: Double?
+    /// Выделение в источнике, из которого сделана выписка. Текст цитаты лежит в `runs`.
+    public var excerpt: ExcerptReference?
 
     public init(
         runs: [TextRun] = [],
@@ -63,7 +65,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
         isCollapsed: Bool = false,
         textColor: BlockColor? = nil,
         backgroundColor: BlockColor? = nil,
-        columnWidth: Double? = nil
+        columnWidth: Double? = nil,
+        excerpt: ExcerptReference? = nil
     ) {
         self.runs = runs
         self.isChecked = isChecked
@@ -73,6 +76,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         self.textColor = textColor
         self.backgroundColor = backgroundColor
         self.columnWidth = columnWidth
+        self.excerpt = excerpt
     }
 
     public init(text: String, isChecked: Bool = false) {
@@ -87,7 +91,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case runs, isChecked, pageId, attachment, isCollapsed, textColor, backgroundColor, columnWidth
+        case runs, isChecked, pageId, attachment, isCollapsed, textColor, backgroundColor, columnWidth, excerpt
     }
 
     public init(from decoder: any Decoder) throws {
@@ -102,6 +106,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         backgroundColor = try container.decodeIfPresent(String.self, forKey: .backgroundColor)
             .flatMap(BlockColor.init(rawValue:))
         columnWidth = try container.decodeIfPresent(Double.self, forKey: .columnWidth)
+        excerpt = try container.decodeIfPresent(ExcerptReference.self, forKey: .excerpt)
     }
 }
 

@@ -38,6 +38,14 @@ final class PageEditorModel {
     var dropIndicator: DropIndicator?
     /// Страница, которую нужно открыть (ссылка или новая подстраница). Вью сбрасывает её после перехода.
     var openRequest: UUID?
+    /// Книга, которую нужно открыть (из выписки или шапки страницы заметок). Вью сбрасывает её после перехода.
+    var openSourceRequest: SourceRequest?
+
+    struct SourceRequest: Equatable {
+        var sourceId: UUID
+        /// Выделение, к которому прокрутить.
+        var highlightId: UUID?
+    }
 
     @ObservationIgnored private var dirtyBlocks: Set<UUID> = []
     /// Блоки, которые нужно удалить из базы. Удаляются после записи правок, чтобы каскадное
@@ -75,7 +83,9 @@ final class PageEditorModel {
 
     // MARK: Загрузка и сохранение
 
+    /// Загружает страницу один раз: встроенный редактор модель могли загрузить раньше, чем его показали.
     func load() async {
+        guard !isLoaded else { return }
         do {
             page = try await database.page(pageId)
             title = page?.title ?? ""
@@ -947,6 +957,51 @@ final class PageEditorModel {
             } catch {
                 print("Failed to create subpage: \(error)")
             }
+        }
+    }
+
+    // MARK: Выписки из книг
+
+    func source(_ id: UUID?) -> Source? {
+        guard let id else { return nil }
+        return links.sources.first { $0.id == id }
+    }
+
+    /// Книга, к которой это страница заметок.
+    var notesSource: Source? { source(page?.sourceId) }
+
+    func openExcerpt(_ reference: ExcerptReference) {
+        openSource(reference.sourceId, highlight: reference.highlightId)
+    }
+
+    func openSource(_ sourceId: UUID, highlight: UUID? = nil) {
+        Task {
+            await flush()
+            openSourceRequest = SourceRequest(sourceId: sourceId, highlightId: highlight)
+        }
+    }
+
+    /// Вставляет выписку в конец страницы, а после неё пустой абзац, чтобы сразу дописать мысль.
+    /// Если страница пустая, выписка встаёт на место пустого абзаца.
+    func appendExcerpt(text: String, reference: ExcerptReference) {
+        recordUndo()
+        let content = BlockContent(runs: [TextRun(text)], excerpt: reference)
+        let topLevel = children(of: nil)
+        if topLevel.count == 1, let only = topLevel.first, only.type == .paragraph, only.text.isEmpty {
+            update(only.id) {
+                $0.type = .excerpt
+                $0.content = content
+            }
+            insertBlock(in: nil, after: only.id, type: .paragraph)
+            return
+        }
+        // Пустой абзац в конце остаётся последним: выписка встаёт перед ним.
+        if let last = topLevel.last, last.type == .paragraph, last.text.isEmpty, children(of: last.id).isEmpty {
+            let previous = topLevel.dropLast().last
+            insertBlock(in: nil, after: previous?.id, type: .excerpt, content: content)
+        } else {
+            let excerpt = insertBlock(in: nil, after: topLevel.last?.id, type: .excerpt, content: content)
+            insertBlock(in: nil, after: excerpt.id, type: .paragraph)
         }
     }
 

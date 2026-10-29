@@ -83,6 +83,10 @@ extension AppDatabase {
                     guard var page = try Page.fetchOne(db, key: id) else { throw StorageError.pageNotFound }
                     page.position = position
                     try page.update(db)
+                case .source(let id):
+                    guard var source = try Source.fetchOne(db, key: id) else { throw StorageError.sourceNotFound }
+                    source.position = position
+                    try source.update(db)
                 }
             }
         }
@@ -108,6 +112,8 @@ extension AppDatabase {
             for pageId in pageIds {
                 try Self.reindex(db, pageId: pageId)
             }
+            let sourceIds = try Source.filter(folderIds.contains(Column("folderId"))).fetchAll(db).map(\.id)
+            try Self.trashSources(db, sourceIds, at: now)
         }
     }
 
@@ -127,7 +133,8 @@ extension AppDatabase {
             // То, что удалили раньше папки отдельно, остаётся в корзине.
             let folderIds = try Self.folderSubtreeIds(db, root: id)
             let restoredFolders = Folder.filter(keys: folderIds).filter(Column("deletedAt") >= trashedAt)
-            let pageIds = try Self.pageIdsInFolders(db, try restoredFolders.fetchAll(db).map(\.id))
+            let restoredFolderIds = try restoredFolders.fetchAll(db).map(\.id)
+            let pageIds = try Self.pageIdsInFolders(db, restoredFolderIds)
             let restoredPages = try Page.filter(keys: pageIds).filter(Column("deletedAt") >= trashedAt).fetchAll(db).map(\.id)
             let now = Date()
             try restoredFolders.updateAll(db, [
@@ -141,6 +148,12 @@ extension AppDatabase {
             for pageId in restoredPages {
                 try Self.reindex(db, pageId: pageId)
             }
+            let restoredSources = try Source
+                .filter(restoredFolderIds.contains(Column("folderId")))
+                .filter(Column("deletedAt") >= trashedAt)
+                .fetchAll(db)
+                .map(\.id)
+            try Self.restoreSources(db, restoredSources)
         }
     }
 

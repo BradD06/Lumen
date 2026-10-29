@@ -22,6 +22,8 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     /// Ряд колонок. Его дети это колонки (`column`), у колонок свои дочерние блоки.
     case columnList
     case column
+    /// Выписка из источника: цитата (`content.runs`) и место в книге (`content.excerpt`).
+    case excerpt
 
     public var id: String { rawValue }
 
@@ -43,6 +45,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .toggle: "Сворачиваемый блок"
         case .columnList: "Колонки"
         case .column: "Колонка"
+        case .excerpt: "Выписка"
         }
     }
 
@@ -63,6 +66,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .image: "photo"
         case .toggle: "chevron.right.circle"
         case .columnList, .column: "rectangle.split.3x1"
+        case .excerpt: "quote.opening"
         }
     }
 
@@ -84,13 +88,14 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .image: ["image", "photo", "picture", "картинка", "фото", "изображение"]
         case .toggle: ["toggle", "collapse", "свернуть", "раскрывающийся", "тоггл"]
         case .columnList, .column: ["columns", "колонки"]
+        case .excerpt: ["excerpt", "quote", "выписка", "цитата"]
         }
     }
 
     /// Есть ли у блока редактируемый текст.
     public var hasText: Bool {
         switch self {
-        case .divider, .page, .image, .columnList, .column: false
+        case .divider, .page, .image, .columnList, .column, .excerpt: false
         default: true
         }
     }
@@ -98,8 +103,8 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     /// Служебные блоки-контейнеры колонок: их не выбирают в меню, они появляются при перетаскивании.
     public var isLayout: Bool { self == .columnList || self == .column }
 
-    /// Можно ли выбрать тип в slash-меню.
-    public var isInsertable: Bool { !isLayout }
+    /// Можно ли выбрать тип в slash-меню. Выписки появляются только из читалки.
+    public var isInsertable: Bool { !isLayout && self != .excerpt }
 
     /// Можно ли превратить в этот тип уже написанный блок (меню «Превратить в»).
     /// Страница и картинка создаются только заново, из slash-меню.

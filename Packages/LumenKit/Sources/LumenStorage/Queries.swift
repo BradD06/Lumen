@@ -41,11 +41,12 @@ public struct SidebarSnapshot: Equatable, Sendable {
             .fetchAll(db)
         let trashedPages = try Page.filter(Column("deletedAt") != nil).fetchCount(db)
         let trashedFolders = try Folder.filter(Column("deletedAt") != nil).fetchCount(db)
+        let trashedSources = try Source.filter(Column("deletedAt") != nil).fetchCount(db)
         return SidebarSnapshot(
             favorites: favorites,
             folders: try FolderTreeQuery.fetch(db),
             inboxCount: try alive.filter(Column("inInbox") == true).fetchCount(db),
-            trashCount: trashedPages + trashedFolders
+            trashCount: trashedPages + trashedFolders + trashedSources
         )
     }
 }
@@ -87,6 +88,14 @@ public struct LibraryPage: Identifiable, Hashable, Sendable {
     public var id: UUID { preview.page.id }
 }
 
+/// Книга или файл на холсте библиотеки.
+public struct LibrarySource: Identifiable, Hashable, Sendable {
+    public var source: Source
+    public var highlightCount: Int
+
+    public var id: UUID { source.id }
+}
+
 /// Содержимое одной папки библиотеки (`folder == nil` это корень).
 public struct LibrarySnapshot: Equatable, Sendable {
     public var folder: Folder?
@@ -94,17 +103,18 @@ public struct LibrarySnapshot: Equatable, Sendable {
     public var path: [Folder]
     public var folders: [LibraryFolder]
     public var pages: [LibraryPage]
+    public var sources: [LibrarySource]
     /// Открытую папку удалили, пока она была на экране.
     public var isMissing: Bool
 
-    public static let empty = LibrarySnapshot(folder: nil, path: [], folders: [], pages: [], isMissing: false)
+    public static let empty = LibrarySnapshot(folder: nil, path: [], folders: [], pages: [], sources: [], isMissing: false)
 
     public static func fetch(_ db: Database, folderId: UUID?) throws -> LibrarySnapshot {
         var folder: Folder?
         var path: [Folder] = []
         if let folderId {
             guard let found = try Folder.fetchOne(db, key: folderId), !found.isTrashed else {
-                return LibrarySnapshot(folder: nil, path: [], folders: [], pages: [], isMissing: true)
+                return LibrarySnapshot(folder: nil, path: [], folders: [], pages: [], sources: [], isMissing: true)
             }
             folder = found
             var parentId = found.parentId
@@ -126,6 +136,7 @@ public struct LibrarySnapshot: Equatable, Sendable {
             FROM page
             LEFT JOIN pageSearch ON pageSearch.pageId = \(uuidText("page.id"))
             WHERE page.folderId IS ? AND page.parentId IS NULL AND page.inInbox = 0 AND page.deletedAt IS NULL
+                AND page.sourceId IS NULL
             ORDER BY page.sortKey
             """, arguments: [folderId])
             .map { preview in
@@ -139,7 +150,19 @@ public struct LibrarySnapshot: Equatable, Sendable {
                 )
             }
 
-        return LibrarySnapshot(folder: folder, path: path, folders: folders, pages: pages, isMissing: false)
+        let sources = try Source
+            .filter(Column("folderId") == folderId)
+            .filter(Column("deletedAt") == nil)
+            .order(Column("createdAt"))
+            .fetchAll(db)
+            .map { source in
+                LibrarySource(
+                    source: source,
+                    highlightCount: try Highlight.filter(Column("sourceId") == source.id).fetchCount(db)
+                )
+            }
+
+        return LibrarySnapshot(folder: folder, path: path, folders: folders, pages: pages, sources: sources, isMissing: false)
     }
 
     static func itemCount(_ db: Database, in folderId: UUID) throws -> Int {
@@ -148,9 +171,12 @@ public struct LibrarySnapshot: Equatable, Sendable {
             .fetchCount(db)
         let pages = try Page
             .filter(Column("folderId") == folderId && Column("parentId") == nil)
-            .filter(Column("inInbox") == false && Column("deletedAt") == nil)
+            .filter(Column("inInbox") == false && Column("deletedAt") == nil && Column("sourceId") == nil)
             .fetchCount(db)
-        return folders + pages
+        let sources = try Source
+            .filter(Column("folderId") == folderId && Column("deletedAt") == nil)
+            .fetchCount(db)
+        return folders + pages + sources
     }
 }
 
@@ -172,8 +198,10 @@ public enum InboxQuery {
 public struct PageLinksSnapshot: Equatable, Sendable {
     public var pages: [Page]
     public var backlinks: [Page]
+    /// Живые источники: для подписей выписок и для шапки страницы заметок к книге.
+    public var sources: [Source]
 
-    public static let empty = PageLinksSnapshot(pages: [], backlinks: [])
+    public static let empty = PageLinksSnapshot(pages: [], backlinks: [], sources: [])
 
     public static func fetch(_ db: Database, pageId: UUID) throws -> PageLinksSnapshot {
         let pages = try Page
@@ -187,18 +215,22 @@ public struct PageLinksSnapshot: Equatable, Sendable {
             WHERE link.targetPageId = ? AND page.id != ? AND page.deletedAt IS NULL
             ORDER BY page.title
             """, arguments: [pageId, pageId])
-        return PageLinksSnapshot(pages: pages, backlinks: backlinks)
+        let sources = try Source
+            .filter(Column("deletedAt") == nil)
+            .fetchAll(db)
+        return PageLinksSnapshot(pages: pages, backlinks: backlinks, sources: sources)
     }
 }
 
-/// Корзина: удалённые папки (только верхние, вложенные вернутся вместе с ними) и страницы.
+/// Корзина: удалённые папки (только верхние, вложенные вернутся вместе с ними), страницы и книги.
 public struct TrashSnapshot: Equatable, Sendable {
     public var folders: [Folder]
     public var pages: [Page]
+    public var sources: [Source]
 
-    public static let empty = TrashSnapshot(folders: [], pages: [])
+    public static let empty = TrashSnapshot(folders: [], pages: [], sources: [])
 
-    public var isEmpty: Bool { folders.isEmpty && pages.isEmpty }
+    public var isEmpty: Bool { folders.isEmpty && pages.isEmpty && sources.isEmpty }
 
     public static func fetch(_ db: Database) throws -> TrashSnapshot {
         let folders = try Folder.fetchAll(db, sql: """
@@ -209,14 +241,24 @@ public struct TrashSnapshot: Equatable, Sendable {
             ORDER BY folder.deletedAt DESC
             """)
         // Страницы из удалённой папки вернутся вместе с ней, отдельно их не показываем.
+        // Заметки к удалённой книге тоже вернутся вместе с книгой.
         let pages = try Page.fetchAll(db, sql: """
             SELECT page.*
             FROM page
             LEFT JOIN folder ON folder.id = page.folderId
+            LEFT JOIN source ON source.id = page.sourceId
             WHERE page.deletedAt IS NOT NULL AND (folder.id IS NULL OR folder.deletedAt IS NULL)
+                AND (source.id IS NULL OR source.deletedAt IS NULL)
             ORDER BY page.deletedAt DESC
             """)
-        return TrashSnapshot(folders: folders, pages: pages)
+        let sources = try Source.fetchAll(db, sql: """
+            SELECT source.*
+            FROM source
+            LEFT JOIN folder ON folder.id = source.folderId
+            WHERE source.deletedAt IS NOT NULL AND (folder.id IS NULL OR folder.deletedAt IS NULL)
+            ORDER BY source.deletedAt DESC
+            """)
+        return TrashSnapshot(folders: folders, pages: pages, sources: sources)
     }
 }
 
