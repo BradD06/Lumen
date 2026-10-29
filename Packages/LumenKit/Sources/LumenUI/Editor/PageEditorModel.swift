@@ -858,6 +858,18 @@ final class PageEditorModel {
         return links.pages.first { $0.id == id }
     }
 
+    /// Страница, в которую вложена эта, если она подстраница.
+    var parentPage: Page? {
+        linkedPage(page?.parentId)
+    }
+
+    /// Подстраницы этой страницы в их порядке.
+    var subpages: [Page] {
+        links.pages
+            .filter { $0.parentId == pageId }
+            .sorted { $0.sortKey < $1.sortKey }
+    }
+
     /// Заменяет набранный `[[запрос` или `@запрос` ссылкой на страницу. Если до триггера
     /// был текст, он остаётся в блоке, а ссылка встаёт следующим блоком.
     func linkPage(from id: UUID, to targetId: UUID) {
@@ -899,6 +911,19 @@ final class PageEditorModel {
         Task {
             await flush()
             openRequest = pageId
+        }
+    }
+
+    /// Новая пустая подстраница, сразу открытая.
+    func addSubpage() {
+        Task {
+            do {
+                let child = try await database.createPage(parentId: pageId)
+                await flush()
+                openRequest = child.id
+            } catch {
+                print("Failed to create subpage: \(error)")
+            }
         }
     }
 

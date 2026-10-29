@@ -125,15 +125,60 @@ struct FolderGlyph: View {
 }
 
 /// Обложка страницы на холсте: тетрадка с корешком, полосой обложки и началом текста.
+/// Если у страницы есть подстраницы, за ней видна стопка листов, а на обложке их число.
 struct PageCoverArt: View {
     let preview: PagePreview
     let attachments: AttachmentStore
+    var subpageCount = 0
 
     @Environment(\.lumenTheme) private var theme
 
     private var page: Page { preview.page }
 
     var body: some View {
+        ZStack {
+            // Не больше двух листов: дальше стопка только шумит.
+            ForEach(Array(0..<min(subpageCount, 2)).reversed(), id: \.self) { index in
+                sheet
+                    .rotationEffect(.degrees(Double(index + 1) * 4), anchor: .bottomLeading)
+                    .offset(x: CGFloat(index + 1) * 5, y: -CGFloat(index + 1) * 2)
+            }
+            cover
+                .overlay(alignment: .topTrailing) {
+                    if subpageCount > 0 {
+                        subpageBadge
+                    }
+                }
+        }
+    }
+
+    private var sheet: some View {
+        UnevenRoundedRectangle(
+            topLeadingRadius: 4, bottomLeadingRadius: 4, bottomTrailingRadius: 12, topTrailingRadius: 12,
+            style: .continuous
+        )
+        .fill(theme.cardFill.mix(with: .white, by: 0.12))
+        .overlay(UnevenRoundedRectangle(
+            topLeadingRadius: 4, bottomLeadingRadius: 4, bottomTrailingRadius: 12, topTrailingRadius: 12,
+            style: .continuous
+        ).strokeBorder(.white.opacity(0.14), lineWidth: 1))
+        .frame(width: 100, height: 132)
+        .shadow(color: .black.opacity(0.3), radius: 6, y: 4)
+    }
+
+    private var subpageBadge: some View {
+        Label("\(subpageCount)", systemImage: "doc.on.doc.fill")
+            .font(.system(size: 9, weight: .bold))
+            .labelStyle(.titleAndIcon)
+            .foregroundStyle(theme.textPrimary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(.black.opacity(0.35), in: Capsule())
+            .padding(6)
+    }
+
+    @ViewBuilder
+    private var cover: some View {
         let shape = UnevenRoundedRectangle(
             topLeadingRadius: 4, bottomLeadingRadius: 4, bottomTrailingRadius: 12, topTrailingRadius: 12,
             style: .continuous

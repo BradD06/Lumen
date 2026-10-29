@@ -286,9 +286,12 @@ struct PageEditorView: View {
                 BlockTree(block: block, depth: 0, model: model, focus: $focus)
             }
             Color.clear
-                .frame(height: model.links.backlinks.isEmpty ? 200 : 60)
+                .frame(height: model.links.backlinks.isEmpty && model.subpages.isEmpty ? 200 : 60)
                 .contentShape(Rectangle())
                 .onTapGesture { model.focusEnd() }
+            if !model.subpages.isEmpty {
+                subpages
+            }
             if !model.links.backlinks.isEmpty {
                 backlinks
             }
@@ -306,6 +309,21 @@ struct PageEditorView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let parent = model.parentPage {
+                Button {
+                    model.open(parent.id)
+                } label: {
+                    Label {
+                        Text(parent.displayTitle).lineLimit(1)
+                    } icon: {
+                        Image(systemName: "arrow.turn.left.up")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .help("Открыть страницу, в которую вложена эта")
+            }
             HStack(spacing: 8) {
                 Menu {
                     ForEach(Self.icons, id: \.self) { icon in
@@ -429,6 +447,35 @@ struct PageEditorView: View {
         wallpaper.palette = palette
         wallpaper.isFaceted = isFaceted
         model.setCover(.wallpaper(wallpaper))
+    }
+
+    /// Подстраницы: вложенные в эту страницу, с кнопкой для новой.
+    private var subpages: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Подстраницы", systemImage: "doc.on.doc")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.textSecondary)
+            ForEach(model.subpages) { page in
+                Button {
+                    model.open(page.id)
+                } label: {
+                    PageLabel(page: page)
+                        .foregroundStyle(theme.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            Button {
+                model.addSubpage()
+            } label: {
+                Label("Новая подстраница", systemImage: "plus")
+                    .foregroundStyle(theme.textSecondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .lumenCard(padding: 14)
+        .padding(.bottom, model.links.backlinks.isEmpty ? 40 : 8)
     }
 
     /// Обратные ссылки: страницы, в которых есть ссылка на эту.

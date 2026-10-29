@@ -287,7 +287,7 @@ struct LibraryView: View {
                 isRenaming: renaming == item.id,
                 onCommitRename: commitRename
             ) {
-                PageCoverArt(preview: entry.preview, attachments: database.attachments)
+                PageCoverArt(preview: entry.preview, attachments: database.attachments, subpageCount: entry.subpages.count)
             }
             .modifier(TileInteraction(
                 onSelect: { select(item.id) },
