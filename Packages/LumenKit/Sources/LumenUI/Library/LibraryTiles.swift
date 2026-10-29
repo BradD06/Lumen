@@ -318,3 +318,102 @@ extension Int {
         return "\(self) \(word)"
     }
 }
+
+/// Книга или файл на холсте: обложка из файла или нарисованная, корешок и полоска прочитанного.
+struct SourceCoverArt: View {
+    let source: Source
+    let attachments: AttachmentStore
+
+    @Environment(\.lumenTheme) private var theme
+
+    private var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: 3, bottomLeadingRadius: 3, bottomTrailingRadius: 10, topTrailingRadius: 10,
+            style: .continuous
+        )
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            if let cover = source.cover {
+                AttachmentImage(name: cover, attachments: attachments, contentMode: .fill)
+                    .frame(width: 98, height: 136)
+                    .clipped()
+            } else {
+                drawnCover
+            }
+            if source.progress > 0.005 {
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(.black.opacity(0.35))
+                        Capsule()
+                            .fill(theme.accent)
+                            .frame(width: max(4, geometry.size.width * source.progress))
+                    }
+                }
+                .frame(height: 4)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 7)
+            }
+        }
+        .frame(width: 98, height: 136)
+        .overlay(alignment: .leading) {
+            // Корешок книги.
+            LinearGradient(
+                colors: [.black.opacity(0.35), .white.opacity(0.18), .black.opacity(0.1), .clear],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: 10)
+        }
+        .overlay(alignment: .topTrailing) {
+            if !source.format.isBook || source.cover != nil {
+                Text(source.format.label)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(.black.opacity(0.45), in: Capsule())
+                    .padding(5)
+            }
+        }
+        .overlay(shape.strokeBorder(
+            LinearGradient(colors: [.white.opacity(0.4), .white.opacity(0.06)], startPoint: .top, endPoint: .bottom),
+            lineWidth: 1
+        ))
+        .clipShape(shape)
+        .shadow(color: .black.opacity(0.5), radius: 12, y: 10)
+    }
+
+    /// Обложка без картинки: постоянный цвет по книге, название и автор.
+    private var drawnCover: some View {
+        let card = theme.vividCard(Int(source.id.uuid.1))
+        return ZStack {
+            LinearGradient(colors: card.colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+            LinearGradient(colors: [.white.opacity(0.3), .clear], startPoint: .top, endPoint: .center)
+            VStack(alignment: .leading, spacing: 6) {
+                Image(systemName: source.format.symbolName)
+                    .font(.system(size: 15, weight: .semibold))
+                Text(source.displayTitle)
+                    .font(.system(size: 11, weight: .bold, design: .serif))
+                    .lineLimit(5)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+                if let author = source.author {
+                    Text(author)
+                        .font(.system(size: 8, weight: .medium))
+                        .lineLimit(2)
+                        .opacity(0.8)
+                }
+                Text(source.format.label.uppercased())
+                    .font(.system(size: 7, weight: .heavy))
+                    .opacity(0.6)
+            }
+            .foregroundStyle(card.foreground)
+            .padding(.leading, 16)
+            .padding(.trailing, 8)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+    }
+}

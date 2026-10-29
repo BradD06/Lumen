@@ -70,7 +70,7 @@ struct InboxView: View {
     }
 }
 
-/// Корзина: восстановить папку или страницу, или удалить всё навсегда.
+/// Корзина: восстановить папку, страницу или книгу, или удалить всё навсегда.
 struct TrashView: View {
     let database: AppDatabase
 
@@ -86,6 +86,18 @@ struct TrashView: View {
                     Button("Восстановить") {
                         LumenSounds.play(.restore)
                         Task { try? await database.restoreFolder(folder.id) }
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .listRowBackground(Color.clear)
+            }
+            ForEach(trash.sources) { source in
+                HStack {
+                    Label(source.displayTitle, systemImage: source.format.symbolName)
+                    Spacer()
+                    Button("Восстановить") {
+                        LumenSounds.play(.restore)
+                        Task { try? await database.restoreSource(source.id) }
                     }
                     .buttonStyle(.bordered)
                 }

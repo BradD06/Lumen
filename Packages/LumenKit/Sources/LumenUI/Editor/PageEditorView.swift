@@ -21,8 +21,12 @@ enum EditorFocus: Hashable {
 /// в ленивом стеке. Markdown-сокращения, slash-меню, Return и Backspace работают как в Notion.
 struct PageEditorView: View {
     @State private var model: PageEditorModel
+    /// Редактор встроен в другой экран (заметки рядом с книгой): без своих кнопок в панели окна.
+    var isEmbedded = false
     var onOpenPage: (UUID) -> Void
     var onClose: () -> Void
+    /// Открыть книгу, а если указано выделение, то на его месте.
+    var onOpenSource: (UUID, UUID?) -> Void = { _, _ in }
 
     @FocusState private var focus: EditorFocus?
     /// Куда пойдёт фото из галереи: в обложку или в фон страницы.
@@ -53,10 +57,30 @@ struct PageEditorView: View {
     private static let icons = ["📝", "📘", "📚", "🎓", "💡", "✅", "🧠", "🌅", "🗂️", "⭐️"]
     private static let coverGradients = ["Персик", "Солнце", "Лаванда", "Лайм", "Небо"]
 
-    init(database: AppDatabase, pageId: UUID, onOpenPage: @escaping (UUID) -> Void, onClose: @escaping () -> Void) {
+    init(
+        database: AppDatabase,
+        pageId: UUID,
+        onOpenPage: @escaping (UUID) -> Void,
+        onClose: @escaping () -> Void,
+        onOpenSource: @escaping (UUID, UUID?) -> Void = { _, _ in }
+    ) {
         _model = State(initialValue: PageEditorModel(database: database, pageId: pageId))
         self.onOpenPage = onOpenPage
         self.onClose = onClose
+        self.onOpenSource = onOpenSource
+    }
+
+    /// Встроенный редактор: модель создаёт и держит экран вокруг, например читалка, чтобы вставлять выписки.
+    init(
+        model: PageEditorModel,
+        onOpenPage: @escaping (UUID) -> Void,
+        onOpenSource: @escaping (UUID, UUID?) -> Void
+    ) {
+        _model = State(initialValue: model)
+        isEmbedded = true
+        self.onOpenPage = onOpenPage
+        self.onClose = {}
+        self.onOpenSource = onOpenSource
     }
 
     var body: some View {
@@ -99,10 +123,7 @@ struct PageEditorView: View {
                 sunset: scrollOffset / 700
             )
         )
-        .navigationTitle(model.isLoaded ? displayTitle : "")
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+        .modifier(EditorNavigationTitle(title: model.isLoaded ? displayTitle : "", isEnabled: !isEmbedded))
         .toolbar {
             #if os(iOS)
             // На экранной клавиатуре нет Tab: вложенность меняется кнопками над клавиатурой.
@@ -124,60 +145,8 @@ struct PageEditorView: View {
                 }
             }
             #endif
-            ToolbarItemGroup {
-                Button {
-                    model.undo()
-                } label: {
-                    Label("Отменить", systemImage: "arrow.uturn.backward")
-                }
-                .disabled(!model.canUndo)
-                Button {
-                    model.redo()
-                } label: {
-                    Label("Повторить", systemImage: "arrow.uturn.forward")
-                }
-                .disabled(!model.canRedo)
-            }
-            ToolbarItem {
-                Menu {
-                    Button {
-                        model.toggleFavorite()
-                    } label: {
-                        if model.page?.isFavorite == true {
-                            Label("Убрать из избранного", systemImage: "star.slash")
-                        } else {
-                            Label("В избранное", systemImage: "star")
-                        }
-                    }
-                    if model.page?.inInbox == true {
-                        Button {
-                            model.moveOutOfInbox()
-                        } label: {
-                            Label("Перенести в страницы", systemImage: "folder")
-                        }
-                    }
-                    Toggle("Звуки", isOn: $soundsEnabled)
-                    Divider()
-                    Button(role: .destructive) {
-                        LumenSounds.play(.trash)
-                        Task {
-                            await model.trash()
-                            onClose()
-                        }
-                    } label: {
-                        Label("Удалить страницу", systemImage: "trash")
-                    }
-                } label: {
-                    Label("Ещё", systemImage: "ellipsis.circle")
-                }
-            }
-            ToolbarItem {
-                Button {
-                    setSubpagesPanel(!showsSubpages)
-                } label: {
-                    Label("Подстраницы", systemImage: "sidebar.right")
-                }
-                .help(model.subpages.isEmpty ? "Подстраницы" : "Подстраницы: \(model.subpages.count)")
+            if !isEmbedded {
+                editorToolbar
             }
         }
         .overlay(alignment: .trailing) {
@@ -205,7 +174,7 @@ struct PageEditorView: View {
                 .accessibilityHidden(!showsSubpages)
             }
         }
-        .onAppear { showsSubpages = remembersSubpages }
+        .onAppear { showsSubpages = remembersSubpages && !isEmbedded }
         .task {
             await model.load()
             if model.title.isEmpty {
@@ -218,6 +187,11 @@ struct PageEditorView: View {
             guard let request else { return }
             model.openRequest = nil
             onOpenPage(request)
+        }
+        .onChange(of: model.openSourceRequest) { _, request in
+            guard let request else { return }
+            model.openSourceRequest = nil
+            onOpenSource(request.sourceId, request.highlightId)
         }
         .photosPicker(
             isPresented: $isPickingPhoto,
@@ -276,6 +250,65 @@ struct PageEditorView: View {
             }
             #endif
             Task { await model.flush() }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var editorToolbar: some ToolbarContent {
+        ToolbarItemGroup {
+            Button {
+                model.undo()
+            } label: {
+                Label("Отменить", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(!model.canUndo)
+            Button {
+                model.redo()
+            } label: {
+                Label("Повторить", systemImage: "arrow.uturn.forward")
+            }
+            .disabled(!model.canRedo)
+        }
+        ToolbarItem {
+            Menu {
+                Button {
+                    model.toggleFavorite()
+                } label: {
+                    if model.page?.isFavorite == true {
+                        Label("Убрать из избранного", systemImage: "star.slash")
+                    } else {
+                        Label("В избранное", systemImage: "star")
+                    }
+                }
+                if model.page?.inInbox == true {
+                    Button {
+                        model.moveOutOfInbox()
+                    } label: {
+                        Label("Перенести в страницы", systemImage: "folder")
+                    }
+                }
+                Toggle("Звуки", isOn: $soundsEnabled)
+                Divider()
+                Button(role: .destructive) {
+                    LumenSounds.play(.trash)
+                    Task {
+                        await model.trash()
+                        onClose()
+                    }
+                } label: {
+                    Label("Удалить страницу", systemImage: "trash")
+                }
+            } label: {
+                Label("Ещё", systemImage: "ellipsis.circle")
+            }
+        }
+        ToolbarItem {
+            Button {
+                setSubpagesPanel(!showsSubpages)
+            } label: {
+                Label("Подстраницы", systemImage: "sidebar.right")
+            }
+            .help(model.subpages.isEmpty ? "Подстраницы" : "Подстраницы: \(model.subpages.count)")
         }
     }
 
@@ -400,6 +433,21 @@ struct PageEditorView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if !isEmbedded, let source = model.notesSource {
+                Button {
+                    LumenSounds.play(.navigate)
+                    model.openSource(source.id)
+                } label: {
+                    Label {
+                        Text("Заметки к «\(source.displayTitle)» · открыть рядом с книгой").lineLimit(1)
+                    } icon: {
+                        Image(systemName: "book.pages")
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(theme.accent)
+                }
+                .buttonStyle(.plain)
+            }
             if let parent = model.parentPage {
                 Button {
                     model.open(parent.id)
@@ -560,6 +608,24 @@ struct PageEditorView: View {
         }
         .lumenCard(padding: 14)
         .padding(.bottom, 40)
+    }
+}
+
+/// Название страницы в панели окна. Встроенный редактор его не ставит: название там у экрана вокруг.
+private struct EditorNavigationTitle: ViewModifier {
+    let title: String
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content
+                .navigationTitle(title)
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+        } else {
+            content
+        }
     }
 }
 

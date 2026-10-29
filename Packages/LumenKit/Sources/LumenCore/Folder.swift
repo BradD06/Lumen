@@ -1,6 +1,6 @@
 import Foundation
 
-/// Папка библиотеки. Папки вкладываются друг в друга, в них лежат страницы (позже книги и файлы).
+/// Папка библиотеки. Папки вкладываются друг в друга, в них лежат страницы, книги и файлы.
 /// Как в Goodnotes, но без сетки: у каждой папки и страницы своё место на холсте родительской папки.
 public struct Folder: Identifiable, Hashable, Codable, Sendable {
     public static let colorCount = 6
@@ -78,6 +78,8 @@ public struct LibraryPoint: Hashable, Codable, Sendable {
 public enum LibraryItemID: Hashable, Sendable, Identifiable {
     case folder(UUID)
     case page(UUID)
+    /// Книга или файл.
+    case source(UUID)
 
     public var id: Self { self }
 }
