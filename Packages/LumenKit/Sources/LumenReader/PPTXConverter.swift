@@ -17,11 +17,20 @@ enum PPTXConverter {
         guard !slidePaths.isEmpty else { throw ReaderError.unreadable }
 
         var html = ""
+        var toc: [TocEntry] = []
         for (index, path) in slidePaths.enumerated() {
             guard let slide = XMLTree.parse(contentsOf: folder.appendingPathComponent(path)) else { continue }
             let renderer = SlideRenderer(relationships: OfficeRelationships(folder: folder, part: path))
             let number = index + 1
-            html += "<section class=\"slide\" data-lumen-label=\"Слайд \(number)\">"
+            let titleText = slide.descendants("sp")
+                .first { shape in ["title", "ctrTitle"].contains(shape.descendants("ph").first?.attribute("type") ?? "") }?
+                .descendants("t").map(\.text).joined().collapsedWhitespace ?? ""
+            toc.append(TocEntry(
+                title: titleText.isEmpty ? "Слайд \(number)" : "\(number). \(titleText)",
+                section: 0,
+                anchor: "slide-\(number)"
+            ))
+            html += "<section class=\"slide\" id=\"slide-\(number)\" data-lumen-label=\"Слайд \(number)\">"
             html += "<div class=\"slide-number\">\(number)</div>"
             html += renderer.render(tree: slide.descendants("spTree").first)
             html += "</section>"
@@ -32,7 +41,8 @@ enum PPTXConverter {
         return ReadableDocument(
             title: core.title,
             author: core.author,
-            sections: [ReadableSection(title: core.title ?? "Слайды", path: "index.html")]
+            sections: [ReadableSection(title: core.title ?? "Слайды", path: "index.html")],
+            toc: toc
         )
     }
 

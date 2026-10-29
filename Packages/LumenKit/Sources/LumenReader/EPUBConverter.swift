@@ -40,7 +40,11 @@ enum EPUBConverter {
             coverPath = manifest[coverId]?.href
         }
 
-        let titles = tableOfContents(package: package, manifest: manifest.mapValues { (href: $0.href, properties: $0.properties) }, root: folder)
+        let entries = tableOfContents(package: package, manifest: manifest.mapValues { (href: $0.href, properties: $0.properties) }, root: folder)
+        var titles: [String: String] = [:]
+        for entry in entries where titles[entry.path] == nil {
+            titles[entry.path] = entry.title
+        }
 
         var sections: [ReadableSection] = []
         for itemref in package.descendants("itemref") where itemref.attribute("linear") != "no" {
@@ -50,44 +54,82 @@ enum EPUBConverter {
             sections.append(ReadableSection(title: titles[item.href] ?? "Глава \(number)", path: item.href))
         }
         guard !sections.isEmpty else { throw ReaderError.unreadable }
+
+        // Пункты оглавления, которые ведут в главы книги. Ссылки на файлы вне порядка чтения пропускаются.
+        var sectionIndex: [String: Int] = [:]
+        for (index, section) in sections.enumerated() where sectionIndex[section.path] == nil {
+            sectionIndex[section.path] = index
+        }
+        let toc = entries.compactMap { entry -> TocEntry? in
+            guard let section = sectionIndex[entry.path] else { return nil }
+            return TocEntry(title: entry.title, section: section, anchor: entry.anchor, level: entry.level)
+        }
         return ReadableDocument(
             title: title?.isEmpty == false ? title : nil,
             author: author?.isEmpty == false ? author : nil,
             sections: sections,
-            coverPath: coverPath
+            coverPath: coverPath,
+            toc: toc
         )
     }
 
-    /// Названия глав по пути файла: из оглавления EPUB 3 (nav) или EPUB 2 (NCX).
+    struct NavEntry {
+        var title: String
+        var path: String
+        var anchor: String?
+        var level: Int
+    }
+
+    /// Оглавление EPUB 3 (nav) или EPUB 2 (NCX) с вложенностью, по порядку.
     private static func tableOfContents(
         package: XElement,
         manifest: [String: (href: String, properties: String)],
         root: URL
-    ) -> [String: String] {
-        var titles: [String: String] = [:]
-        func add(_ href: String, base: String, title: String) {
-            let path = join((base as NSString).deletingLastPathComponent, href.components(separatedBy: "#")[0])
-            let title = title.trimmed
-            if !title.isEmpty, titles[path] == nil { titles[path] = title }
+    ) -> [NavEntry] {
+        var entries: [NavEntry] = []
+        func add(_ href: String, base: String, title: String, level: Int) {
+            let parts = href.components(separatedBy: "#")
+            let path = parts[0].isEmpty ? base : join((base as NSString).deletingLastPathComponent, parts[0])
+            let title = title.collapsedWhitespace
+            guard !title.isEmpty else { return }
+            let anchor = parts.count > 1 && !parts[1].isEmpty ? parts[1] : nil
+            entries.append(NavEntry(title: title, path: path, anchor: anchor, level: level))
         }
 
         if let nav = manifest.values.first(where: { $0.properties.contains("nav") }),
            let tree = XMLTree.parse(contentsOf: root.appendingPathComponent(nav.href)) {
             let tocNav = tree.descendants("nav").first { $0.attribute("type") == "toc" } ?? tree.descendants("nav").first
-            for link in tocNav?.descendants("a") ?? [] {
-                if let href = link.attribute("href") { add(href, base: nav.href, title: link.text) }
+            func walk(_ list: XElement, level: Int) {
+                for item in list.children("li") {
+                    if let link = item.child("a"), let href = link.attribute("href") {
+                        add(href, base: nav.href, title: link.text, level: level)
+                    }
+                    if let nested = item.child("ol") ?? item.child("ul") {
+                        walk(nested, level: level + 1)
+                    }
+                }
+            }
+            if let list = tocNav?.child("ol") ?? tocNav?.child("ul") {
+                walk(list, level: 0)
             }
         }
-        if titles.isEmpty,
+        if entries.isEmpty,
            let tocId = package.descendants("spine").first?.attribute("toc"),
            let ncx = manifest[tocId],
            let tree = XMLTree.parse(contentsOf: root.appendingPathComponent(ncx.href)) {
-            for point in tree.descendants("navPoint") {
-                guard let src = point.child("content")?.attribute("src") else { continue }
-                add(src, base: ncx.href, title: point.child("navLabel")?.text ?? "")
+            func walk(_ parent: XElement, level: Int) {
+                for point in parent.children("navPoint") {
+                    if let src = point.child("content")?.attribute("src") {
+                        add(src, base: ncx.href, title: point.child("navLabel")?.text ?? "", level: level)
+                    }
+                    walk(point, level: level + 1)
+                }
+            }
+            if let map = tree.descendants("navMap").first {
+                walk(map, level: 0)
             }
         }
-        return titles
+        return entries
     }
 
     /// Путь внутри архива: папка OPF плюс относительная ссылка, без `..` и процентов.
@@ -107,4 +149,7 @@ enum EPUBConverter {
 
 extension String {
     var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// Пробелы и переносы строк внутри схлопнуты в один пробел.
+    var collapsedWhitespace: String { split(whereSeparator: \.isWhitespace).joined(separator: " ") }
 }

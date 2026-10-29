@@ -16,7 +16,9 @@ enum TextConverter {
         case .txt:
             try HTML.page(title: title, body: plainText(try readText(file))).write(to: index, atomically: true, encoding: .utf8)
         case .markdown:
-            try HTML.page(title: title, body: markdown(try readText(file))).write(to: index, atomically: true, encoding: .utf8)
+            let converted = markdownWithOutline(try readText(file))
+            try HTML.page(title: title, body: converted.html).write(to: index, atomically: true, encoding: .utf8)
+            return ReadableDocument(sections: [ReadableSection(title: title, path: "index.html")], toc: converted.toc)
         case .html:
             try FileManager.default.copyItem(at: file, to: index)
         case .rtf, .doc, .odt:
@@ -50,8 +52,14 @@ enum TextConverter {
             .joined(separator: "\n")
     }
 
-    /// Небольшая часть Markdown: заголовки, списки, цитаты, код, жирный, курсив и `код` в строке.
     static func markdown(_ text: String) -> String {
+        markdownWithOutline(text).html
+    }
+
+    /// Небольшая часть Markdown: заголовки, списки, цитаты, код, жирный, курсив и `код` в строке.
+    /// Заголовки получают якоря и попадают в оглавление.
+    static func markdownWithOutline(_ text: String) -> (html: String, toc: [TocEntry]) {
+        var toc: [TocEntry] = []
         var html = ""
         var paragraph: [String] = []
         var list: String?
@@ -89,7 +97,9 @@ enum TextConverter {
                 flushParagraph()
                 closeList()
                 let content = line.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)
-                html += "<h\(level)>\(inlineMarkdown(content))</h\(level)>\n"
+                let anchor = "toc-\(toc.count + 1)"
+                toc.append(TocEntry(title: content.replacingOccurrences(of: "*", with: "").replacingOccurrences(of: "`", with: ""), section: 0, anchor: anchor, level: level - 1))
+                html += "<h\(level) id=\"\(anchor)\">\(inlineMarkdown(content))</h\(level)>\n"
             } else if let item = listItem(line) {
                 flushParagraph()
                 if list != item.tag {
@@ -114,7 +124,7 @@ enum TextConverter {
         flushParagraph()
         closeList()
         if inCode { html += "</code></pre>\n" }
-        return html
+        return (html, toc)
     }
 
     private static func headingLevel(_ line: String) -> Int? {

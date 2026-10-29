@@ -32,8 +32,21 @@ enum FB2Converter {
         .joined(separator: ", ")
         let coverId = info?.child("coverpage")?.child("image").flatMap(imageId)
 
-        let renderer = Renderer(imagePaths: imagePaths)
+        // У вложенных разделов с заголовком свои якоря: на них ведёт оглавление.
+        var anchors: [ObjectIdentifier: String] = [:]
+        var toc: [TocEntry] = []
+        func collectNested(_ parent: XElement, section: Int, level: Int) {
+            for nested in parent.children("section") {
+                if let heading = nested.child("title")?.text.collapsedWhitespace, !heading.isEmpty {
+                    let anchor = "toc-\(anchors.count + 1)"
+                    anchors[ObjectIdentifier(nested)] = anchor
+                    toc.append(TocEntry(title: heading, section: section, anchor: anchor, level: level))
+                }
+                collectNested(nested, section: section, level: level + 1)
+            }
+        }
         var sections: [ReadableSection] = []
+        var renderer: Renderer { Renderer(imagePaths: imagePaths, anchors: anchors) }
         func write(_ body: String, title: String) throws {
             let path = "section-\(sections.count + 1).html"
             try HTML.page(title: title, body: body).write(to: folder.appendingPathComponent(path), atomically: true, encoding: .utf8)
@@ -43,11 +56,13 @@ enum FB2Converter {
         for body in book.children("body") {
             let isNotes = body.attribute("name") == "notes" || body.attribute("name") == "comments"
             if isNotes {
+                toc.append(TocEntry(title: "Примечания", section: sections.count))
                 try write(renderer.render(children: body), title: "Примечания")
                 continue
             }
             let topSections = body.children("section")
             if topSections.isEmpty {
+                collectNested(body, section: sections.count, level: 0)
                 try write(renderer.render(children: body), title: title ?? "Текст")
                 continue
             }
@@ -57,9 +72,12 @@ enum FB2Converter {
                 preface += renderer.render(element)
             }
             for (index, section) in topSections.enumerated() {
-                let sectionTitle = section.child("title")?.text.trimmed.replacingOccurrences(of: "\n", with: " ")
+                let sectionTitle = section.child("title")?.text.collapsedWhitespace
+                let chapterTitle = sectionTitle?.isEmpty == false ? sectionTitle! : "Глава \(sections.count + 1)"
+                toc.append(TocEntry(title: chapterTitle, section: sections.count))
+                collectNested(section, section: sections.count, level: 1)
                 let html = (index == 0 ? preface : "") + renderer.render(children: section)
-                try write(html, title: sectionTitle?.isEmpty == false ? sectionTitle! : "Глава \(sections.count + 1)")
+                try write(html, title: chapterTitle)
             }
         }
         guard !sections.isEmpty else { throw ReaderError.unreadable }
@@ -67,7 +85,8 @@ enum FB2Converter {
             title: title?.isEmpty == false ? title : nil,
             author: author?.isEmpty == false ? author : nil,
             sections: sections,
-            coverPath: coverId.flatMap { imagePaths[$0] }
+            coverPath: coverId.flatMap { imagePaths[$0] },
+            toc: toc
         )
     }
 
@@ -81,6 +100,7 @@ enum FB2Converter {
 
     private struct Renderer {
         let imagePaths: [String: String]
+        let anchors: [ObjectIdentifier: String]
 
         func render(children element: XElement) -> String {
             element.nodes.map { node in
@@ -94,7 +114,9 @@ enum FB2Converter {
         func render(_ element: XElement) -> String {
             let inner = { render(children: element) }
             switch element.localName {
-            case "section": return "<section>\(inner())</section>"
+            case "section":
+                let id = anchors[ObjectIdentifier(element)].map { " id=\"\($0)\"" } ?? ""
+                return "<section\(id)>\(inner())</section>"
             case "title": return "<h2>\(element.children("p").map { HTML.escape($0.text) }.joined(separator: "<br>"))</h2>"
             case "subtitle": return "<h3>\(inner())</h3>"
             case "p": return "<p>\(inner())</p>"

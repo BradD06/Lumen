@@ -29,8 +29,8 @@ public enum WebReaderEvent: Sendable {
     /// Выделили текст. `text` для цитаты, `raw` и `offset` чтобы найти это место снова.
     case selection(text: String, raw: String, offset: Int, label: String?, progression: Double)
     case selectionCleared
-    /// Прокрутили главу, `progression` от 0 до 1.
-    case scrolled(Double)
+    /// Прокрутили главу, `progression` от 0 до 1. `anchor` это последний пройденный якорь оглавления.
+    case scrolled(Double, anchor: String?)
     /// Нажали на выделение.
     case highlightTapped(UUID)
 }
@@ -48,6 +48,8 @@ public final class WebReaderController: NSObject {
     /// Что сделать, когда глава загрузится.
     private var pendingProgression: Double?
     private var pendingReveal: UUID?
+    private var pendingAnchor: String?
+    private var anchors: [String] = []
     private var loadedURL: URL?
 
     public override init() {
@@ -68,10 +70,11 @@ public final class WebReaderController: NSObject {
         #endif
     }
 
-    /// Открывает главу. `reveal` прокручивает к выделению, иначе к `progression`.
-    public func load(_ url: URL, root: URL, progression: Double = 0, reveal: UUID? = nil) {
+    /// Открывает главу. `reveal` прокручивает к выделению, `anchor` к пункту оглавления, иначе к `progression`.
+    public func load(_ url: URL, root: URL, progression: Double = 0, reveal: UUID? = nil, anchor: String? = nil) {
         pendingProgression = progression
         pendingReveal = reveal
+        pendingAnchor = anchor
         if url == loadedURL, isReady {
             applyPending()
             return
@@ -109,6 +112,34 @@ public final class WebReaderController: NSObject {
         webView.evaluateJavaScript("window.lumen && window.lumen.scrollTo(\(progression))")
     }
 
+    public func scroll(toAnchor anchor: String) {
+        webView.evaluateJavaScript("window.lumen && window.lumen.scrollToAnchor(\(Self.jsString(anchor)))")
+    }
+
+    /// Якоря оглавления в открытой главе, в порядке текста.
+    public func setAnchors(_ anchors: [String]) {
+        self.anchors = anchors
+        if isReady { applyAnchors() }
+    }
+
+    /// Заголовки открытой главы, когда в самом файле оглавления нет.
+    public func headings(section: Int) async -> [TocEntry] {
+        guard isReady else { return [] }
+        let json: String? = await withCheckedContinuation { continuation in
+            webView.evaluateJavaScript("window.lumen ? window.lumen.headings() : '[]'") { result, _ in
+                continuation.resume(returning: result as? String)
+            }
+        }
+        struct Heading: Decodable {
+            var id: String
+            var title: String
+            var level: Int
+        }
+        guard let data = json?.data(using: .utf8),
+              let headings = try? JSONDecoder().decode([Heading].self, from: data) else { return [] }
+        return headings.map { TocEntry(title: $0.title, section: section, anchor: $0.id, level: $0.level) }
+    }
+
     public func clearSelection() {
         webView.evaluateJavaScript("window.lumen && window.lumen.clearSelection()")
     }
@@ -125,6 +156,7 @@ public final class WebReaderController: NSObject {
             isReady = true
             applyStyle()
             paint()
+            applyAnchors()
             applyPending()
             onEvent?(.ready)
         case "selection":
@@ -143,7 +175,7 @@ public final class WebReaderController: NSObject {
         case "scroll":
             let value = (message["progression"] as? NSNumber)?.doubleValue ?? 0
             currentProgression = value
-            onEvent?(.scrolled(value))
+            onEvent?(.scrolled(value, anchor: message["anchor"] as? String))
         case "highlightTap":
             if let id = (message["id"] as? String).flatMap(UUID.init(uuidString:)) {
                 onEvent?(.highlightTapped(id))
@@ -165,11 +197,21 @@ public final class WebReaderController: NSObject {
         webView.evaluateJavaScript("window.lumen && window.lumen.paint([\(items.joined(separator: ","))])")
     }
 
+    private func applyAnchors() {
+        let list = anchors.map(Self.jsString).joined(separator: ",")
+        webView.evaluateJavaScript("window.lumen && window.lumen.setAnchors([\(list)])")
+    }
+
     private func applyPending() {
         if let id = pendingReveal {
             pendingReveal = nil
+            pendingAnchor = nil
             pendingProgression = nil
             reveal(id)
+        } else if let anchor = pendingAnchor {
+            pendingAnchor = nil
+            pendingProgression = nil
+            scroll(toAnchor: anchor)
         } else if let progression = pendingProgression {
             pendingProgression = nil
             currentProgression = progression

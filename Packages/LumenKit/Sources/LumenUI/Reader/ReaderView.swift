@@ -26,6 +26,8 @@ struct ReaderView: View {
     @AppStorage("reader.notesFraction") private var notesFraction = 0.42
     @State private var isNotesSheetPresented = false
     @State private var showsHighlights = false
+    @AppStorage("reader.tocOpen") private var showsToc = false
+    @State private var isTocSheetPresented = false
     @State private var dragStartFraction: Double?
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -73,6 +75,10 @@ struct ReaderView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar { toolbar }
+        .sheet(isPresented: $isTocSheetPresented) {
+            TableOfContents(model: model, closesOnSelect: true) { isTocSheetPresented = false }
+                .presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $isNotesSheetPresented) {
             if let notes = model.notes {
                 NavigationStack {
@@ -97,6 +103,15 @@ struct ReaderView: View {
         .onDisappear {
             Task { await model.flush() }
         }
+    }
+
+    /// Узкий экран iPhone: панели открываются шторками.
+    private var isCompact: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
     }
 
     private func isWide(_ width: CGFloat) -> Bool {
@@ -132,6 +147,20 @@ struct ReaderView: View {
             pageBackground
             document
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .leading) {
+                    // Содержание плавает над книгой слева и не сдвигает текст.
+                    if showsToc, !model.toc.isEmpty, !isCompact {
+                        TableOfContents(model: model) {
+                            LumenSounds.play(.panelClose)
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { showsToc = false }
+                        }
+                        .frame(width: 290)
+                        .frame(maxHeight: .infinity)
+                        .padding(.leading, 12)
+                        .padding(.vertical, 12)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    }
+                }
             VStack(spacing: 10) {
                 if let toast = model.toast {
                     Label(toast, systemImage: "checkmark.circle.fill")
@@ -340,22 +369,14 @@ struct ReaderView: View {
                 .pickerStyle(.segmented)
                 .help("Текст можно выделять и выписывать, оригинал показывает файл как есть")
             }
-            if model.sections.count > 1 {
-                Menu {
-                    ForEach(Array(model.sections.enumerated()), id: \.offset) { index, section in
-                        Button {
-                            model.openSection(index)
-                        } label: {
-                            if index == model.section {
-                                Label(section.title, systemImage: "checkmark")
-                            } else {
-                                Text(section.title)
-                            }
-                        }
-                    }
+            if !model.toc.isEmpty {
+                Button {
+                    toggleToc()
                 } label: {
-                    Label("Оглавление", systemImage: "list.bullet")
+                    Label("Содержание", systemImage: "list.bullet.indent")
                 }
+                .keyboardShortcut("t", modifiers: [.command, .option])
+                .help("Содержание (⌥⌘T)")
             }
             if case .web = model.content {
                 appearanceMenu
@@ -376,6 +397,19 @@ struct ReaderView: View {
                 Label("Заметки", systemImage: "sidebar.right")
             }
             .help("Заметки рядом с книгой")
+        }
+    }
+
+    private func toggleToc() {
+        #if os(iOS)
+        if horizontalSizeClass == .compact {
+            isTocSheetPresented.toggle()
+            return
+        }
+        #endif
+        LumenSounds.play(showsToc ? .panelClose : .panelOpen)
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+            showsToc.toggle()
         }
     }
 
@@ -515,6 +549,91 @@ private struct HighlightBar: View {
             .buttonStyle(ReaderPillButtonStyle())
         }
         .readerBarStyle(theme)
+    }
+}
+
+/// Содержание книги: вложенные пункты, текущий подсвечен, нажатие переходит к месту.
+private struct TableOfContents: View {
+    let model: ReaderModel
+    /// В шторке на iPhone содержание закрывается сразу после перехода.
+    var closesOnSelect = false
+    var onClose: () -> Void
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        let current = model.currentTocEntry
+        let baseLevel = model.toc.map(\.level).min() ?? 0
+        VStack(spacing: 0) {
+            HStack {
+                Label("Содержание", systemImage: "list.bullet.indent")
+                    .font(.headline)
+                    .foregroundStyle(theme.textPrimary)
+                Spacer()
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(theme.textSecondary)
+                        .frame(width: 24, height: 24)
+                        .background(theme.cardFill, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Скрыть содержание")
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(model.toc) { entry in
+                            let isCurrent = entry == current
+                            let level = max(entry.level - baseLevel, 0)
+                            Button {
+                                model.open(entry)
+                                if closesOnSelect { onClose() }
+                            } label: {
+                                Text(entry.title)
+                                    .font(level == 0 ? .callout.weight(isCurrent ? .bold : .semibold) : .callout.weight(isCurrent ? .semibold : .regular))
+                                    .foregroundStyle(isCurrent ? theme.textPrimary : theme.textPrimary.opacity(level == 0 ? 0.92 : 0.72))
+                                    .multilineTextAlignment(.leading)
+                                    .lineLimit(3)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.leading, 10 + CGFloat(min(level, 4)) * 14)
+                                    .padding(.trailing, 10)
+                                    .padding(.vertical, 7)
+                                    .background {
+                                        if isCurrent {
+                                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                                .fill(theme.accent.opacity(0.24))
+                                                .overlay(alignment: .leading) {
+                                                    Capsule().fill(theme.accent).frame(width: 3).padding(.vertical, 6)
+                                                }
+                                        }
+                                    }
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .id(entry.id)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 12)
+                }
+                .onAppear {
+                    if let current { proxy.scrollTo(current.id, anchor: .center) }
+                }
+                .onChange(of: current?.id) { _, id in
+                    guard let id else { return }
+                    withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo(id, anchor: .center) }
+                }
+            }
+        }
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(
+            LinearGradient(colors: [.white.opacity(0.3), .white.opacity(0.05)], startPoint: .top, endPoint: .bottom),
+            lineWidth: 1
+        ))
+        .shadow(color: .black.opacity(0.35), radius: 20, y: 12)
     }
 }
 

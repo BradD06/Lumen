@@ -9,12 +9,40 @@ public struct ReadableDocument: Codable, Hashable, Sendable {
     public var sections: [ReadableSection]
     /// Картинка обложки относительно папки документа.
     public var coverPath: String?
+    /// Оглавление. Пустое, если в файле его нет: тогда читалка соберёт заголовки открытой главы сама.
+    public var toc: [TocEntry]
 
-    public init(title: String? = nil, author: String? = nil, sections: [ReadableSection], coverPath: String? = nil) {
+    public init(
+        title: String? = nil,
+        author: String? = nil,
+        sections: [ReadableSection],
+        coverPath: String? = nil,
+        toc: [TocEntry] = []
+    ) {
         self.title = title
         self.author = author
         self.sections = sections
         self.coverPath = coverPath
+        self.toc = toc
+    }
+}
+
+/// Пункт оглавления: куда ведёт и насколько вложен.
+public struct TocEntry: Codable, Hashable, Sendable, Identifiable {
+    public var id: String { "\(section)#\(anchor ?? "")#\(title)" }
+    public var title: String
+    /// Глава (или страница PDF), с нуля.
+    public var section: Int
+    /// id элемента внутри главы. `nil` это начало главы.
+    public var anchor: String?
+    /// 0 для верхнего уровня.
+    public var level: Int
+
+    public init(title: String, section: Int, anchor: String? = nil, level: Int = 0) {
+        self.title = title
+        self.section = section
+        self.anchor = anchor
+        self.level = level
     }
 }
 
@@ -54,7 +82,7 @@ public enum ReaderError: Error, Equatable {
 /// Переводит файл источника в HTML и складывает результат в кэш, чтобы второе открытие было мгновенным.
 public enum DocumentConverter {
     /// Номер версии конвертеров: если поменять вывод, старый кэш перестанет подходить.
-    static let version = 1
+    static let version = 2
 
     /// Форматы, которые читалка показывает как HTML: с ними работают выделения и выписки.
     public static func canConvert(_ format: SourceFormat) -> Bool {

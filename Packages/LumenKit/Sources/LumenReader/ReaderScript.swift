@@ -121,10 +121,22 @@ enum ReaderScript {
         }, 250);
       });
 
+      // Якоря оглавления в этой главе: по ним видно, в каком разделе сейчас читатель.
+      let anchors = [];
+      function currentAnchor() {
+        let current = null;
+        for (const id of anchors) {
+          const element = document.getElementById(id);
+          if (!element) { continue; }
+          if (element.getBoundingClientRect().top <= 120) { current = id; } else { break; }
+        }
+        return current;
+      }
+
       let scrollTimer = null;
       window.addEventListener('scroll', () => {
         clearTimeout(scrollTimer);
-        scrollTimer = setTimeout(() => post({ type: 'scroll', progression: progression() }), 150);
+        scrollTimer = setTimeout(() => post({ type: 'scroll', progression: progression(), anchor: currentAnchor() }), 150);
       }, { passive: true });
 
       document.addEventListener('click', (event) => {
@@ -159,6 +171,30 @@ enum ReaderScript {
           return true;
         },
         clearSelection: () => { window.getSelection().removeAllRanges(); },
+        setAnchors: (ids) => {
+          anchors = ids;
+          post({ type: 'scroll', progression: progression(), anchor: currentAnchor() });
+        },
+        scrollToAnchor: (id) => {
+          const element = document.getElementById(id) || document.querySelector('[name="' + CSS.escape(id) + '"]');
+          if (!element) { return false; }
+          element.scrollIntoView({ block: 'start' });
+          window.scrollBy(0, -16);
+          return true;
+        },
+        // Заголовки главы для оглавления, если в файле своего нет. Без id им даётся свой.
+        headings: () => {
+          const result = [];
+          let index = 0;
+          for (const element of document.body.querySelectorAll('h1, h2, h3')) {
+            const title = (element.textContent || '').replace(/\s+/g, ' ').trim();
+            if (!title) { continue; }
+            index += 1;
+            if (!element.id) { element.id = 'lumen-h-' + index; }
+            result.push({ id: element.id, title: title, level: Number(element.tagName.substring(1)) - 1 });
+          }
+          return JSON.stringify(result);
+        },
         progression: progression
       };
       post({ type: 'ready', progression: progression() });

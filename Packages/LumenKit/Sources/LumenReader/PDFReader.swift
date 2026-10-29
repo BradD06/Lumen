@@ -76,6 +76,37 @@ public final class PDFReaderController: NSObject {
         }
     }
 
+    /// Оглавление PDF (закладки файла). Якорь пункта это точка на странице: `x,y`.
+    public func outline() -> [TocEntry] {
+        guard let document = pdfView.document, let root = document.outlineRoot else { return [] }
+        var entries: [TocEntry] = []
+        func walk(_ item: PDFOutline, level: Int) {
+            for index in 0..<item.numberOfChildren {
+                guard let child = item.child(at: index) else { continue }
+                let title = (child.label ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+                if !title.isEmpty, let destination = child.destination, let page = destination.page {
+                    let point = destination.point
+                    let anchor = point.x.isFinite && point.y.isFinite && point.y < 1_000_000 ? "\(point.x),\(point.y)" : nil
+                    entries.append(TocEntry(title: title, section: document.index(for: page), anchor: anchor, level: level))
+                }
+                walk(child, level: level + 1)
+            }
+        }
+        walk(root, level: 0)
+        return entries
+    }
+
+    /// Переход к пункту оглавления: к точке на странице, если она известна.
+    public func go(to entry: TocEntry) {
+        guard let document = pdfView.document, let page = document.page(at: entry.section) else { return }
+        let parts = entry.anchor?.split(separator: ",").compactMap { Double($0) } ?? []
+        if parts.count == 2 {
+            pdfView.go(to: PDFDestination(page: page, at: CGPoint(x: parts[0], y: parts[1])))
+        } else {
+            pdfView.go(to: page)
+        }
+    }
+
     public func reveal(_ id: UUID) {
         guard let highlight = highlights.first(where: { $0.id == id }) else { return }
         go(to: highlight.locator)

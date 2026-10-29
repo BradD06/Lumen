@@ -21,7 +21,8 @@ enum DOCXConverter {
         return ReadableDocument(
             title: core.title,
             author: core.author,
-            sections: [ReadableSection(title: core.title ?? "Документ", path: "index.html")]
+            sections: [ReadableSection(title: core.title ?? "Документ", path: "index.html")],
+            toc: renderer.toc
         )
     }
 
@@ -53,9 +54,16 @@ enum DOCXConverter {
         return nil
     }
 
-    private struct Renderer {
+    /// Собирает HTML и заодно оглавление из заголовков: у каждого заголовка свой якорь.
+    private final class Renderer {
         let relationships: OfficeRelationships
         let headingLevels: [String: Int]
+        private(set) var toc: [TocEntry] = []
+
+        init(relationships: OfficeRelationships, headingLevels: [String: Int]) {
+            self.relationships = relationships
+            self.headingLevels = headingLevels
+        }
 
         func render(blocks: [XElement]) -> String {
             var html = ""
@@ -82,7 +90,11 @@ enum DOCXConverter {
             if asListItem { return "<li>\(content)</li>" }
             let style = p.child("pPr")?.child("pStyle")?.attribute("val")
             if let style, let level = headingLevels[style] ?? DOCXConverter.headingLevel(style.lowercased()) {
-                return "<h\(level)>\(content)</h\(level)>"
+                let title = p.descendants("t").map(\.text).joined().collapsedWhitespace
+                guard !title.isEmpty else { return "<h\(level)>\(content)</h\(level)>" }
+                let anchor = "toc-\(toc.count + 1)"
+                toc.append(TocEntry(title: title, section: 0, anchor: anchor, level: level - 1))
+                return "<h\(level) id=\"\(anchor)\">\(content)</h\(level)>"
             }
             let alignment = p.child("pPr")?.child("jc")?.attribute("val")
             let center = alignment == "center" ? " class=\"center\"" : ""

@@ -61,7 +61,8 @@ struct ConverterTests {
             "OEBPS/nav.xhtml": """
                 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>
                 <nav epub:type="toc"><ol>
-                  <li><a href="text/chapter1.xhtml">Глава первая</a></li>
+                  <li><a href="text/chapter1.xhtml">Глава первая</a>
+                    <ol><li><a href="text/chapter1.xhtml#part">Раздел</a></li></ol></li>
                   <li><a href="text/chapter%202.xhtml#start">Глава вторая</a></li>
                 </ol></nav></body></html>
                 """,
@@ -75,6 +76,11 @@ struct ConverterTests {
         #expect(prepared.document.sections.map(\.title) == ["Глава первая", "Глава вторая"])
         #expect(prepared.document.sections.map(\.path) == ["OEBPS/text/chapter1.xhtml", "OEBPS/text/chapter 2.xhtml"])
         #expect(prepared.document.coverPath == "OEBPS/images/cover.jpg")
+        #expect(prepared.document.toc == [
+            TocEntry(title: "Глава первая", section: 0, level: 0),
+            TocEntry(title: "Раздел", section: 0, anchor: "part", level: 1),
+            TocEntry(title: "Глава вторая", section: 1, anchor: "start", level: 0),
+        ])
         #expect(try html(prepared, section: 1).contains("Деревня"))
     }
 
@@ -90,7 +96,8 @@ struct ConverterTests {
                 <coverpage><image l:href="#cover.png"/></coverpage>
               </title-info></description>
               <body>
-                <section><title><p>Часть первая</p></title><p>Ну, князь, <emphasis>Генуя</emphasis> и Лукка</p></section>
+                <section><title><p>Часть первая</p></title><p>Ну, князь, <emphasis>Генуя</emphasis> и Лукка</p>
+                  <section><title><p>Глава I</p></title><p>Текст</p></section></section>
                 <section><title><p>Часть вторая</p></title><p>В октябре</p></section>
               </body>
               <body name="notes"><section><p>Примечание</p></section></body>
@@ -103,6 +110,9 @@ struct ConverterTests {
         #expect(prepared.document.author == "Лев Толстой")
         #expect(prepared.document.sections.map(\.title) == ["Часть первая", "Часть вторая", "Примечания"])
         #expect(try html(prepared).contains("<em>Генуя</em>"))
+        #expect(try html(prepared).contains("<section id=\"toc-1\">"))
+        #expect(prepared.document.toc.map(\.title) == ["Часть первая", "Глава I", "Часть вторая", "Примечания"])
+        #expect(prepared.document.toc[1] == TocEntry(title: "Глава I", section: 0, anchor: "toc-1", level: 1))
         let cover = try #require(prepared.coverURL)
         #expect(try Data(contentsOf: cover) == Data("png".utf8))
     }
@@ -128,7 +138,8 @@ struct ConverterTests {
         let prepared = try prepare(file, .docx)
         let text = try html(prepared)
         #expect(prepared.document.title == "Курсовая")
-        #expect(text.contains("<h1>Введение</h1>"))
+        #expect(text.contains("<h1 id=\"toc-1\">Введение</h1>"))
+        #expect(prepared.document.toc == [TocEntry(title: "Введение", section: 0, anchor: "toc-1", level: 0)])
         #expect(text.contains("<strong>Жирный</strong> и обычный"))
         #expect(text.contains("<ul><li>Пункт</li></ul>"))
         #expect(text.contains("<td>"))
@@ -146,8 +157,10 @@ struct ConverterTests {
                 </p:spTree></p:cSld></p:sld>
                 """,
         ])
-        let text = try html(try prepare(file, .pptx))
+        let prepared = try prepare(file, .pptx)
+        let text = try html(prepared)
         #expect(text.contains("data-lumen-label=\"Слайд 1\""))
+        #expect(prepared.document.toc == [TocEntry(title: "1. План доклада", section: 0, anchor: "slide-1")])
         let title = try #require(text.range(of: "<h2>План доклада</h2>"))
         let list = try #require(text.range(of: "<ul><li>Первый пункт</li><li>Второй</li></ul>"))
         #expect(title.lowerBound < list.lowerBound)
@@ -156,7 +169,8 @@ struct ConverterTests {
     @Test func plainTextAndMarkdown() throws {
         #expect(TextConverter.plainText("Первый\nабзац\n\nВторой <абзац>") == "<p>Первый абзац</p>\n<p>Второй &lt;абзац&gt;</p>")
         let html = TextConverter.markdown("# Заголовок\n\n- один\n- **два**\n\nТекст с `кодом`")
-        #expect(html.contains("<h1>Заголовок</h1>"))
+        #expect(html.contains("<h1 id=\"toc-1\">Заголовок</h1>"))
+        #expect(TextConverter.markdownWithOutline("# Один\n## Два").toc.map(\.level) == [0, 1])
         #expect(html.contains("<ul>\n<li>один</li>\n<li><strong>два</strong></li>\n</ul>"))
         #expect(html.contains("<p>Текст с <code>кодом</code></p>"))
     }

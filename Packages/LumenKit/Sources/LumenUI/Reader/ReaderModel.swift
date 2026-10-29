@@ -60,6 +60,10 @@ final class ReaderModel {
     var activeHighlightId: UUID?
     /// Короткое сообщение внизу экрана, например «Выписка добавлена в заметки».
     var toast: String?
+    /// Оглавление: из файла, из закладок PDF или из заголовков открытого документа.
+    private(set) var toc: [TocEntry] = []
+    /// Последний пройденный якорь оглавления в открытой главе.
+    private(set) var currentAnchor: String?
 
     @ObservationIgnored let web = WebReaderController()
     @ObservationIgnored let pdf = PDFReaderController()
@@ -136,6 +140,8 @@ final class ReaderModel {
             return
         }
         loadedSection = nil
+        toc = []
+        currentAnchor = nil
         if hasOriginalMode, documentMode == .original {
             content = .quickLook(url)
             return
@@ -147,6 +153,7 @@ final class ReaderModel {
                 return
             }
             pageCount = pdf.pageCount
+            toc = pdf.outline()
             content = .pdf
             paintHighlights()
             restorePosition()
@@ -156,6 +163,7 @@ final class ReaderModel {
             if case .web = content {} else { content = .loading }
             do {
                 let prepared = try await DocumentConverter.prepare(file: url, format: format, cacheKey: source.file)
+                toc = Self.toc(for: prepared.document)
                 content = .web(prepared)
                 section = min(section, max(prepared.document.sections.count - 1, 0))
                 restorePosition()
@@ -201,6 +209,59 @@ final class ReaderModel {
 
     // MARK: Навигация
 
+    /// Оглавление книги. Если своего нет, а глав несколько, пунктами становятся главы.
+    private static func toc(for document: ReadableDocument) -> [TocEntry] {
+        if !document.toc.isEmpty { return document.toc }
+        guard document.sections.count > 1 else { return [] }
+        return document.sections.enumerated().map { TocEntry(title: $1.title, section: $0) }
+    }
+
+    /// Пункт оглавления, в котором сейчас читатель: последний, до которого уже дочитали.
+    var currentTocEntry: TocEntry? {
+        if case .pdf = content {
+            return toc.last { $0.section <= section }
+        }
+        let passedAnchors: Set<String> = {
+            let anchors = sectionAnchors
+            guard let currentAnchor, let index = anchors.firstIndex(of: currentAnchor) else { return [] }
+            return Set(anchors[...index])
+        }()
+        return toc.last { entry in
+            entry.section < section
+                || (entry.section == section && (entry.anchor == nil || passedAnchors.contains(entry.anchor!)))
+        }
+    }
+
+    /// Якоря оглавления в открытой главе, по порядку.
+    private var sectionAnchors: [String] {
+        toc.filter { $0.section == section }.compactMap(\.anchor)
+    }
+
+    /// Переход по пункту оглавления.
+    func open(_ entry: TocEntry) {
+        LumenSounds.play(.navigate)
+        selection = nil
+        activeHighlightId = nil
+        switch content {
+        case .web(let prepared):
+            if entry.section == loadedSection {
+                if let anchor = entry.anchor {
+                    web.scroll(toAnchor: anchor)
+                } else {
+                    web.scroll(to: 0)
+                }
+                currentAnchor = entry.anchor
+            } else {
+                loadSection(entry.section, in: prepared, progression: 0, anchor: entry.anchor)
+            }
+            scheduleSave()
+        case .pdf:
+            pdf.go(to: entry)
+        default:
+            break
+        }
+    }
+
     var sections: [ReadableSection] {
         if case .web(let prepared) = content { return prepared.document.sections }
         return []
@@ -213,15 +274,23 @@ final class ReaderModel {
         scheduleSave()
     }
 
-    private func loadSection(_ index: Int, in prepared: PreparedDocument, progression: Double, reveal: UUID? = nil) {
+    private func loadSection(
+        _ index: Int,
+        in prepared: PreparedDocument,
+        progression: Double,
+        reveal: UUID? = nil,
+        anchor: String? = nil
+    ) {
         guard let url = prepared.url(for: index) else { return }
         section = index
         loadedSection = index
+        currentAnchor = anchor
         sectionProgression = progression
         selection = nil
         activeHighlightId = nil
         paintHighlights()
-        web.load(url, root: prepared.root, progression: progression, reveal: reveal)
+        web.setAnchors(sectionAnchors)
+        web.load(url, root: prepared.root, progression: progression, reveal: reveal, anchor: anchor)
     }
 
     func reveal(_ highlight: Highlight) {
@@ -281,7 +350,16 @@ final class ReaderModel {
     private func handle(_ event: WebReaderEvent) {
         switch event {
         case .ready:
-            break
+            // Своего оглавления нет: собираем его из заголовков документа.
+            if case .web(let prepared) = content, prepared.document.toc.isEmpty, prepared.document.sections.count == 1 {
+                let section = section
+                Task {
+                    let headings = await web.headings(section: section)
+                    guard !headings.isEmpty else { return }
+                    toc = headings
+                    web.setAnchors(sectionAnchors)
+                }
+            }
         case .selection(let text, let raw, let offset, let label, let progression):
             activeHighlightId = nil
             selection = Selection(
@@ -291,8 +369,9 @@ final class ReaderModel {
             )
         case .selectionCleared:
             selection = nil
-        case .scrolled(let progression):
+        case .scrolled(let progression, let anchor):
             sectionProgression = progression
+            currentAnchor = anchor
             scheduleSave()
         case .highlightTapped(let id):
             selection = nil
