@@ -15,6 +15,8 @@ struct LibraryView: View {
     var onOpenFolder: (UUID?) -> Void
     var onOpenPage: (UUID) -> Void
     var onOpenSource: (UUID) -> Void
+    /// iPhone: корзина открывается из меню библиотеки, отдельной вкладки для неё нет.
+    var onOpenTrash: (() -> Void)?
 
     @State private var snapshot = LibrarySnapshot.empty
     @State private var hasLoaded = false
@@ -35,6 +37,10 @@ struct LibraryView: View {
     @State private var importingCount = 0
     /// Над холстом держат файлы из Finder.
     @State private var isDropTargeted = false
+    /// iPhone: избранное в начале корня библиотеки, сайдбара с ним на телефоне нет.
+    @State private var favorites: [Page] = []
+    @State private var trashCount = 0
+    @State private var isSyncInfoPresented = false
     @AppStorage("library.snapToGrid") private var snapToGrid = false
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -110,6 +116,11 @@ struct LibraryView: View {
                 ToolbarItem(placement: .primaryAction) {
                     compactAddMenu
                 }
+                if folderId == nil {
+                    ToolbarItem(placement: .navigation) {
+                        compactMoreMenu
+                    }
+                }
             }
         }
         .alert("Название", isPresented: isRenamingInList) {
@@ -123,6 +134,19 @@ struct LibraryView: View {
             }
         }
         .task { await observe() }
+        .task(id: usesList && folderId == nil) {
+            if usesList && folderId == nil { await observeFavorites() }
+        }
+        .sheet(isPresented: $isSyncInfoPresented) {
+            NavigationStack {
+                List { SyncStatusRow() }
+                    .navigationTitle("iCloud")
+                    .toolbar {
+                        Button("Готово") { isSyncInfoPresented = false }
+                    }
+            }
+            .presentationDetents([.medium])
+        }
     }
 
     // MARK: Шапка
@@ -967,8 +991,60 @@ extension LibraryView {
         .disabled(snapshot.isMissing)
     }
 
+    /// Корзина и iCloud: на Mac они в сайдбаре, на iPhone в меню корня библиотеки.
+    var compactMoreMenu: some View {
+        Menu {
+            if let onOpenTrash {
+                Button(action: onOpenTrash) {
+                    Label(trashCount > 0 ? "Корзина (\(trashCount))" : "Корзина", systemImage: "trash")
+                }
+            }
+            Button {
+                isSyncInfoPresented = true
+            } label: {
+                Label("iCloud", systemImage: "icloud")
+            }
+        } label: {
+            Label("Ещё", systemImage: "ellipsis.circle")
+        }
+    }
+
+    func observeFavorites() async {
+        let observation = ValueObservation.tracking { db in try SidebarSnapshot.fetch(db) }
+        do {
+            for try await value in observation.values(in: database.reader) {
+                favorites = value.favorites
+                trashCount = value.trashCount
+            }
+        } catch {
+            print("Favorites observation failed: \(error)")
+        }
+    }
+
     var compactList: some View {
         List {
+            if folderId == nil && !favorites.isEmpty {
+                Section("Избранное") {
+                    ForEach(favorites) { page in
+                        Button {
+                            LumenSounds.play(.navigate)
+                            onOpenPage(page.id)
+                        } label: {
+                            CompactLibraryRow(title: page.displayTitle, caption: "") {
+                                Image(systemName: "star.fill")
+                                    .foregroundStyle(theme.accent)
+                            }
+                        }
+                        .swipeActions {
+                            Button {
+                                Task { try? await database.setFavorite(page.id, false) }
+                            } label: {
+                                Label("Убрать из избранного", systemImage: "star.slash")
+                            }
+                        }
+                    }
+                }
+            }
             if !snapshot.folders.isEmpty {
                 Section("Папки") {
                     ForEach(snapshot.folders) { entry in

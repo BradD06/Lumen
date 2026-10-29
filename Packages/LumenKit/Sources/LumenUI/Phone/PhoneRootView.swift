@@ -20,12 +20,13 @@ enum PhoneTab: Hashable {
     case home
     case inbox
     case library
-    case more
     case search
 }
 
 /// iPhone: вместо сайдбара вкладки внизу экрана, у каждой свой стек экранов.
 /// Сами экраны те же, что на Mac и iPad, они подстраиваются под узкую ширину.
+/// Что на Mac лежит в сайдбаре, на телефоне в библиотеке: избранное в начале списка,
+/// корзина и iCloud в её меню.
 struct PhoneRootView: View {
     let database: AppDatabase
 
@@ -54,11 +55,6 @@ struct PhoneRootView: View {
             Tab("Библиотека", systemImage: "books.vertical", value: PhoneTab.library) {
                 stack(.library) {
                     library(folderId: nil)
-                }
-            }
-            Tab("Ещё", systemImage: "square.grid.2x2", value: PhoneTab.more) {
-                stack(.more) {
-                    PhoneMoreView(database: database)
                 }
             }
             Tab(value: PhoneTab.search, role: .search) {
@@ -122,7 +118,8 @@ struct PhoneRootView: View {
             folderId: folderId,
             onOpenFolder: openFolder,
             onOpenPage: { push(.page($0)) },
-            onOpenSource: { push(.source($0, highlight: nil)) }
+            onOpenSource: { push(.source($0, highlight: nil)) },
+            onOpenTrash: { push(.trash) }
         )
     }
 
@@ -174,65 +171,4 @@ struct PhoneRootView: View {
     }
 }
 
-/// Вкладка «Ещё»: избранное, дерево папок, корзина и синхронизация. На Mac это сайдбар.
-struct PhoneMoreView: View {
-    let database: AppDatabase
-
-    @State private var snapshot = SidebarSnapshot.empty
-
-    var body: some View {
-        List {
-            if !snapshot.favorites.isEmpty {
-                Section("Избранное") {
-                    ForEach(snapshot.favorites) { page in
-                        NavigationLink(value: PhoneRoute.page(page.id)) {
-                            PageLabel(page: page)
-                        }
-                    }
-                }
-            }
-
-            Section("Папки") {
-                if snapshot.folders.isEmpty {
-                    Text("Папки появятся здесь, когда вы создадите их в библиотеке.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                OutlineGroup(snapshot.folders, children: \.childrenOrNil) { node in
-                    NavigationLink(value: PhoneRoute.folder(node.id)) {
-                        FolderLabel(folder: node.folder)
-                    }
-                }
-            }
-
-            Section {
-                NavigationLink(value: PhoneRoute.trash) {
-                    Label("Корзина", systemImage: "trash")
-                        .badge(snapshot.trashCount)
-                }
-            }
-
-            Section {
-                SyncStatusRow()
-            } header: {
-                Text("iCloud")
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .background(ThemedBackground())
-        .navigationTitle("Ещё")
-        .task { await observe() }
-    }
-
-    private func observe() async {
-        let observation = ValueObservation.tracking { db in try SidebarSnapshot.fetch(db) }
-        do {
-            for try await value in observation.values(in: database.reader) {
-                snapshot = value
-            }
-        } catch {
-            print("More observation failed: \(error)")
-        }
-    }
-}
 #endif
