@@ -17,7 +17,7 @@ struct ReadingStatsTests {
         ReadingSession(sourceId: UUID(), startedAt: date(day, hour), endedAt: date(day, hour), seconds: minutes * 60)
     }
 
-    @Test func totalsAndToday() {
+    @Test func totalsAndToday() throws {
         let stats = ReadingStats(
             sessions: [session(27, minutes: 30), session(29, minutes: 10, hour: 9), session(29, minutes: 5, hour: 20)],
             now: date(29, 22),
@@ -27,8 +27,10 @@ struct ReadingStatsTests {
         #expect(stats.todaySeconds == 15 * 60)
         #expect(stats.daysRead == 2)
         #expect(stats.recentDays.count == ReadingStats.dayCount)
-        #expect(stats.recentDays.last?.seconds == 15 * 60)
-        #expect(stats.recentDays[ReadingStats.dayCount - 3].seconds == 30 * 60)
+        let today = try #require(stats.recentDays.last)
+        #expect(today.date == calendar.startOfDay(for: date(29)))
+        #expect(today.seconds == Double(15 * 60))
+        #expect(stats.recentDays[ReadingStats.dayCount - 3].seconds == Double(30 * 60))
     }
 
     @Test func streakCountsConsecutiveDaysAndSurvivesUntilEndOfToday() {
