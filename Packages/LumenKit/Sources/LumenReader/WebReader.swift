@@ -116,7 +116,12 @@ public final class WebReaderController: NSObject {
         webView.evaluateJavaScript("window.lumen && window.lumen.scrollTo(\(progression))")
     }
 
-    public func scroll(toAnchor anchor: String) {
+    /// Прокрутка к строке, перед которой в главе `offset` символов.
+    public func scroll(toOffset offset: Int) {
+        webView.evaluateJavaScript("window.lumen && window.lumen.scrollToOffset(\(offset))")
+    }
+
+        public func scroll(toAnchor anchor: String) {
         webView.evaluateJavaScript("window.lumen && window.lumen.scrollToAnchor(\(Self.jsString(anchor)))")
     }
 

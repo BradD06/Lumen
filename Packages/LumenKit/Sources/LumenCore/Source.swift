@@ -276,9 +276,13 @@ public enum HighlightColor: String, Codable, Sendable, CaseIterable, Identifiabl
 }
 
 /// Ссылка выписки на выделение в источнике. Лежит в содержимом блока «Выписка».
+/// Ссылка на место без выделения хранит вместо выделения само место в книге.
 public struct ExcerptReference: Hashable, Codable, Sendable {
     public var sourceId: UUID
-    public var highlightId: UUID
+    /// Выделение, из которого сделана выписка. У ссылки на место его нет.
+    public var highlightId: UUID?
+    /// Место в книге у ссылки на место.
+    public var locator: SourceLocator?
     /// Подпись места, см. `Highlight.label`.
     public var label: String
 
@@ -288,9 +292,20 @@ public struct ExcerptReference: Hashable, Codable, Sendable {
         self.label = label
     }
 
-    /// Ссылка вида `lumen://source/<id>/highlight/<id>`.
+    /// Ссылка на место в книге, где читали, без выделенного текста.
+    public init(sourceId: UUID, locator: SourceLocator, label: String) {
+        self.sourceId = sourceId
+        self.locator = locator
+        self.label = label
+    }
+
+    /// Ссылка на место, а не выписка из выделения.
+    public var isPlace: Bool { highlightId == nil && locator != nil }
+
+    /// Ссылка вида `lumen://source/<id>/highlight/<id>`, у ссылки на место `lumen://source/<id>`.
     public var url: URL {
-        URL(string: "lumen://source/\(sourceId.uuidString)/highlight/\(highlightId.uuidString)")!
+        guard let highlightId else { return URL(string: "lumen://source/\(sourceId.uuidString)")! }
+        return URL(string: "lumen://source/\(sourceId.uuidString)/highlight/\(highlightId.uuidString)")!
     }
 
     public init?(url: URL) {

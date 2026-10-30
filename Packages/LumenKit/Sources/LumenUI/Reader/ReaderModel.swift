@@ -125,6 +125,7 @@ final class ReaderModel {
                 sidePageId = saved
             }
             let notes = PageEditorModel(database: database, pageId: sidePageId)
+            attach(notes)
             // Заметки загружаются сразу: выписку можно сделать, даже пока панель заметок закрыта.
             await notes.load()
             self.notes = notes
@@ -147,12 +148,23 @@ final class ReaderModel {
         guard pageId != notes?.pageId else { return }
         await notes?.flush()
         let model = PageEditorModel(database: database, pageId: pageId)
+        attach(model)
         await model.load()
         notes = model
         if pageId == bookNotesPageId {
             UserDefaults.standard.removeObject(forKey: sidePageKey)
         } else {
             UserDefaults.standard.set(pageId.uuidString, forKey: sidePageKey)
+        }
+    }
+
+    /// Ссылки на места этой книги в заметке рядом прокручивают книгу, а не открывают её заново.
+    private func attach(_ notes: PageEditorModel) {
+        notes.openPlaceInReader = { [weak self] reference in
+            guard let self, reference.sourceId == sourceId, let locator = reference.locator else { return false }
+            LumenSounds.play(.navigate)
+            go(to: locator)
+            return true
         }
     }
 
@@ -393,6 +405,63 @@ final class ReaderModel {
             reveal(highlight)
         } else {
             pendingReveal = id
+        }
+    }
+
+    /// Переход к месту из ссылки на место.
+    func go(to locator: SourceLocator) {
+        selection = nil
+        activeHighlightId = nil
+        switch content {
+        case .web(let prepared):
+            guard prepared.document.sections.indices.contains(locator.section) else { return }
+            if locator.section == loadedSection, let offset = locator.textOffset {
+                web.scroll(toOffset: offset)
+                sectionTextOffset = offset
+            } else if locator.section == loadedSection {
+                web.scroll(to: locator.progression)
+            } else {
+                loadSection(locator.section, in: prepared, progression: locator.progression, offset: locator.textOffset)
+            }
+            sectionProgression = locator.progression
+            scheduleSave()
+        case .pdf:
+            pdf.go(to: locator)
+            scheduleSave()
+        default:
+            break
+        }
+    }
+
+    /// Ссылка на место, где сейчас читают, в заметку рядом. Без выделения текста.
+    func addPlaceLink() {
+        guard let notes else { return }
+        let locator = readingLocator
+        let label: String
+        switch content {
+        case .pdf:
+            label = "стр. \(locator.section + 1)"
+        case .web:
+            label = webLabel(progression: locator.progression)
+        default:
+            return
+        }
+        notes.appendPlaceLink(ExcerptReference(sourceId: sourceId, locator: locator, label: label))
+        Task { await notes.flush() }
+        LumenSounds.play(.create)
+        if showsBookNotes {
+            showToast("Ссылка на место добавлена в заметки")
+        } else {
+            let title = notes.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            showToast(title.isEmpty ? "Ссылка на место добавлена в заметку" : "Ссылка добавлена в «\(title)»")
+        }
+    }
+
+    /// Можно ли сослаться на место: у системного просмотра места нет.
+    var canLinkPlace: Bool {
+        switch content {
+        case .web, .pdf: notes != nil
+        default: false
         }
     }
 

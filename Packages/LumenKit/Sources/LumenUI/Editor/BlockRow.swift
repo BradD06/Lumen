@@ -331,12 +331,8 @@ struct BlockRow: View {
         .foregroundStyle(fieldColor)
         .focused(focus, equals: .block(block.id))
         .onSubmit { model.submit(block.id) }
-        #if os(iOS)
-        // На Mac поле забирает Backspace раньше SwiftUI, там клавишу ловит редактор (PageEditorView.installKeyMonitor).
-        .onKeyPress(.delete) {
-            model.backspaceInEmptyBlock(block.id) ? .handled : .ignored
-        }
-        #endif
+        // Backspace в пустом блоке ловит редактор: на Mac через NSEvent, на iPhone через
+        // подменённый deleteBackward (PageEditorView.installKeyMonitor, EmptyBackspace).
         // ⌥⌘↑ и ⌥⌘↓ двигают блок, как в Notion.
         .onKeyPress(keys: [.upArrow, .downArrow]) { press in
             guard press.modifiers.contains(.command), press.modifiers.contains(.option) else { return .ignored }
@@ -529,6 +525,47 @@ private struct ExcerptBlock: View {
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
+        if reference?.isPlace == true {
+            placeLink
+        } else {
+            quote
+        }
+    }
+
+    /// Ссылка на место без цитаты: книга и место, нажатие открывает книгу там.
+    private var placeLink: some View {
+        Button(action: onOpen) {
+            HStack(spacing: 10) {
+                Image(systemName: "bookmark.fill")
+                    .foregroundStyle(tint)
+                if !text.isEmpty {
+                    Text(text)
+                        .foregroundStyle(theme.textPrimary)
+                        .lineLimit(2)
+                }
+                Text(caption)
+                    .lineLimit(1)
+                    .foregroundStyle(source == nil ? theme.textSecondary.opacity(0.7) : theme.accent)
+                if source != nil {
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(theme.accent)
+                }
+            }
+            .font(.callout.weight(.medium))
+            .padding(.vertical, 9)
+            .padding(.horizontal, 14)
+            .background(tint.opacity(0.12), in: Capsule())
+            .overlay(Capsule().strokeBorder(tint.opacity(0.16), lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(source == nil)
+        .help(source == nil ? "Книгу удалили" : "Открыть книгу на этом месте")
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var quote: some View {
         Button(action: onOpen) {
             HStack(alignment: .top, spacing: 10) {
                 Text("\u{201C}")

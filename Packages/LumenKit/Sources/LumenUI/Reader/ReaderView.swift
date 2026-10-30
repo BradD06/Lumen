@@ -533,6 +533,11 @@ struct ReaderView: View {
                 .presentationCompactAdaptation(.sheet)
             }
             Spacer(minLength: 4)
+            if model.canLinkPlace {
+                headerButton("bookmark", help: "Вставить в заметку ссылку на это место в книге") {
+                    model.addPlaceLink()
+                }
+            }
             if model.showsBookNotes {
                 if !model.highlights.isEmpty {
                     Text(Self.highlightsCount(model.highlights.count))

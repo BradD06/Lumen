@@ -47,6 +47,10 @@ final class PageEditorModel {
         var highlightId: UUID?
     }
 
+    /// Открывает ссылку на место в уже открытой книге. Ставит читалка, у которой эта заметка рядом.
+    /// Возвращает `false`, если ссылка ведёт в другую книгу.
+    @ObservationIgnored var openPlaceInReader: ((ExcerptReference) -> Bool)?
+
     @ObservationIgnored private var dirtyBlocks: Set<UUID> = []
     /// Блоки, которые нужно удалить из базы. Удаляются после записи правок, чтобы каскадное
     /// удаление не забрало блоки, которые только что переехали из удаляемого родителя.
@@ -971,7 +975,17 @@ final class PageEditorModel {
     var notesSource: Source? { source(page?.sourceId) }
 
     func openExcerpt(_ reference: ExcerptReference) {
-        openSource(reference.sourceId, highlight: reference.highlightId)
+        guard reference.isPlace, let locator = reference.locator else {
+            openSource(reference.sourceId, highlight: reference.highlightId)
+            return
+        }
+        if openPlaceInReader?(reference) == true { return }
+        // Другая книга откроется там, где остановились, поэтому место из ссылки сначала становится местом чтения.
+        Task {
+            await flush()
+            try? await database.setReadingLocator(reference.sourceId, locator: locator)
+            openSourceRequest = SourceRequest(sourceId: reference.sourceId, highlightId: nil)
+        }
     }
 
     func openSource(_ sourceId: UUID, highlight: UUID? = nil) {
@@ -979,6 +993,11 @@ final class PageEditorModel {
             await flush()
             openSourceRequest = SourceRequest(sourceId: sourceId, highlightId: highlight)
         }
+    }
+
+    /// Ссылка на место в книге в конец страницы. Вставляется как выписка без текста.
+    func appendPlaceLink(_ reference: ExcerptReference) {
+        appendExcerpt(text: "", reference: reference)
     }
 
     /// Вставляет выписку в конец страницы, а после неё пустой абзац, чтобы сразу дописать мысль.
