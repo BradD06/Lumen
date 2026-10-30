@@ -33,6 +33,8 @@ public enum WebReaderEvent: Sendable {
     case scrolled(Double, anchor: String?)
     /// Нажали на выделение.
     case highlightTapped(UUID)
+    /// Листают дальше конца главы (`forward`) или назад от её начала.
+    case turnedPastEdge(forward: Bool)
 }
 
 /// Управляет веб-видом главы. Экран читалки держит один такой объект и через него
@@ -176,6 +178,9 @@ public final class WebReaderController: NSObject {
             let value = (message["progression"] as? NSNumber)?.doubleValue ?? 0
             currentProgression = value
             onEvent?(.scrolled(value, anchor: message["anchor"] as? String))
+        case "turn":
+            let direction = (message["direction"] as? NSNumber)?.intValue ?? 1
+            onEvent?(.turnedPastEdge(forward: direction > 0))
         case "highlightTap":
             if let id = (message["id"] as? String).flatMap(UUID.init(uuidString:)) {
                 onEvent?(.highlightTapped(id))

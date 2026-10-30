@@ -325,10 +325,11 @@ final class ReaderModel {
         return []
     }
 
-    func openSection(_ index: Int) {
+    /// `progression` 1 открывает главу с конца: так листают назад из начала следующей.
+    func openSection(_ index: Int, progression: Double = 0) {
         guard case .web(let prepared) = content, prepared.document.sections.indices.contains(index) else { return }
         LumenSounds.play(.navigate)
-        loadSection(index, in: prepared, progression: 0)
+        loadSection(index, in: prepared, progression: progression)
         scheduleSave()
     }
 
@@ -435,6 +436,12 @@ final class ReaderModel {
         case .highlightTapped(let id):
             selection = nil
             activeHighlightId = id
+        case .turnedPastEdge(let forward):
+            if forward {
+                openSection(section + 1)
+            } else {
+                openSection(section - 1, progression: 1)
+            }
         }
     }
 
