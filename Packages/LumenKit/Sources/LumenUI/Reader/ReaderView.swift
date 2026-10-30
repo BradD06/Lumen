@@ -125,11 +125,13 @@ struct ReaderView: View {
         }
         .task {
             model.web.setAppearance(appearance)
+            model.pdf.setPageStyle(appearance.palette.pdfStyle)
             await model.load()
         }
         .task { await model.observeHighlights() }
         .onChange(of: appearance) { _, appearance in
             model.web.setAppearance(appearance)
+            model.pdf.setPageStyle(appearance.palette.pdfStyle)
         }
         .onChange(of: highlightId) { _, id in
             if let id { model.reveal(id: id) }
@@ -188,13 +190,19 @@ struct ReaderView: View {
         return false
     }
 
+    /// Темы страницы работают для книг в HTML и для PDF.
+    private var hasPageThemes: Bool {
+        isWebContent || model.content == .pdf
+    }
+
     /// Цвет листа, на котором лежит книга.
     private var sheetColors: [Color] {
         switch model.content {
         case .web:
             return appearance.palette.sheetColors
         case .pdf:
-            return [ReaderStyle.pdfSheet, ReaderStyle.pdfSheet]
+            let backdrop = Color(hex: appearance.palette.pdfStyle.backdrop)
+            return [backdrop, backdrop]
         default:
             return [theme.cardFill.opacity(0.7), theme.cardFill.opacity(0.5)]
         }
@@ -203,6 +211,7 @@ struct ReaderView: View {
     /// Цвет подписей поверх листа: тёмный на светлой бумаге, светлый ночью.
     private var ink: Color {
         if case .web = model.content { return appearance.palette.ink }
+        if model.content == .pdf, appearance.palette != .original { return appearance.palette.ink }
         return theme.textPrimary
     }
 
@@ -360,7 +369,7 @@ struct ReaderView: View {
             } label: {
                 Label("Оформление", systemImage: "textformat.size")
             }
-            .disabled(!isWebContent)
+            .disabled(!hasPageThemes)
             .popover(isPresented: $isAppearancePresented) { appearancePanel }
             Spacer(minLength: 0)
             ProgressRing(progress: model.progress)
@@ -393,8 +402,8 @@ struct ReaderView: View {
     }
 
     private var appearancePanel: some View {
-        ReaderAppearancePanel(paletteRaw: $paletteRaw, fontSize: $fontSize, typefaceRaw: $typefaceRaw)
-            .presentationDetents([.height(340)])
+        ReaderAppearancePanel(paletteRaw: $paletteRaw, fontSize: $fontSize, typefaceRaw: $typefaceRaw, showsTextOptions: isWebContent)
+            .presentationDetents([.height(isWebContent ? 340 : 190)])
             .presentationCornerRadius(34)
             .presentationCompactAdaptation(.sheet)
     }
@@ -579,7 +588,7 @@ struct ReaderView: View {
                     .keyboardShortcut("t", modifiers: [.command, .option])
                     .help("Содержание (⌥⌘T)")
                 }
-                if isWebContent {
+                if hasPageThemes {
                     Button {
                         isAppearancePresented.toggle()
                     } label: {

@@ -13,8 +13,6 @@ enum ReaderStyle {
     static let sheetRadius: CGFloat = 32
     static let cardRadius: CGFloat = 28
     static let gap: CGFloat = 14
-    /// Фон PDF совпадает с цветом, который задаёт PDFReader.
-    static let pdfSheet = Color(red: 0.13, green: 0.09, blue: 0.12)
 
     static var peachGradient: LinearGradient {
         LinearGradient(colors: [Color(hex: 0xFFC6A6), peachDeep], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -158,6 +156,8 @@ struct ReaderAppearancePanel: View {
     @Binding var paletteRaw: String
     @Binding var fontSize: Int
     @Binding var typefaceRaw: String
+    /// Размер и шрифт есть только у книг в HTML: текст PDF не перестраивается.
+    var showsTextOptions = true
     @Environment(\.lumenTheme) private var theme
 
     private let palettes: [ReaderAppearance.Palette] = [.night, .paper, .dawn, .original]
@@ -170,47 +170,54 @@ struct ReaderAppearancePanel: View {
                     themeTile(palette)
                 }
             }
-            caption("Размер")
-            HStack(spacing: 12) {
-                Text("А").font(.system(size: 13, design: .serif))
-                Slider(
-                    value: Binding(
-                        get: { Double(fontSize) },
-                        set: { fontSize = Int($0.rounded()) }
-                    ),
-                    in: Double(ReaderAppearance.fontSizes.lowerBound)...Double(ReaderAppearance.fontSizes.upperBound),
-                    step: 1
-                )
-                .tint(ReaderStyle.peach)
-                Text("А").font(.system(size: 21, design: .serif))
-            }
-            .foregroundStyle(theme.textPrimary)
-            HStack(spacing: 8) {
-                ForEach(ReaderAppearance.Typeface.allCases) { typeface in
-                    let isOn = typeface.rawValue == typefaceRaw
-                    Button {
-                        typefaceRaw = typeface.rawValue
-                    } label: {
-                        Text(typeface.title)
-                            .font(.system(size: 13, weight: .bold, design: typeface.design))
-                            .lineLimit(1)
-                            .foregroundStyle(isOn ? ReaderStyle.peach : theme.textSecondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 11)
-                            .background(
-                                (isOn ? ReaderStyle.peach.opacity(0.2) : Color.white.opacity(0.07)),
-                                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            )
-                            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(isOn ? .isSelected : [])
-                }
+            if showsTextOptions {
+                textOptions
             }
         }
         .padding(20)
         .frame(minWidth: 320)
         .fontDesign(.rounded)
+    }
+
+    @ViewBuilder
+    private var textOptions: some View {
+        caption("Размер")
+        HStack(spacing: 12) {
+            Text("А").font(.system(size: 13, design: .serif))
+            Slider(
+                value: Binding(
+                    get: { Double(fontSize) },
+                    set: { fontSize = Int($0.rounded()) }
+                ),
+                in: Double(ReaderAppearance.fontSizes.lowerBound)...Double(ReaderAppearance.fontSizes.upperBound),
+                step: 1
+            )
+            .tint(ReaderStyle.peach)
+            Text("А").font(.system(size: 21, design: .serif))
+        }
+        .foregroundStyle(theme.textPrimary)
+        HStack(spacing: 8) {
+            ForEach(ReaderAppearance.Typeface.allCases) { typeface in
+                let isOn = typeface.rawValue == typefaceRaw
+                Button {
+                    typefaceRaw = typeface.rawValue
+                } label: {
+                    Text(typeface.title)
+                        .font(.system(size: 13, weight: .bold, design: typeface.design))
+                        .lineLimit(1)
+                        .foregroundStyle(isOn ? ReaderStyle.peach : theme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(
+                            (isOn ? ReaderStyle.peach.opacity(0.2) : Color.white.opacity(0.07)),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        )
+                        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isOn ? .isSelected : [])
+            }
+        }
     }
 
     private func caption(_ text: String) -> some View {
