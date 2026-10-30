@@ -153,23 +153,37 @@ public struct SourceLocator: Hashable, Codable, Sendable {
     /// Выделенный текст.
     public var text: String?
     /// Сколько символов текста главы стоит до начала выделения: из нескольких одинаковых
-    /// фрагментов выбирается ближайший к этому месту.
+    /// фрагментов выбирается ближайший к этому месту. У места чтения это первый символ вверху экрана.
     public var textOffset: Int?
     /// Прямоугольники выделения на странице PDF, в координатах страницы.
     public var rects: [LocatorRect]?
+    /// Место чтения в PDF: точка страницы в левом верхнем углу экрана, в координатах страницы.
+    public var point: LocatorPoint?
 
     public init(
         section: Int,
         progression: Double = 0,
         text: String? = nil,
         textOffset: Int? = nil,
-        rects: [LocatorRect]? = nil
+        rects: [LocatorRect]? = nil,
+        point: LocatorPoint? = nil
     ) {
         self.section = max(section, 0)
         self.progression = min(max(progression, 0), 1)
         self.text = text
         self.textOffset = textOffset
         self.rects = rects
+        self.point = point
+    }
+}
+
+public struct LocatorPoint: Hashable, Codable, Sendable {
+    public var x: Double
+    public var y: Double
+
+    public init(x: Double, y: Double) {
+        self.x = x
+        self.y = y
     }
 }
 

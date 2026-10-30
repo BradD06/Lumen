@@ -29,8 +29,9 @@ public enum WebReaderEvent: Sendable {
     /// Выделили текст. `text` для цитаты, `raw` и `offset` чтобы найти это место снова.
     case selection(text: String, raw: String, offset: Int, label: String?, progression: Double)
     case selectionCleared
-    /// Прокрутили главу, `progression` от 0 до 1. `anchor` это последний пройденный якорь оглавления.
-    case scrolled(Double, anchor: String?)
+    /// Прокрутили главу, `progression` от 0 до 1. `anchor` это последний пройденный якорь оглавления,
+    /// `offset` сколько символов главы стоит до первой строки вверху экрана.
+    case scrolled(Double, anchor: String?, offset: Int?)
     /// Нажали на выделение.
     case highlightTapped(UUID)
     /// Листают дальше конца главы (`forward`) или назад от её начала.
@@ -49,6 +50,7 @@ public final class WebReaderController: NSObject {
     private var isReady = false
     /// Что сделать, когда глава загрузится.
     private var pendingProgression: Double?
+    private var pendingOffset: Int?
     private var pendingReveal: UUID?
     private var pendingAnchor: String?
     private var anchors: [String] = []
@@ -72,9 +74,11 @@ public final class WebReaderController: NSObject {
         #endif
     }
 
-    /// Открывает главу. `reveal` прокручивает к выделению, `anchor` к пункту оглавления, иначе к `progression`.
-    public func load(_ url: URL, root: URL, progression: Double = 0, reveal: UUID? = nil, anchor: String? = nil) {
+    /// Открывает главу. `reveal` прокручивает к выделению, `anchor` к пункту оглавления,
+    /// `offset` к строке, где остановились, иначе к `progression`.
+    public func load(_ url: URL, root: URL, progression: Double = 0, offset: Int? = nil, reveal: UUID? = nil, anchor: String? = nil) {
         pendingProgression = progression
+        pendingOffset = offset
         pendingReveal = reveal
         pendingAnchor = anchor
         if url == loadedURL, isReady {
@@ -88,12 +92,10 @@ public final class WebReaderController: NSObject {
 
     public func setAppearance(_ appearance: ReaderAppearance) {
         guard appearance != self.appearance else { return }
-        let progression = currentProgression
         self.appearance = appearance
         guard isReady else { return }
-        applyStyle()
-        // Другой размер шрифта сдвигает текст: возвращаемся туда же по доле главы.
-        scroll(to: progression)
+        // Другой размер шрифта сдвигает текст: скрипт оставляет вверху ту же строку.
+        webView.evaluateJavaScript("window.lumen && window.lumen.restyle(\(Self.jsString(appearance.css)))")
     }
 
     public func setHighlights(_ highlights: [WebHighlight]) {
@@ -158,8 +160,9 @@ public final class WebReaderController: NSObject {
             isReady = true
             applyStyle()
             paint()
-            applyAnchors()
+            // Сначала к нужному месту, потом якоря: они сразу сообщают, где читатель.
             applyPending()
+            applyAnchors()
             onEvent?(.ready)
         case "selection":
             let text = message["text"] as? String ?? ""
@@ -177,7 +180,7 @@ public final class WebReaderController: NSObject {
         case "scroll":
             let value = (message["progression"] as? NSNumber)?.doubleValue ?? 0
             currentProgression = value
-            onEvent?(.scrolled(value, anchor: message["anchor"] as? String))
+            onEvent?(.scrolled(value, anchor: message["anchor"] as? String, offset: (message["offset"] as? NSNumber)?.intValue))
         case "turn":
             let direction = (message["direction"] as? NSNumber)?.intValue ?? 1
             onEvent?(.turnedPastEdge(forward: direction > 0))
@@ -208,6 +211,8 @@ public final class WebReaderController: NSObject {
     }
 
     private func applyPending() {
+        let offset = pendingOffset
+        pendingOffset = nil
         if let id = pendingReveal {
             pendingReveal = nil
             pendingAnchor = nil
@@ -217,6 +222,10 @@ public final class WebReaderController: NSObject {
             pendingAnchor = nil
             pendingProgression = nil
             scroll(toAnchor: anchor)
+        } else if let offset {
+            currentProgression = pendingProgression ?? currentProgression
+            pendingProgression = nil
+            webView.evaluateJavaScript("window.lumen && window.lumen.scrollToOffset(\(offset))")
         } else if let progression = pendingProgression {
             pendingProgression = nil
             currentProgression = progression

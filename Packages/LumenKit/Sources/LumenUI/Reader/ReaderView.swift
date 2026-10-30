@@ -345,6 +345,9 @@ struct ReaderView: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .fixedSize()
+                if model.content == .pdf {
+                    zoomControls
+                }
                 if sections.count > 1 {
                     Button {
                         model.openSection(model.section + 1)
@@ -367,6 +370,51 @@ struct ReaderView: View {
             .padding(.bottom, isCompact ? 10 : 16)
         default:
             EmptyView()
+        }
+    }
+
+    /// Масштаб PDF: мельче, по ширине, крупнее и замок, который фиксирует масштаб для этой книги.
+    /// На iPhone только проценты и замок: приближают там щипком.
+    private var zoomControls: some View {
+        HStack(spacing: 6) {
+            if !isCompact {
+                Button {
+                    model.zoom(in: false)
+                } label: {
+                    Image(systemName: "minus")
+                }
+                .buttonStyle(SheetRoundButtonStyle(ink: ink))
+                .keyboardShortcut("-", modifiers: .command)
+                .help("Мельче (⌘−)")
+            }
+            Button {
+                model.zoomToFit()
+            } label: {
+                Text(ReaderModel.percent(model.pdfScale))
+                    .monospacedDigit()
+                    .frame(minWidth: 40)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("0", modifiers: .command)
+            .help("По ширине окна (⌘0)")
+            if !isCompact {
+                Button {
+                    model.zoom(in: true)
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(SheetRoundButtonStyle(ink: ink))
+                .keyboardShortcut("=", modifiers: .command)
+                .help("Крупнее (⌘+)")
+            }
+            Button {
+                model.toggleZoomLock()
+            } label: {
+                Image(systemName: model.isZoomLocked ? "lock.fill" : "lock.open")
+            }
+            .buttonStyle(SheetRoundButtonStyle(ink: model.isZoomLocked ? ReaderStyle.peachDeep : ink))
+            .help(model.isZoomLocked ? "Масштаб зафиксирован. Нажмите, чтобы отпустить" : "Зафиксировать масштаб для этой книги")
+            .accessibilityLabel(model.isZoomLocked ? "Отпустить масштаб" : "Зафиксировать масштаб")
         }
     }
 
