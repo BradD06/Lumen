@@ -459,7 +459,7 @@ struct LibraryView: View {
                 VStack(spacing: 6) {
                     SourceCoverArt(source: entry.source, attachments: database.attachments, width: 88, height: 122)
                     ReadingProgressBar(progress: entry.source.progress)
-                        .frame(width: 80)
+                        .frame(width: 88)
                         .opacity(entry.source.progress > 0.005 ? 1 : 0)
                 }
             }

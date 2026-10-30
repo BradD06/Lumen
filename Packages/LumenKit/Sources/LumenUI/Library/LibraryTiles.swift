@@ -416,13 +416,14 @@ struct ReadingProgressBar: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                Capsule().fill(theme.textSecondary.opacity(0.25))
+                Capsule().fill(theme.textPrimary.opacity(0.16))
                 Capsule()
                     .fill(theme.accent)
-                    .frame(width: max(4, geometry.size.width * min(max(progress, 0), 1)))
+                    .frame(width: max(5, geometry.size.width * min(max(progress, 0), 1)))
+                    .shadow(color: theme.accent.opacity(0.6), radius: 4)
             }
         }
-        .frame(height: 4)
+        .frame(height: 5)
         .accessibilityElement()
         .accessibilityLabel("Прочитано \(Int((progress * 100).rounded()))%")
     }
