@@ -489,7 +489,7 @@ struct ReaderView: View {
     }
 
     /// «1 выделение», «3 выделения», «7 выделений».
-    static func highlightsCount(_ count: Int) -> String {
+    nonisolated static func highlightsCount(_ count: Int) -> String {
         let mod10 = count % 10
         let mod100 = count % 100
         let word: String
