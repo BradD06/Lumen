@@ -48,6 +48,43 @@ struct ExcerptTests {
         #expect(saved.compactMap(\.content.excerpt?.label) == ["стр. 7", "стр. 7"])
     }
 
+    @Test func placeLinkIsSavedWithItsLocator() async throws {
+        let page = try await db.createPage()
+        let model = PageEditorModel(database: db, pageId: page.id)
+        await model.load()
+        let place = ExcerptReference(sourceId: UUID(), locator: SourceLocator(section: 4, textOffset: 120), label: "Глава 5")
+
+        model.appendPlaceLink(place)
+        await model.flush()
+
+        let saved = try #require(try await db.blocks(of: page.id).first { $0.type == .excerpt })
+        let reference = try #require(saved.content.excerpt)
+        #expect(reference.isPlace)
+        #expect(reference.highlightId == nil)
+        #expect(reference.locator == place.locator)
+    }
+
+    @Test func oldExcerptsStillDecode() throws {
+        let sourceId = UUID(), highlightId = UUID()
+        let json = #"{"sourceId":"\#(sourceId)","highlightId":"\#(highlightId)","label":"стр. 3"}"#
+        let reference = try JSONDecoder().decode(ExcerptReference.self, from: Data(json.utf8))
+        #expect(reference.highlightId == highlightId)
+        #expect(!reference.isPlace)
+    }
+
+    @Test func placeLinkInTheSameBookOpensInTheReader() async throws {
+        let page = try await db.createPage()
+        let model = PageEditorModel(database: db, pageId: page.id)
+        var opened: ExcerptReference?
+        model.openPlaceInReader = { opened = $0; return true }
+        let place = ExcerptReference(sourceId: UUID(), locator: SourceLocator(section: 1), label: "")
+
+        model.openExcerpt(place)
+
+        #expect(opened == place)
+        #expect(model.openSourceRequest == nil)
+    }
+
     @Test func loadRunsOnce() async throws {
         let page = try await db.createPage()
         let model = PageEditorModel(database: db, pageId: page.id)

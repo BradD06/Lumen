@@ -256,6 +256,13 @@ struct PageEditorView: View {
         }
         #if os(macOS)
         .onAppear { installKeyMonitor() }
+        #else
+        .onAppear { EmptyBackspace.install() }
+        // Стирание на пустом блоке: экранная клавиатура не даёт об этом знать иначе.
+        .onReceive(NotificationCenter.default.publisher(for: .lumenBackspaceInEmptyField)) { _ in
+            guard let id = model.focusedBlockId else { return }
+            _ = model.backspaceInEmptyBlock(id)
+        }
         #endif
         .onDisappear {
             #if os(macOS)

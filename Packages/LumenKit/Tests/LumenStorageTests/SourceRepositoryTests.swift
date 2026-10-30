@@ -48,6 +48,16 @@ struct SourceRepositoryTests {
         #expect(try await library().pages.isEmpty, "Заметки к книге живут рядом с книгой, а не отдельной плиткой")
     }
 
+    @Test func placeLinkMovesReadingPositionButKeepsProgress() async throws {
+        let book = try await addBook()
+        try await db.saveReadingPosition(book.id, locator: SourceLocator(section: 9), progress: 0.6)
+        let place = SourceLocator(section: 2, progression: 0.3, textOffset: 840)
+        try await db.setReadingLocator(book.id, locator: place)
+        let saved = try #require(try await db.source(book.id))
+        #expect(saved.locator == place)
+        #expect(saved.progress == 0.6)
+    }
+
     @Test func readingPositionAndHighlightsAreSaved() async throws {
         let book = try await addBook()
         let locator = SourceLocator(section: 3, progression: 0.4)

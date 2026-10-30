@@ -66,6 +66,16 @@ extension AppDatabase {
         }
     }
 
+    /// Ставит место чтения, не трогая, сколько прочитано: книга откроется на этом месте,
+    /// например по ссылке на место из заметки.
+    public func setReadingLocator(_ id: UUID, locator: SourceLocator) async throws {
+        try await writer.write { db in
+            guard var source = try Source.fetchOne(db, key: id) else { throw StorageError.sourceNotFound }
+            source.locator = locator
+            try source.update(db)
+        }
+    }
+
     /// Страница заметок к источнику. Если её ещё нет, создаётся: в библиотеке её не видно,
     /// она открывается рядом с книгой.
     public func notesPage(for sourceId: UUID) async throws -> Page {
