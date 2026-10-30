@@ -209,6 +209,8 @@ public struct ReaderAppearance: Hashable, Sendable {
         case night
         /// Тёплая бумага для долгого чтения.
         case paper
+        /// Розово-персиковая бумага: светлее ночи, теплее бумаги.
+        case dawn
         /// Как задумал автор файла, только поля и ширина колонки наши.
         case original
 
@@ -218,7 +220,25 @@ public struct ReaderAppearance: Hashable, Sendable {
             switch self {
             case .night: "Ночь"
             case .paper: "Бумага"
+            case .dawn: "Рассвет"
             case .original: "Как в файле"
+            }
+        }
+    }
+
+    /// Шрифт текста книги.
+    public enum Typeface: String, CaseIterable, Sendable, Identifiable {
+        case serif
+        case sans
+        case rounded
+
+        public var id: String { rawValue }
+
+        public var title: String {
+            switch self {
+            case .serif: "Засечки"
+            case .sans: "Гротеск"
+            case .rounded: "Округлый"
             }
         }
     }
@@ -227,12 +247,12 @@ public struct ReaderAppearance: Hashable, Sendable {
 
     public var palette: Palette
     public var fontSize: Int
-    public var serif: Bool
+    public var typeface: Typeface
 
-    public init(palette: Palette = .night, fontSize: Int = 18, serif: Bool = true) {
+    public init(palette: Palette = .night, fontSize: Int = 18, typeface: Typeface = .serif) {
         self.palette = palette
         self.fontSize = min(max(fontSize, Self.fontSizes.lowerBound), Self.fontSizes.upperBound)
-        self.serif = serif
+        self.typeface = typeface
     }
 
     /// Фон страницы под текстом. Ночью фон прозрачный: под ним закатный фон приложения.
@@ -240,18 +260,21 @@ public struct ReaderAppearance: Hashable, Sendable {
         switch palette {
         case .night: nil
         case .paper: 0xF4EADB
+        case .dawn: 0xFBE6DA
         case .original: 0xFFFFFF
         }
     }
 
     var css: String {
-        let font = serif
-            ? "'New York', 'Iowan Old Style', Georgia, 'Times New Roman', serif"
-            : "-apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif"
+        let font = switch typeface {
+        case .serif: "'New York', 'Iowan Old Style', Georgia, 'Times New Roman', serif"
+        case .sans: "-apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif"
+        case .rounded: "ui-rounded, 'SF Pro Rounded', -apple-system, sans-serif"
+        }
         let layout = """
         html { -webkit-text-size-adjust: 100%; }
         body {
-          max-width: 40em; margin: 0 auto !important; padding: 36px 28px 140px !important;
+          max-width: 40em; margin: 0 auto !important; padding: 40px 32px 140px !important;
           font-size: \(fontSize)px !important; line-height: 1.62; word-wrap: break-word;
         }
         img, svg, video { max-width: 100% !important; height: auto !important; }
@@ -269,20 +292,21 @@ public struct ReaderAppearance: Hashable, Sendable {
         }
         .slide-number { position: absolute; top: 10px; right: 16px; font-size: 12px; opacity: 0.5; }
         mark.lumen-hl {
-          background: color-mix(in srgb, var(--lumen-hl) 42%, transparent) !important;
-          color: inherit !important; border-radius: 3px; padding: 0 1px;
-          border-bottom: 2px solid var(--lumen-hl); cursor: pointer;
+          background: color-mix(in srgb, var(--lumen-hl) 40%, transparent) !important;
+          color: inherit !important; border-radius: 7px; padding: 1px 3px; cursor: pointer;
+          -webkit-box-decoration-break: clone; box-decoration-break: clone;
           transition: background 0.4s;
         }
-        mark.lumen-hl.lumen-flash { background: color-mix(in srgb, var(--lumen-hl) 85%, transparent) !important; }
+        mark.lumen-hl.lumen-flash { background: color-mix(in srgb, var(--lumen-hl) 75%, transparent) !important; }
         """
         switch palette {
         case .night:
             return layout + """
-            html, body { background: transparent !important; color: #F5ECE6 !important; }
+            html, body { background: transparent !important; color: #F3E3DA !important; }
             body { font-family: \(font) !important; }
             body * { color: inherit !important; background-color: transparent !important; border-color: rgba(255,255,255,0.18) !important; }
-            mark.lumen-hl { background: color-mix(in srgb, var(--lumen-hl) 34%, transparent) !important; }
+            mark.lumen-hl { background: color-mix(in srgb, var(--lumen-hl) 30%, transparent) !important; }
+            mark.lumen-hl.lumen-flash { background: color-mix(in srgb, var(--lumen-hl) 62%, transparent) !important; }
             a { color: #FFB38A !important; }
             h1, h2, h3, h4 { color: #FFE3D2 !important; line-height: 1.25; }
             section.slide { background: rgba(255,255,255,0.06) !important; }
@@ -295,6 +319,16 @@ public struct ReaderAppearance: Hashable, Sendable {
             body * { color: inherit !important; background-color: transparent !important; }
             a { color: #B4532A !important; }
             section.slide { background: rgba(255,255,255,0.55) !important; }
+            """
+        case .dawn:
+            return layout + """
+            html, body { background: #FBE6DA !important; color: #5B3B3E !important; }
+            body { font-family: \(font) !important; }
+            body * { color: inherit !important; background-color: transparent !important; }
+            a { color: #C0566A !important; }
+            h1, h2, h3, h4 { color: #4E2E33 !important; line-height: 1.25; }
+            section.slide { background: rgba(255,255,255,0.5) !important; }
+            ::selection { background: rgba(240,140,130,0.35); }
             """
         case .original:
             return layout + "html { background: #FFFFFF; } body { color: #111; }"

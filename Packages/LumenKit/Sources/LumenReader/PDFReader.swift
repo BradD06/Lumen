@@ -33,6 +33,8 @@ public final class PDFReaderController: NSObject {
 
     private var annotations: [UUID: [PDFAnnotation]] = [:]
     private var highlights: [PDFHighlight] = []
+    private let pageFactory = TintedPageFactory()
+    private var pageStyle = PDFPageStyle.original
     private static let highlightKey = PDFAnnotationKey(rawValue: "LumenHighlight")
 
     public override init() {
@@ -40,11 +42,14 @@ public final class PDFReaderController: NSObject {
         pdfView.autoScales = true
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
+        pdfView.backgroundColor = Self.color(pageStyle.backdrop)
+        // Страницы сами рисуют себе скруглённые углы, поэтому прямоугольная тень не нужна.
+        pdfView.pageShadowsEnabled = false
+        pdfView.displaysPageBreaks = true
         #if os(macOS)
-        pdfView.backgroundColor = NSColor(red: 0.13, green: 0.09, blue: 0.12, alpha: 1)
+        pdfView.pageBreakMargins = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
         #else
-        pdfView.backgroundColor = UIColor(red: 0.13, green: 0.09, blue: 0.12, alpha: 1)
-        pdfView.pageShadowsEnabled = true
+        pdfView.pageBreakMargins = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
         #endif
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(selectionChanged), name: .PDFViewSelectionChanged, object: pdfView)
@@ -57,6 +62,8 @@ public final class PDFReaderController: NSObject {
     @discardableResult
     public func load(_ url: URL) -> Bool {
         guard let document = PDFDocument(url: url) else { return false }
+        document.delegate = pageFactory
+        applyStyle(to: document)
         pdfView.document = document
         annotations = [:]
         let current = highlights
@@ -122,6 +129,41 @@ public final class PDFReaderController: NSObject {
         return document.index(for: page)
     }
 
+    /// Перекрашивает страницы под тему читалки и остаётся на том же месте.
+    public func setPageStyle(_ style: PDFPageStyle) {
+        guard style != pageStyle else { return }
+        let wasNight = pageStyle.isNight
+        pageStyle = style
+        pdfView.backgroundColor = Self.color(style.backdrop)
+        guard let document = pdfView.document else { return }
+        applyStyle(to: document)
+        if wasNight != style.isNight {
+            for highlight in highlights {
+                for annotation in annotations[highlight.id] ?? [] {
+                    annotation.color = highlightColor(highlight.colorHex)
+                }
+            }
+        }
+        // Уже нарисованные страницы PDFView держит в кэше: перерисовываем документ заново.
+        let destination = pdfView.currentDestination
+        pdfView.document = nil
+        pdfView.document = document
+        if let destination { pdfView.go(to: destination) }
+    }
+
+    private func applyStyle(to document: PDFDocument) {
+        for index in 0..<document.pageCount {
+            (document.page(at: index) as? TintedPDFPage)?.style = pageStyle
+        }
+    }
+
+    /// Ночью страница инвертируется целиком, поэтому выделение красится в обратный цвет:
+    /// после инверсии оно снова того цвета, который выбрали.
+    private func highlightColor(_ hex: UInt32) -> PlatformColor {
+        let shown = pageStyle.isNight ? (~hex & 0xFFFFFF) : hex
+        return Self.color(shown).withAlphaComponent(0.45)
+    }
+
     public func setHighlights(_ highlights: [PDFHighlight]) {
         guard highlights != self.highlights else { return }
         let removed = Set(self.highlights.map(\.id)).subtracting(highlights.map(\.id))
@@ -145,7 +187,7 @@ public final class PDFReaderController: NSObject {
                     forType: .highlight,
                     withProperties: nil
                 )
-                annotation.color = Self.color(highlight.colorHex).withAlphaComponent(0.45)
+                annotation.color = highlightColor(highlight.colorHex)
                 annotation.setValue(highlight.id.uuidString, forAnnotationKey: Self.highlightKey)
                 page.addAnnotation(annotation)
                 added.append(annotation)
@@ -196,14 +238,14 @@ public final class PDFReaderController: NSObject {
     }
 
     #if os(macOS)
-    static func color(_ hex: UInt32) -> NSColor {
-        NSColor(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
-    }
+    typealias PlatformColor = NSColor
     #else
-    static func color(_ hex: UInt32) -> UIColor {
-        UIColor(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
-    }
+    typealias PlatformColor = UIColor
     #endif
+
+    static func color(_ hex: UInt32) -> PlatformColor {
+        PlatformColor(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+    }
 }
 
 /// PDF в SwiftUI.
