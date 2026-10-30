@@ -57,7 +57,12 @@ final class ReaderModel {
     /// Открытая глава (или страница PDF) и сколько её прокрутили.
     private(set) var section = 0
     private(set) var sectionProgression = 0.0
+    /// Сколько символов главы стоит до первой строки на экране: по нему глава открывается точно там же.
+    private(set) var sectionTextOffset: Int?
     private(set) var pageCount = 0
+    /// Масштаб PDF и зафиксирован ли он. Фиксация запоминается для каждой книги на этом устройстве.
+    private(set) var pdfScale = 1.0
+    private(set) var isZoomLocked = false
     var selection: Selection?
     /// Выделение, на которое нажали: для него показываются действия.
     var activeHighlightId: UUID?
@@ -74,6 +79,8 @@ final class ReaderModel {
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private var pendingReveal: UUID?
     @ObservationIgnored private var hasRestoredPosition = false
+    /// Где остановились в прошлый раз.
+    @ObservationIgnored private var savedLocator: SourceLocator?
     /// Какая глава сейчас загружена в веб-вид.
     @ObservationIgnored private var loadedSection: Int?
     /// Время чтения за этот раз: растёт, пока человек листает, выделяет и пишет.
@@ -99,8 +106,10 @@ final class ReaderModel {
                 return
             }
             self.source = source
+            savedLocator = source.locator
             section = source.locator?.section ?? 0
             sectionProgression = source.locator?.progression ?? 0
+            sectionTextOffset = source.locator?.textOffset
             highlights = try await database.reader.read { [sourceId] db in
                 try Highlight
                     .filter(Column("sourceId") == sourceId && Column("deletedAt") == nil)
@@ -206,11 +215,15 @@ final class ReaderModel {
         }
         switch source.format {
         case .pdf:
+            let savedScale = UserDefaults.standard.object(forKey: zoomKey) as? Double
+            isZoomLocked = savedScale != nil
+            pdf.lockZoom(at: savedScale)
             guard pdf.load(url) else {
                 content = .failed("Файл PDF повреждён.")
                 return
             }
             pageCount = pdf.pageCount
+            pdfScale = pdf.scale
             toc = pdf.outline()
             content = .pdf
             paintHighlights()
@@ -257,9 +270,13 @@ final class ReaderModel {
         pendingReveal = nil
         switch content {
         case .web(let prepared):
-            loadSection(section, in: prepared, progression: sectionProgression)
+            loadSection(section, in: prepared, progression: sectionProgression, offset: sectionTextOffset)
         case .pdf:
-            pdf.go(to: SourceLocator(section: section))
+            // Масштаб ставится до перехода: точка на странице зависит от него.
+            pdf.lockZoom(at: pdf.lockedScale)
+            pdf.go(to: savedLocator ?? SourceLocator(section: section))
+            section = pdf.currentPageIndex
+            pdfScale = pdf.scale
         default:
             break
         }
@@ -337,6 +354,7 @@ final class ReaderModel {
         _ index: Int,
         in prepared: PreparedDocument,
         progression: Double,
+        offset: Int? = nil,
         reveal: UUID? = nil,
         anchor: String? = nil
     ) {
@@ -345,11 +363,12 @@ final class ReaderModel {
         loadedSection = index
         currentAnchor = anchor
         sectionProgression = progression
+        sectionTextOffset = offset
         selection = nil
         activeHighlightId = nil
         paintHighlights()
         web.setAnchors(sectionAnchors)
-        web.load(url, root: prepared.root, progression: progression, reveal: reveal, anchor: anchor)
+        web.load(url, root: prepared.root, progression: progression, offset: offset, reveal: reveal, anchor: anchor)
     }
 
     func reveal(_ highlight: Highlight) {
@@ -429,8 +448,9 @@ final class ReaderModel {
             )
         case .selectionCleared:
             selection = nil
-        case .scrolled(let progression, let anchor):
+        case .scrolled(let progression, let anchor, let offset):
             sectionProgression = progression
+            sectionTextOffset = offset
             currentAnchor = anchor
             scheduleSave()
         case .highlightTapped(let id):
@@ -454,9 +474,16 @@ final class ReaderModel {
         case .selectionCleared:
             selection = nil
         case .pageChanged(let index, let count):
-            section = index
             pageCount = count
+            // Пока PDF только открылся, он стоит на первой странице: это ещё не место чтения.
+            guard hasRestoredPosition else { return }
+            section = index
             scheduleSave()
+        case .moved:
+            guard hasRestoredPosition else { return }
+            scheduleSave()
+        case .scaleChanged(let scale):
+            pdfScale = scale
         case .highlightTapped(let id):
             selection = nil
             activeHighlightId = id
@@ -473,11 +500,59 @@ final class ReaderModel {
         return "\(Int((progression * 100).rounded()))%"
     }
 
+    /// Место чтения для сохранения: у PDF вместе с точкой на странице, у книги со строкой вверху экрана.
+    private var readingLocator: SourceLocator {
+        switch content {
+        case .pdf:
+            return pdf.readingLocator
+        case .web:
+            return SourceLocator(section: section, progression: sectionProgression, textOffset: sectionTextOffset)
+        default:
+            return savedLocator ?? SourceLocator(section: section, progression: sectionProgression)
+        }
+    }
+
+    // MARK: Масштаб PDF
+
+    private var zoomKey: String { "reader.pdfZoom.\(sourceId.uuidString)" }
+
+    func zoom(in larger: Bool) {
+        pdf.zoom(by: larger ? 1.2 : 1 / 1.2)
+        rememberZoom()
+    }
+
+    func zoomToFit() {
+        pdf.zoomToFit()
+        rememberZoom()
+    }
+
+    /// Фиксирует нынешний масштаб или отпускает его.
+    func toggleZoomLock() {
+        isZoomLocked.toggle()
+        pdf.lockZoom(at: isZoomLocked ? pdf.scale : nil)
+        rememberZoom()
+        LumenSounds.play(.toggle)
+        showToast(isZoomLocked ? "Масштаб \(Self.percent(pdf.scale)) зафиксирован" : "Масштаб снова свободный")
+    }
+
+    private func rememberZoom() {
+        pdfScale = pdf.scale
+        if isZoomLocked, let scale = pdf.lockedScale {
+            UserDefaults.standard.set(scale, forKey: zoomKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: zoomKey)
+        }
+    }
+
+    static func percent(_ scale: Double) -> String {
+        "\(Int((scale * 100).rounded()))%"
+    }
+
     private func scheduleSave() {
         noteActivity()
         guard hasRestoredPosition else { return }
         saveTask?.cancel()
-        let locator = SourceLocator(section: section, progression: sectionProgression)
+        let locator = readingLocator
         let progress = progress
         let session = readingSession
         saveTask = Task { [database, sourceId] in
@@ -617,11 +692,7 @@ final class ReaderModel {
             try? await database.saveReadingSession(readingSession)
         }
         if hasRestoredPosition {
-            try? await database.saveReadingPosition(
-                sourceId,
-                locator: SourceLocator(section: section, progression: sectionProgression),
-                progress: progress
-            )
+            try? await database.saveReadingPosition(sourceId, locator: readingLocator, progress: progress)
         }
         await notes?.flush()
     }

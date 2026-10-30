@@ -46,6 +46,91 @@ enum ReaderScript {
         return max > 0 ? Math.min(Math.max(window.scrollY / max, 0), 1) : 0;
       }
 
+      // Место чтения: сколько символов текста главы стоит до первой строки вверху экрана.
+      // По нему глава открывается на той же строке, даже если поменялись шрифт, ширина окна
+      // или ниже догрузились картинки.
+      function topOffset() {
+        if (window.scrollY <= 2) { return 0; }
+        const all = textNodes();
+        const nodes = [];
+        const starts = [];
+        let total = 0;
+        for (const node of all) {
+          const parent = node.parentNode;
+          if (/\S/.test(node.data) && !(parent && /^(script|style|title)$/i.test(parent.nodeName))) {
+            nodes.push(node);
+            starts.push(total);
+          }
+          total += node.data.length;
+        }
+        if (nodes.length === 0) { return 0; }
+        const range = document.createRange();
+        const bottomOf = (node, from, to) => {
+          range.setStart(node, from);
+          range.setEnd(node, to);
+          return range.getBoundingClientRect().bottom;
+        };
+        // Первый кусок текста, который заканчивается ниже верхнего края.
+        let low = 0;
+        let high = nodes.length - 1;
+        while (low < high) {
+          const middle = (low + high) >> 1;
+          if (bottomOf(nodes[middle], 0, nodes[middle].data.length) > 2) { high = middle; } else { low = middle + 1; }
+        }
+        const node = nodes[low];
+        let first = 0;
+        let last = node.data.length - 1;
+        while (first < last) {
+          const middle = (first + last) >> 1;
+          if (bottomOf(node, middle, middle + 1) > 2) { last = middle; } else { first = middle + 1; }
+        }
+        return starts[low] + first;
+      }
+
+      function scrollToOffset(offset) {
+        if (offset <= 0) { window.scrollTo(0, 0); return true; }
+        const range = document.createRange();
+        let position = 0;
+        for (const node of textNodes()) {
+          const length = node.data.length;
+          if (offset < position + length) {
+            // Пробелы между абзацами своего места на экране не имеют: берём ближайший видимый символ.
+            for (let index = offset - position; index < Math.min(offset - position + 64, length); index++) {
+              range.setStart(node, index);
+              range.setEnd(node, index + 1);
+              const rect = range.getBoundingClientRect();
+              if (rect.height > 0) {
+                window.scrollTo(0, Math.max(window.scrollY + rect.top, 0));
+                return true;
+              }
+            }
+            range.selectNodeContents(node);
+            const rect = range.getBoundingClientRect();
+            if (rect.height > 0) {
+              window.scrollTo(0, Math.max(window.scrollY + rect.top, 0));
+              return true;
+            }
+          }
+          position += length;
+        }
+        return false;
+      }
+
+      // Строка, которую держим вверху экрана, пока читатель сам не начал листать:
+      // догрузка картинок и смена шрифта её не сдвигают.
+      let pinned = null;
+      let lastTop = null;
+      const release = () => { pinned = null; };
+      for (const name of ['wheel', 'touchstart', 'keydown', 'mousedown']) {
+        window.addEventListener(name, release, { passive: true, capture: true });
+      }
+      if (window.ResizeObserver) {
+        new ResizeObserver(() => {
+          const target = pinned !== null ? pinned : lastTop;
+          if (target !== null) { scrollToOffset(target); }
+        }).observe(document.body);
+      }
+
       // Из нескольких одинаковых фрагментов берётся ближайший к запомненному месту.
       function locate(text, approx) {
         if (!text) { return null; }
@@ -133,12 +218,17 @@ enum ReaderScript {
         return current;
       }
 
+      function reportScroll() {
+        lastTop = topOffset();
+        post({ type: 'scroll', progression: progression(), anchor: currentAnchor(), offset: lastTop });
+      }
+
       let scrollTimer = null;
       let lastScroll = 0;
       window.addEventListener('scroll', () => {
         lastScroll = Date.now();
         clearTimeout(scrollTimer);
-        scrollTimer = setTimeout(() => post({ type: 'scroll', progression: progression(), anchor: currentAnchor() }), 150);
+        scrollTimer = setTimeout(reportScroll, 150);
       }, { passive: true });
 
       document.addEventListener('click', (event) => {
@@ -196,9 +286,21 @@ enum ReaderScript {
 
       window.lumen = {
         setStyle: (css) => { style.textContent = css; },
+        // Новое оформление, а сверху экрана та же строка, что была.
+        restyle: (css) => {
+          const keep = pinned !== null ? pinned : topOffset();
+          style.textContent = css;
+          scrollToOffset(keep);
+          lastTop = keep;
+        },
         scrollTo: (value) => {
           const max = document.documentElement.scrollHeight - window.innerHeight;
           window.scrollTo(0, Math.max(max, 0) * value);
+          pinned = topOffset();
+        },
+        scrollToOffset: (offset) => {
+          scrollToOffset(offset);
+          pinned = offset;
         },
         paint: (items) => {
           clearMarks();
@@ -213,6 +315,7 @@ enum ReaderScript {
           const mark = document.querySelector('mark.lumen-hl[data-id="' + id + '"]');
           if (!mark) { return false; }
           mark.scrollIntoView({ block: 'center' });
+          pinned = topOffset();
           const marks = document.querySelectorAll('mark.lumen-hl[data-id="' + id + '"]');
           marks.forEach((m) => m.classList.add('lumen-flash'));
           setTimeout(() => marks.forEach((m) => m.classList.remove('lumen-flash')), 1600);
@@ -221,13 +324,14 @@ enum ReaderScript {
         clearSelection: () => { window.getSelection().removeAllRanges(); },
         setAnchors: (ids) => {
           anchors = ids;
-          post({ type: 'scroll', progression: progression(), anchor: currentAnchor() });
+          reportScroll();
         },
         scrollToAnchor: (id) => {
           const element = document.getElementById(id) || document.querySelector('[name="' + CSS.escape(id) + '"]');
           if (!element) { return false; }
           element.scrollIntoView({ block: 'start' });
           window.scrollBy(0, -16);
+          pinned = topOffset();
           return true;
         },
         // Заголовки главы для оглавления, если в файле своего нет. Без id им даётся свой.

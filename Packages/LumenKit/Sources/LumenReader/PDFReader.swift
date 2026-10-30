@@ -22,6 +22,10 @@ public enum PDFReaderEvent: Sendable {
     case selectionCleared
     /// Открыта страница `index` из `count`.
     case pageChanged(index: Int, count: Int)
+    /// Прокрутили страницу или поменяли масштаб: место чтения сдвинулось.
+    case moved
+    /// Новый масштаб, 1 это настоящий размер страницы.
+    case scaleChanged(Double)
     case highlightTapped(UUID)
 }
 
@@ -36,10 +40,21 @@ public final class PDFReaderController: NSObject {
     private let pageFactory = TintedPageFactory()
     private var pageStyle = PDFPageStyle.original
     private static let highlightKey = PDFAnnotationKey(rawValue: "LumenHighlight")
+    /// Зафиксированный масштаб: пока он есть, страницы не подгоняются под окно и щипок не меняет размер.
+    public private(set) var lockedScale: Double?
+    public static let scaleRange: ClosedRange<Double> = 0.25...8
+    #if os(macOS)
+    private weak var observedClipView: NSClipView?
+    #else
+    private var scrollObservation: NSKeyValueObservation?
+    private weak var observedScrollView: UIScrollView?
+    #endif
 
     public override init() {
         super.init()
         pdfView.autoScales = true
+        pdfView.minScaleFactor = CGFloat(Self.scaleRange.lowerBound)
+        pdfView.maxScaleFactor = CGFloat(Self.scaleRange.upperBound)
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
         pdfView.backgroundColor = Self.color(pageStyle.backdrop)
@@ -55,6 +70,7 @@ public final class PDFReaderController: NSObject {
         center.addObserver(self, selector: #selector(selectionChanged), name: .PDFViewSelectionChanged, object: pdfView)
         center.addObserver(self, selector: #selector(pageChanged), name: .PDFViewPageChanged, object: pdfView)
         center.addObserver(self, selector: #selector(annotationHit(_:)), name: .PDFViewAnnotationHit, object: pdfView)
+        center.addObserver(self, selector: #selector(scaleChanged), name: .PDFViewScaleChanged, object: pdfView)
     }
 
     public var pageCount: Int { pdfView.document?.pageCount ?? 0 }
@@ -69,17 +85,91 @@ public final class PDFReaderController: NSObject {
         let current = highlights
         highlights = []
         setHighlights(current)
+        applyZoom()
+        observeScrolling()
         return true
     }
 
-    /// Переходит к месту: к прямоугольнику выделения или к началу страницы.
+    /// Переходит к месту: к прямоугольнику выделения, к точке, где остановились, или к началу страницы.
     public func go(to locator: SourceLocator) {
+        observeScrolling()
         guard let document = pdfView.document, let page = document.page(at: min(locator.section, max(document.pageCount - 1, 0))) else { return }
         if let rect = locator.rects?.first(where: { $0.page == nil || $0.page == locator.section }) {
             let bounds = CGRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height)
             pdfView.go(to: bounds.insetBy(dx: 0, dy: -80), on: page)
+        } else if let point = locator.point, point.x.isFinite, point.y.isFinite {
+            pdfView.go(to: PDFDestination(page: page, at: CGPoint(x: point.x, y: point.y)))
         } else {
             pdfView.go(to: page)
+        }
+    }
+
+    /// Где сейчас читают: страница и её точка в левом верхнем углу экрана.
+    public var readingLocator: SourceLocator {
+        guard let document = pdfView.document else { return SourceLocator(section: 0) }
+        var index = currentPageIndex
+        var point: LocatorPoint?
+        if let destination = pdfView.currentDestination, let page = destination.page {
+            index = document.index(for: page)
+            let at = destination.point
+            // Пока вид не разложен, PDFKit отдаёт вместо точки огромные числа.
+            if at.x.isFinite, at.y.isFinite, abs(at.x) < 100_000, abs(at.y) < 100_000 {
+                point = LocatorPoint(x: at.x, y: at.y)
+            }
+        }
+        let progression = document.pageCount > 1 ? Double(index) / Double(document.pageCount - 1) : 0
+        return SourceLocator(section: index, progression: progression, point: point)
+    }
+
+    // MARK: Масштаб
+
+    /// Масштаб страниц, 1 это настоящий размер.
+    public var scale: Double { Double(pdfView.scaleFactor) }
+
+    /// Масштаб, при котором страница целиком входит по ширине.
+    public var fitScale: Double { Double(pdfView.scaleFactorForSizeToFit) }
+
+    /// Фиксирует масштаб (`nil` отпускает). Отпущенный масштаб остаётся каким был, щипок снова работает.
+    public func lockZoom(at scale: Double?) {
+        lockedScale = scale.map { min(max($0, Self.scaleRange.lowerBound), Self.scaleRange.upperBound) }
+        applyZoom()
+    }
+
+    /// Крупнее или мельче в `factor` раз. Зафиксированный масштаб остаётся зафиксированным, только новым.
+    public func zoom(by factor: Double) {
+        let target = min(max(scale * factor, Self.scaleRange.lowerBound), Self.scaleRange.upperBound)
+        if lockedScale != nil {
+            lockZoom(at: target)
+        } else {
+            pdfView.autoScales = false
+            pdfView.scaleFactor = CGFloat(target)
+        }
+    }
+
+    /// Страница по ширине окна. Если масштаб зафиксирован, фиксируется этот.
+    public func zoomToFit() {
+        if lockedScale != nil {
+            lockZoom(at: fitScale)
+        } else {
+            pdfView.autoScales = true
+        }
+    }
+
+    private func applyZoom() {
+        let range = Self.scaleRange
+        if let lockedScale {
+            let value = CGFloat(lockedScale)
+            pdfView.autoScales = false
+            // Сначала раздвигаем границы, иначе PDFView обрежет новый масштаб по старым.
+            pdfView.minScaleFactor = CGFloat(range.lowerBound)
+            pdfView.maxScaleFactor = CGFloat(range.upperBound)
+            pdfView.scaleFactor = value
+            // Равные границы и есть фиксация: щипок и жест трекпада масштаб больше не меняют.
+            pdfView.minScaleFactor = value
+            pdfView.maxScaleFactor = value
+        } else {
+            pdfView.minScaleFactor = CGFloat(range.lowerBound)
+            pdfView.maxScaleFactor = CGFloat(range.upperBound)
         }
     }
 
@@ -149,6 +239,7 @@ public final class PDFReaderController: NSObject {
         pdfView.document = nil
         pdfView.document = document
         if let destination { pdfView.go(to: destination) }
+        observeScrolling()
     }
 
     private func applyStyle(to document: PDFDocument) {
@@ -228,6 +319,44 @@ public final class PDFReaderController: NSObject {
 
     @objc private func pageChanged() {
         onEvent?(.pageChanged(index: currentPageIndex, count: pageCount))
+    }
+
+    @objc private func scaleChanged() {
+        onEvent?(.scaleChanged(scale))
+        onEvent?(.moved)
+    }
+
+    /// Прокрутка внутри страницы уведомления PDFView не даёт: слушаем его прокручиваемый вид.
+    private func observeScrolling() {
+        #if os(macOS)
+        guard let clipView = pdfView.documentView?.enclosingScrollView?.contentView, clipView !== observedClipView else { return }
+        if let observedClipView {
+            NotificationCenter.default.removeObserver(self, name: NSView.boundsDidChangeNotification, object: observedClipView)
+        }
+        observedClipView = clipView
+        clipView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: clipView)
+        #else
+        guard let scrollView = Self.firstScrollView(in: pdfView), scrollView !== observedScrollView else { return }
+        observedScrollView = scrollView
+        scrollObservation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.scrolled() }
+        }
+        #endif
+    }
+
+    #if os(iOS)
+    private static func firstScrollView(in view: UIView) -> UIScrollView? {
+        for subview in view.subviews {
+            if let scrollView = subview as? UIScrollView { return scrollView }
+            if let found = firstScrollView(in: subview) { return found }
+        }
+        return nil
+    }
+    #endif
+
+    @objc private func scrolled() {
+        onEvent?(.moved)
     }
 
     @objc private func annotationHit(_ notification: Notification) {

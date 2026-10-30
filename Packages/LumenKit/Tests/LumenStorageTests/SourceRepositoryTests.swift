@@ -72,6 +72,26 @@ struct SourceRepositoryTests {
         #expect(try await library().sources.first?.highlightCount == 1)
     }
 
+    @Test func exactReadingPlaceIsSaved() async throws {
+        let book = try await addBook()
+        // Книга: строка вверху экрана. PDF: точка страницы в левом верхнем углу.
+        let chapter = SourceLocator(section: 2, progression: 0.3, textOffset: 4_210)
+        try await db.saveReadingPosition(book.id, locator: chapter, progress: 0.2)
+        #expect(try await db.source(book.id)?.locator?.textOffset == 4_210)
+
+        let page = SourceLocator(section: 41, progression: 0.5, point: LocatorPoint(x: 36.5, y: 612.25))
+        try await db.saveReadingPosition(book.id, locator: page, progress: 0.5)
+        #expect(try await db.source(book.id)?.locator == page)
+    }
+
+    @Test func oldReadingPlaceWithoutPointStillDecodes() throws {
+        let json = #"{"section":4,"progression":0.25}"#
+        let locator = try JSONDecoder().decode(SourceLocator.self, from: Data(json.utf8))
+        #expect(locator.section == 4)
+        #expect(locator.point == nil)
+        #expect(locator.textOffset == nil)
+    }
+
     @Test func trashTakesNotesAlongAndRestoresThem() async throws {
         let book = try await addBook()
         let notes = try await db.notesPage(for: book.id)
