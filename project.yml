@@ -47,11 +47,18 @@ targets:
             UTTypeDescription: Lumen Page
             UTTypeConformsTo: [public.data]
             UTTypeTagSpecification: {}
+        # Контейнер iCloud для синхронизации. Пусто = синхронизация выключена.
+        # Задаётся в Config/Local.xcconfig, см. README, раздел про iCloud.
+        LumenCloudKitContainer: $(LUMEN_CLOUDKIT_CONTAINER)
+        # CloudKit будит приложение тихим push, когда на другом устройстве что-то поменяли.
+        UIBackgroundModes: [remote-notification]
     dependencies:
       - package: LumenKit
         product: LumenStorage
       - package: LumenKit
         product: LumenUI
+      - package: LumenKit
+        product: LumenSync
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.bradd06.lumen
@@ -66,6 +73,9 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         ENABLE_PREVIEWS: YES
         SWIFT_STRICT_CONCURRENCY: complete
+        # Права iCloud подключаются только в сборке с платным аккаунтом (Config/Local.xcconfig).
+        # Без них приложение подписывается бесплатной командой и работает без синхронизации.
+        CODE_SIGN_ENTITLEMENTS: $(LUMEN_ENTITLEMENTS)
     scheme:
       gatherCoverageData: false
       testTargets:

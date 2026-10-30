@@ -1,14 +1,18 @@
 import LumenStorage
+import LumenSync
 import LumenUI
 import SwiftUI
 
 @main
 struct LumenApp: App {
     private let database = AppEnvironment.database
+    @State private var syncStatus = SyncStatus()
 
     var body: some Scene {
         WindowGroup {
             RootView(database: database)
+                .environment(syncStatus)
+                .task { await AppEnvironment.startSync(status: syncStatus) }
         }
         #if os(macOS)
         .defaultSize(width: 1180, height: 760)
@@ -35,4 +39,21 @@ enum AppEnvironment {
             fatalError("Не удалось открыть базу данных: \(error)")
         }
     }()
+}
+
+extension AppEnvironment {
+    /// Синхронизация с iCloud, если сборка с ней: в Info.plist указан контейнер и есть права iCloud
+    /// (нужен платный аккаунт разработчика, см. README). Иначе всё остаётся только на устройстве.
+    @MainActor
+    private static var sync: CloudSync?
+
+    @MainActor
+    static func startSync(status: SyncStatus) async {
+        guard sync == nil,
+              !ProcessInfo.processInfo.arguments.contains("-uiTesting"),
+              let container = CloudSync.configuredContainer else { return }
+        let sync = CloudSync(database: database, containerIdentifier: container, status: status)
+        self.sync = sync
+        await sync.start()
+    }
 }

@@ -142,6 +142,21 @@ struct PageEditorView: View {
                     }
                     .disabled(!model.canIndent(id))
                     Spacer()
+                    // На iPhone в панели окна места нет: отмена и повтор над клавиатурой.
+                    if isCompact && !isEmbedded {
+                        Button {
+                            model.undo()
+                        } label: {
+                            Label("Отменить", systemImage: "arrow.uturn.backward")
+                        }
+                        .disabled(!model.canUndo)
+                        Button {
+                            model.redo()
+                        } label: {
+                            Label("Повторить", systemImage: "arrow.uturn.forward")
+                        }
+                        .disabled(!model.canRedo)
+                    }
                 }
             }
             #endif
@@ -256,18 +271,20 @@ struct PageEditorView: View {
     @ToolbarContentBuilder
     private var editorToolbar: some ToolbarContent {
         ToolbarItemGroup {
-            Button {
-                model.undo()
-            } label: {
-                Label("Отменить", systemImage: "arrow.uturn.backward")
+            if !isCompact {
+                Button {
+                    model.undo()
+                } label: {
+                    Label("Отменить", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(!model.canUndo)
+                Button {
+                    model.redo()
+                } label: {
+                    Label("Повторить", systemImage: "arrow.uturn.forward")
+                }
+                .disabled(!model.canRedo)
             }
-            .disabled(!model.canUndo)
-            Button {
-                model.redo()
-            } label: {
-                Label("Повторить", systemImage: "arrow.uturn.forward")
-            }
-            .disabled(!model.canRedo)
         }
         ToolbarItem {
             Menu {
@@ -373,6 +390,15 @@ struct PageEditorView: View {
         remembersSubpages = isOpen
     }
 
+    /// Узкий экран iPhone: поля меньше, отмена и повтор над клавиатурой.
+    private var isCompact: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
+
     /// На узком iPhone карта заняла бы поля текста, там её нет.
     private var showsOutline: Bool {
         #if os(iOS)
@@ -420,8 +446,8 @@ struct PageEditorView: View {
             }
         }
         .scrollTargetLayout()
-        .padding(.horizontal, 28)
-        .padding(.vertical, 24)
+        .padding(.horizontal, isCompact ? 16 : 28)
+        .padding(.vertical, isCompact ? 16 : 24)
         .frame(maxWidth: 780, alignment: .leading)
         .frame(maxWidth: .infinity)
     }

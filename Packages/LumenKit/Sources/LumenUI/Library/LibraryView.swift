@@ -16,6 +16,8 @@ struct LibraryView: View {
     var onOpenPage: (UUID) -> Void
     var onOpenSource: (UUID) -> Void
     var onShowSourceInfo: (UUID) -> Void = { _ in }
+    /// iPhone: корзина открывается из меню библиотеки, отдельной вкладки для неё нет.
+    var onOpenTrash: (() -> Void)?
 
     @State private var snapshot = LibrarySnapshot.empty
     @State private var hasLoaded = false
@@ -36,7 +38,14 @@ struct LibraryView: View {
     @State private var importingCount = 0
     /// Над холстом держат файлы из Finder.
     @State private var isDropTargeted = false
+    /// iPhone: избранное в начале корня библиотеки, сайдбара с ним на телефоне нет.
+    @State private var favorites: [Page] = []
+    @State private var trashCount = 0
+    @State private var isSyncInfoPresented = false
     @AppStorage("library.snapToGrid") private var snapToGrid = false
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     @Environment(\.lumenTheme) private var theme
 
     private static let canvasSpace = "libraryCanvas"
@@ -70,7 +79,9 @@ struct LibraryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
+            if !usesList {
+                header
+            }
             if snapshot.isMissing {
                 ContentUnavailableView {
                     Label("Папки больше нет", systemImage: "folder.badge.questionmark")
@@ -81,6 +92,8 @@ struct LibraryView: View {
                         .buttonStyle(.borderedProminent)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if usesList {
+                compactList
             } else {
                 canvas
             }
@@ -99,12 +112,42 @@ struct LibraryView: View {
                 importFiles(urls, at: nil)
             }
         }
+        .toolbar {
+            if usesList {
+                ToolbarItem(placement: .primaryAction) {
+                    compactAddMenu
+                }
+                if folderId == nil {
+                    ToolbarItem(placement: .navigation) {
+                        compactMoreMenu
+                    }
+                }
+            }
+        }
+        .alert("Название", isPresented: isRenamingInList) {
+            TextField("Название", text: $renameText)
+            Button("Готово") { commitRename() }
+            Button("Отмена", role: .cancel) { renaming = nil }
+        }
         .sheet(item: $moving) { item in
             MoveToFolderSheet(database: database, item: item, currentFolderId: folderId) {
                 moving = nil
             }
         }
         .task { await observe() }
+        .task(id: usesList && folderId == nil) {
+            if usesList && folderId == nil { await observeFavorites() }
+        }
+        .sheet(isPresented: $isSyncInfoPresented) {
+            NavigationStack {
+                List { SyncStatusRow() }
+                    .navigationTitle("iCloud")
+                    .toolbar {
+                        Button("Готово") { isSyncInfoPresented = false }
+                    }
+            }
+            .presentationDetents([.medium])
+        }
     }
 
     // MARK: Шапка
@@ -919,6 +962,248 @@ struct LibraryView: View {
         } catch {
             print("Library observation failed: \(error)")
         }
+    }
+}
+
+// MARK: - Список на iPhone
+
+extension LibraryView {
+    /// На узком экране iPhone свободный холст неудобен: его не прокрутить, не задев плитки,
+    /// и в ширину помещаются две-три плитки. Там библиотека это обычный список: папки, книги, заметки.
+    /// Места на холсте при этом не меняются, на Mac и iPad всё лежит, где лежало.
+    var usesList: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
+
+    /// Переименование в списке идёт через окно с полем: поля прямо в строке на телефоне мелкие.
+    var isRenamingInList: Binding<Bool> {
+        Binding(
+            get: { usesList && renaming != nil },
+            set: { if !$0 { renaming = nil } }
+        )
+    }
+
+    var compactAddMenu: some View {
+        Menu {
+            Button(action: newPage) {
+                Label("Заметка", systemImage: "doc.badge.plus")
+            }
+            Button {
+                isImporting = true
+            } label: {
+                Label("Книга или файл", systemImage: "book.closed")
+            }
+            Button(action: newFolder) {
+                Label("Папка", systemImage: "folder.badge.plus")
+            }
+        } label: {
+            Label("Добавить", systemImage: "plus")
+        }
+        .disabled(snapshot.isMissing)
+    }
+
+    /// Корзина и iCloud: на Mac они в сайдбаре, на iPhone в меню корня библиотеки.
+    var compactMoreMenu: some View {
+        Menu {
+            if let onOpenTrash {
+                Button(action: onOpenTrash) {
+                    Label(trashCount > 0 ? "Корзина (\(trashCount))" : "Корзина", systemImage: "trash")
+                }
+            }
+            Button {
+                isSyncInfoPresented = true
+            } label: {
+                Label("iCloud", systemImage: "icloud")
+            }
+        } label: {
+            Label("Ещё", systemImage: "ellipsis.circle")
+        }
+    }
+
+    func observeFavorites() async {
+        let observation = ValueObservation.tracking { db in try SidebarSnapshot.fetch(db) }
+        do {
+            for try await value in observation.values(in: database.reader) {
+                favorites = value.favorites
+                trashCount = value.trashCount
+            }
+        } catch {
+            print("Favorites observation failed: \(error)")
+        }
+    }
+
+    var compactList: some View {
+        List {
+            if folderId == nil && !favorites.isEmpty {
+                Section("Избранное") {
+                    ForEach(favorites) { page in
+                        Button {
+                            LumenSounds.play(.navigate)
+                            onOpenPage(page.id)
+                        } label: {
+                            CompactLibraryRow(title: page.displayTitle, caption: "") {
+                                Image(systemName: "star.fill")
+                                    .foregroundStyle(theme.accent)
+                            }
+                        }
+                        .swipeActions {
+                            Button {
+                                Task { try? await database.setFavorite(page.id, false) }
+                            } label: {
+                                Label("Убрать из избранного", systemImage: "star.slash")
+                            }
+                        }
+                    }
+                }
+            }
+            if !snapshot.folders.isEmpty {
+                Section("Папки") {
+                    ForEach(snapshot.folders) { entry in
+                        Button {
+                            LumenSounds.play(.navigate)
+                            onOpenFolder(entry.id)
+                        } label: {
+                            CompactLibraryRow(title: entry.folder.displayName, caption: entry.itemCount.objectCountText) {
+                                FolderGlyph(color: entry.folder.color)
+                                    .scaleEffect(1.8)
+                            }
+                        }
+                        .contextMenu { folderMenu(entry.folder) }
+                        .swipeActions {
+                            Button(role: .destructive) {
+                                LumenSounds.play(.trash)
+                                Task { try? await database.trashFolder(entry.id) }
+                            } label: {
+                                Label("В корзину", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
+            }
+            if !snapshot.sources.isEmpty {
+                Section("Книги и файлы") {
+                    ForEach(snapshot.sources) { entry in
+                        Button {
+                            openSource(entry.id)
+                        } label: {
+                            CompactLibraryRow(title: entry.source.displayTitle, caption: caption(for: entry)) {
+                                SourceCoverArt(source: entry.source, attachments: database.attachments, width: 40, height: 56)
+                            }
+                        }
+                        .contextMenu { sourceMenu(entry.source) }
+                        .swipeActions {
+                            Button(role: .destructive) {
+                                LumenSounds.play(.trash)
+                                Task { try? await database.trashSource(entry.id) }
+                            } label: {
+                                Label("В корзину", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
+            }
+            if !snapshot.pages.isEmpty {
+                Section("Заметки") {
+                    ForEach(snapshot.pages) { entry in
+                        Button {
+                            LumenSounds.play(.navigate)
+                            onOpenPage(entry.id)
+                        } label: {
+                            CompactLibraryRow(title: entry.page.displayTitle, caption: caption(for: entry)) {
+                                if let icon = entry.page.icon, !icon.isEmpty {
+                                    Text(icon).font(.title3)
+                                } else {
+                                    Image(systemName: "doc.text")
+                                        .font(.title3)
+                                        .foregroundStyle(theme.textSecondary)
+                                }
+                            }
+                        }
+                        .contextMenu { pageMenu(entry) }
+                        .swipeActions {
+                            Button(role: .destructive) {
+                                LumenSounds.play(.trash)
+                                Task { try? await database.trashPage(entry.id) }
+                            } label: {
+                                Label("В корзину", systemImage: "trash")
+                            }
+                        }
+                        .swipeActions(edge: .leading) {
+                            Button {
+                                Task { try? await database.setFavorite(entry.id, !entry.page.isFavorite) }
+                            } label: {
+                                Label(entry.page.isFavorite ? "Убрать из избранного" : "В избранное", systemImage: "star")
+                            }
+                            .tint(theme.accent)
+                        }
+                    }
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .overlay {
+            if hasLoaded && snapshot.folders.isEmpty && snapshot.pages.isEmpty && snapshot.sources.isEmpty && importingCount == 0 {
+                ContentUnavailableView {
+                    Label("Пока пусто", systemImage: "folder")
+                } description: {
+                    Text("Создайте папку или заметку, или добавьте книгу из «Файлов».")
+                } actions: {
+                    Button("Новая папка", action: newFolder)
+                        .buttonStyle(.borderedProminent)
+                    Button("Добавить книгу") { isImporting = true }
+                        .buttonStyle(.bordered)
+                }
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if importingCount > 0 {
+                Label {
+                    Text(importingCount == 1 ? "Добавляю книгу…" : "Добавляю файлы: \(importingCount)…")
+                } icon: {
+                    ProgressView().controlSize(.small)
+                }
+                .font(.subheadline.weight(.medium))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.bottom, 16)
+            }
+        }
+    }
+}
+
+/// Строка списка библиотеки на iPhone: значок, название и подпись.
+private struct CompactLibraryRow<Icon: View>: View {
+    let title: String
+    let caption: String
+    @ViewBuilder var icon: () -> Icon
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: 14) {
+            icon()
+                .frame(width: 42)
+                .frame(minHeight: 42)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(theme.textPrimary)
+                    .lineLimit(2)
+                if !caption.isEmpty {
+                    Text(caption)
+                        .font(.caption)
+                        .foregroundStyle(theme.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
     }
 }
 
