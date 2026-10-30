@@ -223,49 +223,54 @@ struct ReaderView: View {
         return theme.textPrimary
     }
 
+    /// Полоса глав стоит под текстом, а не поверх него, поэтому никогда не закрывает строки.
+    /// Поверх книги всплывают только временные плашки: выделение, уведомление.
     private func readerPane(tocOverlay: Bool) -> some View {
-        ZStack(alignment: .bottom) {
-            document
+        VStack(spacing: isCompact ? 8 : 0) {
+            VStack(spacing: 0) {
+                ZStack(alignment: .bottom) {
+                    document
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack(spacing: 10) {
+                        if let toast = model.toast {
+                            Label(toast, systemImage: "checkmark.circle.fill")
+                                .font(.subheadline.weight(.bold))
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                        if model.selection != nil {
+                            SelectionBar(model: model, isCompact: isCompact)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        } else if let id = model.activeHighlightId, let highlight = model.highlights.first(where: { $0.id == id }) {
+                            HighlightBar(model: model, highlight: highlight, isCompact: isCompact)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                    }
+                    .padding(.horizontal, isCompact ? 10 : 18)
+                    .padding(.bottom, isCompact ? 10 : 16)
+                    .animation(.spring(duration: 0.3), value: model.selection)
+                    .animation(.spring(duration: 0.3), value: model.activeHighlightId)
+                    .animation(.spring(duration: 0.3), value: model.toast)
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            VStack(spacing: 10) {
-                if let toast = model.toast {
-                    Label(toast, systemImage: "checkmark.circle.fill")
-                        .font(.subheadline.weight(.bold))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-                if model.selection != nil {
-                    SelectionBar(model: model, isCompact: isCompact)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                } else if let id = model.activeHighlightId, let highlight = model.highlights.first(where: { $0.id == id }) {
-                    HighlightBar(model: model, highlight: highlight, isCompact: isCompact)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                } else if isCompact {
-                    dock
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-                if !isCompact {
-                    footer
+                footer
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .readerSheet(sheetColors, radius: isCompact ? 30 : ReaderStyle.sheetRadius)
+            .overlay(alignment: .leading) {
+                // На узком окне содержание плавает над книгой и не сдвигает текст.
+                if tocOverlay, showsToc, !model.toc.isEmpty, !isCompact {
+                    tableOfContents
+                        .frame(width: 280)
+                        .frame(maxHeight: .infinity)
+                        .padding(12)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
                 }
             }
-            .padding(.horizontal, isCompact ? 10 : 18)
-            .padding(.bottom, isCompact ? 10 : 16)
-            .animation(.spring(duration: 0.3), value: model.selection)
-            .animation(.spring(duration: 0.3), value: model.activeHighlightId)
-            .animation(.spring(duration: 0.3), value: model.toast)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .readerSheet(sheetColors, radius: isCompact ? 30 : ReaderStyle.sheetRadius)
-        .overlay(alignment: .leading) {
-            // На узком окне содержание плавает над книгой и не сдвигает текст.
-            if tocOverlay, showsToc, !model.toc.isEmpty, !isCompact {
-                tableOfContents
-                    .frame(width: 280)
-                    .frame(maxHeight: .infinity)
-                    .padding(12)
-                    .transition(.move(edge: .leading).combined(with: .opacity))
+            if isCompact {
+                dock
             }
         }
     }
@@ -310,7 +315,8 @@ struct ReaderView: View {
         }
     }
 
-    /// Мягкая полоса внизу листа: главы, прогресс и место в книге.
+    /// Мягкая полоса внизу листа, под текстом: главы, прогресс и место в книге.
+    /// На iPhone без названия главы, чтобы влезли стрелки.
     @ViewBuilder
     private var footer: some View {
         let sections = model.sections
@@ -328,7 +334,7 @@ struct ReaderView: View {
                     .disabled(model.section == 0)
                     .help("Предыдущая глава")
                 }
-                if let title = model.currentTocEntry?.title {
+                if !isCompact, let title = model.currentTocEntry?.title {
                     Text(title)
                         .lineLimit(1)
                         .frame(maxWidth: 170, alignment: .leading)
@@ -350,13 +356,15 @@ struct ReaderView: View {
                     .help("Следующая глава")
                 }
             }
-            .font(.system(size: 13, weight: .bold, design: .rounded))
+            .font(.system(size: isCompact ? 12 : 13, weight: .bold, design: .rounded))
             .foregroundStyle(ink.opacity(0.68))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.horizontal, isCompact ? 8 : 12)
+            .padding(.vertical, isCompact ? 7 : 10)
             .background(ink.opacity(0.07), in: shape)
-            .background((sheetColors.last ?? .clear).opacity(0.94), in: shape)
             .frame(maxWidth: 680)
+            .padding(.horizontal, isCompact ? 10 : 18)
+            .padding(.top, 6)
+            .padding(.bottom, isCompact ? 10 : 16)
         default:
             EmptyView()
         }

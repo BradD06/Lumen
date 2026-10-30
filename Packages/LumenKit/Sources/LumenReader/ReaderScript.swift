@@ -134,7 +134,9 @@ enum ReaderScript {
       }
 
       let scrollTimer = null;
+      let lastScroll = 0;
       window.addEventListener('scroll', () => {
+        lastScroll = Date.now();
         clearTimeout(scrollTimer);
         scrollTimer = setTimeout(() => post({ type: 'scroll', progression: progression(), anchor: currentAnchor() }), 150);
       }, { passive: true });
@@ -145,6 +147,52 @@ enum ReaderScript {
           post({ type: 'highlightTap', id: mark.dataset.id });
         }
       });
+
+      // Листание пальцем: смахивание вбок или касание у края листает на экран,
+      // а за концом главы читалка открывает следующую (в начале главы предыдущую).
+      // Только касания: на Mac клик по тексту ничего не листает.
+      function turn(direction) {
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        const y = window.scrollY;
+        if (direction > 0 && y >= max - 2) { post({ type: 'turn', direction: 1 }); return; }
+        if (direction < 0 && y <= 2) { post({ type: 'turn', direction: -1 }); return; }
+        window.scrollBy({ top: direction * Math.max(window.innerHeight - 48, 80), behavior: 'smooth' });
+      }
+
+      let touch = null;
+      document.addEventListener('touchstart', (event) => {
+        if (event.touches.length !== 1) { touch = null; return; }
+        const point = event.touches[0];
+        touch = {
+          x: point.clientX, y: point.clientY, time: Date.now(),
+          // Касание, которое останавливает прокрутку или снимает выделение, не листает.
+          ignored: Date.now() - lastScroll < 120 || !window.getSelection().isCollapsed
+        };
+      }, { passive: true });
+      document.addEventListener('touchend', (event) => {
+        const start = touch;
+        touch = null;
+        if (!start || start.ignored || event.changedTouches.length !== 1) { return; }
+        const point = event.changedTouches[0];
+        const dx = point.clientX - start.x;
+        const dy = point.clientY - start.y;
+        const elapsed = Date.now() - start.time;
+        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5 && elapsed < 700) {
+          turn(dx < 0 ? 1 : -1);
+          return;
+        }
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10 || elapsed > 300) { return; }
+        if (event.target.closest && event.target.closest('a, mark.lumen-hl, button, input, video, audio')) { return; }
+        const zone = window.innerWidth * 0.28;
+        if (point.clientX < zone) {
+          event.preventDefault();
+          turn(-1);
+        } else if (point.clientX > window.innerWidth - zone) {
+          event.preventDefault();
+          turn(1);
+        }
+      }, { passive: false });
+      document.addEventListener('touchcancel', () => { touch = null; }, { passive: true });
 
       window.lumen = {
         setStyle: (css) => { style.textContent = css; },
@@ -272,9 +320,10 @@ public struct ReaderAppearance: Hashable, Sendable {
         case .rounded: "ui-rounded, 'SF Pro Rounded', -apple-system, sans-serif"
         }
         let layout = """
-        html { -webkit-text-size-adjust: 100%; }
+        html { -webkit-text-size-adjust: 100%; overflow-y: auto !important; height: auto !important; }
         body {
-          max-width: 40em; margin: 0 auto !important; padding: 40px 32px 140px !important;
+          overflow: visible !important; height: auto !important; min-height: 0 !important; position: static !important;
+          max-width: 40em; margin: 0 auto !important; padding: 40px 32px 56px !important;
           font-size: \(fontSize)px !important; line-height: 1.62; word-wrap: break-word;
         }
         img, svg, video { max-width: 100% !important; height: auto !important; }
