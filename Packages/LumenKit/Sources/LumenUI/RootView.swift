@@ -13,14 +13,19 @@ public enum SidebarItem: Hashable, Sendable {
     case page(UUID)
     /// Книга или файл в читалке, `highlight` прокручивает к выделению.
     case source(UUID, highlight: UUID?)
+    /// Дашборд книги: прогресс, время чтения, заметки и выделения.
+    case sourceInfo(UUID)
 }
 
 /// Корневой экран: сайдбар с разделами и деревом страниц, справа выбранный раздел.
-/// На iPhone `NavigationSplitView` сам превращается в стек.
+/// На iPhone (узкий экран) вместо сайдбара вкладки внизу, см. `PhoneRootView`.
 public struct RootView: View {
     private let database: AppDatabase
     @State private var selection: SidebarItem? = .home
     @State private var isSearchPresented = false
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     @Environment(\.lumenTheme) private var theme
 
     public init(database: AppDatabase) {
@@ -28,6 +33,22 @@ public struct RootView: View {
     }
 
     public var body: some View {
+        Group {
+            #if os(iOS)
+            if horizontalSizeClass == .compact {
+                PhoneRootView(database: database)
+            } else {
+                splitView
+            }
+            #else
+            splitView
+            #endif
+        }
+        .tint(theme.accent)
+        .preferredColorScheme(.dark)
+    }
+
+    private var splitView: some View {
         NavigationSplitView {
             SidebarView(database: database, selection: $selection, onNewPage: openNewPage, onNewFolder: openNewFolder)
         } detail: {
@@ -54,8 +75,6 @@ public struct RootView: View {
                 selection = .page(pageId)
             }
         }
-        .tint(theme.accent)
-        .preferredColorScheme(.dark)
     }
 
     @ViewBuilder
@@ -76,7 +95,8 @@ public struct RootView: View {
                 folderId: folderId,
                 onOpenFolder: { selection = .library($0) },
                 onOpenPage: { selection = .page($0) },
-                onOpenSource: { selection = .source($0, highlight: nil) }
+                onOpenSource: { selection = .source($0, highlight: nil) },
+                onShowSourceInfo: { selection = .sourceInfo($0) }
             )
             .id(folderId)
         case .trash:
@@ -97,7 +117,16 @@ public struct RootView: View {
                 highlightId: highlight,
                 onOpenPage: { selection = .page($0) },
                 onOpenSource: { selection = .source($0, highlight: $1) },
+                onShowInfo: { selection = .sourceInfo(id) },
                 onClose: { selection = .library(nil) }
+            )
+            .id(id)
+        case .sourceInfo(let id):
+            SourceDashboardView(
+                database: database,
+                sourceId: id,
+                onRead: { selection = .source(id, highlight: $0) },
+                onOpenPage: { selection = .page($0) }
             )
             .id(id)
         }

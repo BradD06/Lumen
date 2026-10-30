@@ -1,5 +1,13 @@
 // Подпись приложения. Своя команда разработчика задаётся в Local.xcconfig рядом с этим файлом:
 //   DEVELOPMENT_TEAM = ABCDE12345
 // Local.xcconfig не хранится в git. Если его нет, команда остаётся пустой.
+//
+// Синхронизация с iCloud выключена, пока нет платного аккаунта разработчика Apple.
+// Чтобы включить, добавьте в Local.xcconfig (подробнее в README):
+//   LUMEN_CLOUDKIT_CONTAINER = iCloud.io.github.bradd06.lumen
+//   LUMEN_ENTITLEMENTS[sdk=iphone*] = Config/iCloud-iOS.entitlements
+//   LUMEN_ENTITLEMENTS[sdk=macosx*] = Config/iCloud-macOS.entitlements
 DEVELOPMENT_TEAM =
+LUMEN_CLOUDKIT_CONTAINER =
+LUMEN_ENTITLEMENTS =
 #include? "Local.xcconfig"

@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 import LumenCore
 
-/// Локальная база приложения. Всё хранится на устройстве (local-first), синхронизация появится позже.
+/// Локальная база приложения. Всё хранится на устройстве (local-first), а в iCloud уезжает копия, см. LumenSync.
 public final class AppDatabase: Sendable {
     public let writer: any DatabaseWriter
     /// Файлы, которые блоки и обложки показывают по имени: картинки, книги и документы.
@@ -180,6 +180,22 @@ extension AppDatabase {
             try Highlight.filter(keys: orphans).updateAll(db, Column("deletedAt").set(to: Date()))
         }
 
+        migrator.registerMigration("v7: reading sessions") { db in
+            try db.create(table: "readingSession") { t in
+                t.primaryKey("id", .blob)
+                t.column("sourceId", .blob).notNull().references("source", onDelete: .cascade).indexed()
+                t.column("startedAt", .datetime).notNull()
+                t.column("endedAt", .datetime).notNull()
+                t.column("seconds", .double).notNull()
+            }
+        }
+
+        // Журнал правок для iCloud. Пишется всегда, даже когда синхронизация выключена:
+        // включив её, не придётся гадать, что менялось. Старые строки ставит в очередь первый запуск синхронизации.
+        migrator.registerMigration("sync: change log") { db in
+            try Self.createSyncSchema(db)
+        }
+
         return migrator
     }
 }
@@ -204,4 +220,8 @@ extension Source: FetchableRecord, PersistableRecord {
 
 extension Highlight: FetchableRecord, PersistableRecord {
     public static let databaseTableName = "highlight"
+}
+
+extension ReadingSession: FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "readingSession"
 }

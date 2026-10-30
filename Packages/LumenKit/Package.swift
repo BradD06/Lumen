@@ -9,6 +9,7 @@ let package = Package(
         .library(name: "LumenStorage", targets: ["LumenStorage"]),
         .library(name: "LumenThemes", targets: ["LumenThemes"]),
         .library(name: "LumenReader", targets: ["LumenReader"]),
+        .library(name: "LumenSync", targets: ["LumenSync"]),
         .library(name: "LumenUI", targets: ["LumenUI"]),
     ],
     dependencies: [
@@ -37,6 +38,16 @@ let package = Package(
                 .product(name: "ZIPFoundation", package: "ZIPFoundation"),
             ]
         ),
+        // Синхронизация через iCloud (CloudKit, CKSyncEngine). Включается только в сборке с контейнером iCloud.
+        // Типы CloudKit пока не размечены для строгой проверки Swift 6, поэтому модуль в режиме Swift 5.
+        .target(
+            name: "LumenSync",
+            dependencies: [
+                "LumenStorage",
+                .product(name: "GRDB", package: "GRDB.swift"),
+            ],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         // Экраны приложения на SwiftUI.
         .target(
             name: "LumenUI",
@@ -45,6 +56,7 @@ let package = Package(
                 "LumenStorage",
                 "LumenThemes",
                 "LumenReader",
+                "LumenSync",
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
