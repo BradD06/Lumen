@@ -58,4 +58,24 @@ struct SidePageTests {
         #expect(page.folderId == folder.id)
         #expect(page.sourceId == nil)
     }
+
+    @Test func readingTimeCountsOnlyActiveStretches() async throws {
+        let source = try await db.addSource(
+            title: "Книга", format: .epub, file: "missing.epub", originalName: "Книга.epub"
+        )
+        let model = ReaderModel(database: db, sourceId: source.id, highlightId: nil)
+        await model.load()
+        let start = Date().addingTimeInterval(60)
+        model.noteActivity(at: start)
+        model.noteActivity(at: start.addingTimeInterval(120))
+        // Долгий перерыв не засчитывается, счёт идёт дальше с нового действия.
+        model.noteActivity(at: start.addingTimeInterval(120 + ReaderModel.idleLimit + 60))
+        model.noteActivity(at: start.addingTimeInterval(120 + ReaderModel.idleLimit + 90))
+
+        let session = try #require(model.readingSession)
+        #expect(session.seconds >= 150 && session.seconds < 220)
+
+        try await db.saveReadingSession(session)
+        #expect(try await db.readingStats(of: source.id).totalSeconds == session.seconds)
+    }
 }

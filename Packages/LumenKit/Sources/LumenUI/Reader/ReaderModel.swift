@@ -76,6 +76,11 @@ final class ReaderModel {
     @ObservationIgnored private var hasRestoredPosition = false
     /// Какая глава сейчас загружена в веб-вид.
     @ObservationIgnored private var loadedSection: Int?
+    /// Время чтения за этот раз: растёт, пока человек листает, выделяет и пишет.
+    @ObservationIgnored private(set) var readingSession: ReadingSession?
+    @ObservationIgnored private var lastActivity: Date?
+    /// Дольше этого без единого действия считается, что книгу отложили.
+    static let idleLimit: TimeInterval = 300
 
     init(database: AppDatabase, sourceId: UUID, highlightId: UUID?) {
         self.database = database
@@ -115,6 +120,7 @@ final class ReaderModel {
             await notes.load()
             self.notes = notes
             await openContent()
+            noteActivity()
         } catch {
             content = .failed("Не удалось открыть: \(error.localizedDescription)")
         }
@@ -413,6 +419,7 @@ final class ReaderModel {
                 }
             }
         case .selection(let text, let raw, let offset, let label, let progression):
+            noteActivity()
             activeHighlightId = nil
             selection = Selection(
                 text: text,
@@ -434,6 +441,7 @@ final class ReaderModel {
     private func handle(_ event: PDFReaderEvent) {
         switch event {
         case .selection(let text, let locator):
+            noteActivity()
             activeHighlightId = nil
             selection = Selection(text: text, locator: locator, label: "стр. \(locator.section + 1)")
         case .selectionCleared:
@@ -459,15 +467,36 @@ final class ReaderModel {
     }
 
     private func scheduleSave() {
+        noteActivity()
         guard hasRestoredPosition else { return }
         saveTask?.cancel()
         let locator = SourceLocator(section: section, progression: sectionProgression)
         let progress = progress
+        let session = readingSession
         saveTask = Task { [database, sourceId] in
             try? await Task.sleep(for: .seconds(1))
             guard !Task.isCancelled else { return }
             try? await database.saveReadingPosition(sourceId, locator: locator, progress: progress)
+            if let session, session.seconds >= 1 { try? await database.saveReadingSession(session) }
         }
+    }
+
+    // MARK: Время чтения
+
+    /// Человек что-то сделал в книге. Время с прошлого действия засчитывается, если не было
+    /// долгого перерыва; после перерыва счёт просто продолжается с этого момента.
+    func noteActivity(at now: Date = Date()) {
+        guard source != nil else { return }
+        if var session = readingSession {
+            if let lastActivity, now.timeIntervalSince(lastActivity) <= Self.idleLimit {
+                session.seconds += max(now.timeIntervalSince(lastActivity), 0)
+                session.endedAt = now
+                readingSession = session
+            }
+        } else {
+            readingSession = ReadingSession(sourceId: sourceId, startedAt: now, endedAt: now, seconds: 0)
+        }
+        lastActivity = now
     }
 
     // MARK: Выделения и выписки
@@ -576,6 +605,10 @@ final class ReaderModel {
     /// Записывает место чтения сразу, например когда уходят с экрана.
     func flush() async {
         saveTask?.cancel()
+        noteActivity()
+        if let readingSession, readingSession.seconds >= 1 {
+            try? await database.saveReadingSession(readingSession)
+        }
         if hasRestoredPosition {
             try? await database.saveReadingPosition(
                 sourceId,

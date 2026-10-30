@@ -323,6 +323,8 @@ extension Int {
 struct SourceCoverArt: View {
     let source: Source
     let attachments: AttachmentStore
+    var width: CGFloat = 98
+    var height: CGFloat = 136
 
     @Environment(\.lumenTheme) private var theme
 
@@ -337,26 +339,13 @@ struct SourceCoverArt: View {
         ZStack(alignment: .bottom) {
             if let cover = source.cover {
                 AttachmentImage(name: cover, attachments: attachments, contentMode: .fill)
-                    .frame(width: 98, height: 136)
+                    .frame(width: width, height: height)
                     .clipped()
             } else {
                 drawnCover
             }
-            if source.progress > 0.005 {
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(.black.opacity(0.35))
-                        Capsule()
-                            .fill(theme.accent)
-                            .frame(width: max(4, geometry.size.width * source.progress))
-                    }
-                }
-                .frame(height: 4)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 7)
-            }
         }
-        .frame(width: 98, height: 136)
+        .frame(width: width, height: height)
         .overlay(alignment: .leading) {
             // Корешок книги.
             LinearGradient(
@@ -415,5 +404,26 @@ struct SourceCoverArt: View {
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+    }
+}
+
+/// Полоска «сколько прочитано» под обложкой книги.
+struct ReadingProgressBar: View {
+    let progress: Double
+
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(theme.textSecondary.opacity(0.25))
+                Capsule()
+                    .fill(theme.accent)
+                    .frame(width: max(4, geometry.size.width * min(max(progress, 0), 1)))
+            }
+        }
+        .frame(height: 4)
+        .accessibilityElement()
+        .accessibilityLabel("Прочитано \(Int((progress * 100).rounded()))%")
     }
 }

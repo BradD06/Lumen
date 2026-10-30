@@ -13,6 +13,8 @@ public enum SidebarItem: Hashable, Sendable {
     case page(UUID)
     /// Книга или файл в читалке, `highlight` прокручивает к выделению.
     case source(UUID, highlight: UUID?)
+    /// Дашборд книги: прогресс, время чтения, заметки и выделения.
+    case sourceInfo(UUID)
 }
 
 /// Корневой экран: сайдбар с разделами и деревом страниц, справа выбранный раздел.
@@ -76,7 +78,8 @@ public struct RootView: View {
                 folderId: folderId,
                 onOpenFolder: { selection = .library($0) },
                 onOpenPage: { selection = .page($0) },
-                onOpenSource: { selection = .source($0, highlight: nil) }
+                onOpenSource: { selection = .source($0, highlight: nil) },
+                onShowSourceInfo: { selection = .sourceInfo($0) }
             )
             .id(folderId)
         case .trash:
@@ -97,7 +100,16 @@ public struct RootView: View {
                 highlightId: highlight,
                 onOpenPage: { selection = .page($0) },
                 onOpenSource: { selection = .source($0, highlight: $1) },
+                onShowInfo: { selection = .sourceInfo(id) },
                 onClose: { selection = .library(nil) }
+            )
+            .id(id)
+        case .sourceInfo(let id):
+            SourceDashboardView(
+                database: database,
+                sourceId: id,
+                onRead: { selection = .source(id, highlight: $0) },
+                onOpenPage: { selection = .page($0) }
             )
             .id(id)
         }
