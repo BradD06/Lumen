@@ -243,6 +243,9 @@ struct LibraryTile<Art: View>: View {
     @Binding var renameText: String
     var isRenaming = false
     var onCommitRename: () -> Void = {}
+    /// Сколько прочитано, от 0 до 1: полоска между картинкой и подписью. `nil` без полоски.
+    /// Непрочитанная книга оставляет под полоску пустое место, чтобы подписи в ряду не прыгали.
+    var progress: Double?
     @ViewBuilder var art: () -> Art
 
     @FocusState private var isRenameFocused: Bool
@@ -250,8 +253,15 @@ struct LibraryTile<Art: View>: View {
 
     var body: some View {
         VStack(spacing: 6) {
+            // Под полоску картинка становится чуть ниже: плитка остаётся прежнего размера.
             art()
-                .frame(height: 132, alignment: .bottom)
+                .frame(height: progress == nil ? 132 : 123, alignment: .bottom)
+            if let progress {
+                ReadingProgressBar(progress: progress)
+                    .frame(width: SourceCoverArt.size.width)
+                    .opacity(progress > 0.005 ? 1 : 0)
+                    .padding(.top, 4)
+            }
             if isRenaming {
                 TextField("Название", text: $renameText)
                     .textFieldStyle(.plain)
@@ -319,8 +329,32 @@ extension Int {
     }
 }
 
-/// Книга или файл на холсте: обложка из файла или нарисованная, корешок и полоска прочитанного.
+/// Полоска прочитанного под обложкой книги: на светлой обложке поверх картинки её не видно.
+struct ReadingProgressBar: View {
+    let progress: Double
+
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(theme.textPrimary.opacity(0.16))
+                Capsule()
+                    .fill(theme.accent)
+                    .frame(width: max(5, geometry.size.width * min(max(progress, 0), 1)))
+                    .shadow(color: theme.accent.opacity(0.6), radius: 4)
+            }
+        }
+        .frame(height: 5)
+        .accessibilityElement()
+        .accessibilityLabel("Прочитано \(Int((progress * 100).rounded()))%")
+    }
+}
+
+/// Книга или файл на холсте: обложка из файла или нарисованная и корешок.
 struct SourceCoverArt: View {
+    static let size = CGSize(width: 92, height: 128)
+
     let source: Source
     let attachments: AttachmentStore
 
@@ -337,26 +371,13 @@ struct SourceCoverArt: View {
         ZStack(alignment: .bottom) {
             if let cover = source.cover {
                 AttachmentImage(name: cover, attachments: attachments, contentMode: .fill)
-                    .frame(width: 98, height: 136)
+                    .frame(width: Self.size.width, height: Self.size.height)
                     .clipped()
             } else {
                 drawnCover
             }
-            if source.progress > 0.005 {
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(.black.opacity(0.35))
-                        Capsule()
-                            .fill(theme.accent)
-                            .frame(width: max(4, geometry.size.width * source.progress))
-                    }
-                }
-                .frame(height: 4)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 7)
-            }
         }
-        .frame(width: 98, height: 136)
+        .frame(width: Self.size.width, height: Self.size.height)
         .overlay(alignment: .leading) {
             // Корешок книги.
             LinearGradient(

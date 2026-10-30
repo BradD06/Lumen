@@ -409,7 +409,8 @@ struct LibraryView: View {
                 isDragging: drag?.item == item.id,
                 renameText: $renameText,
                 isRenaming: renaming == item.id,
-                onCommitRename: commitRename
+                onCommitRename: commitRename,
+                progress: entry.source.progress
             ) {
                 SourceCoverArt(source: entry.source, attachments: database.attachments)
             }
