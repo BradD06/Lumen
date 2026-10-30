@@ -530,10 +530,12 @@ private struct ExcerptBlock: View {
 
     var body: some View {
         Button(action: onOpen) {
-            HStack(alignment: .top, spacing: 12) {
-                Capsule()
-                    .fill(LinearGradient(colors: theme.vividCard(1).colors, startPoint: .top, endPoint: .bottom))
-                    .frame(width: 4)
+            HStack(alignment: .top, spacing: 10) {
+                Text("\u{201C}")
+                    .font(.system(size: 34, weight: .bold, design: .serif))
+                    .foregroundStyle(tint.opacity(0.85))
+                    .frame(height: 22, alignment: .top)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 8) {
                     Text(text)
                         .font(.system(size: 17, design: .serif))
@@ -554,16 +556,22 @@ private struct ExcerptBlock: View {
                     .foregroundStyle(source == nil ? theme.textSecondary.opacity(0.7) : theme.accent)
                 }
             }
-            .padding(.vertical, 12)
+            .padding(.top, 14)
+            .padding(.bottom, 12)
             .padding(.horizontal, 14)
-            .background(theme.cardFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(theme.cardStroke, lineWidth: 1))
+            .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(tint.opacity(0.16), lineWidth: 1))
             .fixedSize(horizontal: false, vertical: true)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(source == nil)
         .help(source == nil ? "Книгу удалили" : "Открыть книгу на этом месте")
+    }
+
+    /// Мягкий тёплый тон цитаты.
+    private var tint: Color {
+        theme.vividCard(1).colors.first ?? theme.accent
     }
 
     private var caption: String {
