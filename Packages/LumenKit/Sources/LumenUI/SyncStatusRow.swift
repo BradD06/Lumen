@@ -1,3 +1,4 @@
+import LumenCore
 import LumenSync
 import LumenThemes
 import SwiftUI
@@ -64,7 +65,7 @@ struct SyncStatusRow: View {
         case .syncing:
             "Заметки и книги отправляются в iCloud и приходят с других устройств."
         case .upToDate(let date):
-            "Последний раз \(date.formatted(.relative(presentation: .named)))"
+            "Последний раз \(date.lumenRelative)"
         case .failed(let message):
             message
         }

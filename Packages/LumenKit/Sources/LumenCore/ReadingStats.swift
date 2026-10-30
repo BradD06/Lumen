@@ -66,9 +66,10 @@ public struct ReadingStats: Hashable, Sendable {
     }
 
     /// «2 ч 15 мин», «25 мин», «меньше минуты».
-    public static func format(_ seconds: Double) -> String {
+    /// `short` для крупных чисел на карточках: «<1 мин» вместо «меньше минуты».
+    public static func format(_ seconds: Double, short: Bool = false) -> String {
         let minutes = Int(seconds / 60)
-        if minutes < 1 { return seconds > 0 ? "меньше минуты" : "0 мин" }
+        if minutes < 1 { return seconds > 0 ? (short ? "<1 мин" : "меньше минуты") : "0 мин" }
         let hours = minutes / 60
         if hours == 0 { return "\(minutes) мин" }
         let rest = minutes % 60

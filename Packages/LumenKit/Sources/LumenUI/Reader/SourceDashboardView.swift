@@ -15,6 +15,9 @@ struct SourceDashboardView: View {
     @State private var snapshot = SourceDashboardSnapshot.empty
     @State private var hasLoaded = false
     @Environment(\.lumenTheme) private var theme
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
 
     private var stats: ReadingStats { ReadingStats(sessions: snapshot.sessions) }
 
@@ -28,7 +31,7 @@ struct SourceDashboardView: View {
                     notesCard(source)
                     highlightsCard
                 }
-                .padding(24)
+                .padding(isCompact ? 16 : 24)
                 .frame(maxWidth: 900)
                 .frame(maxWidth: .infinity)
             } else if hasLoaded {
@@ -42,60 +45,107 @@ struct SourceDashboardView: View {
         }
         .background(ThemedBackground())
         .navigationTitle(snapshot.source?.displayTitle ?? "")
+        #if os(iOS)
+        // Полное название уже крупно в шапке, наверху хватит строки поменьше.
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .task { await observe() }
     }
 
     // MARK: Шапка
 
     private func header(_ source: Source) -> some View {
-        HStack(alignment: .bottom, spacing: 20) {
-            VStack(spacing: 8) {
-                SourceCoverArt(source: source, attachments: database.attachments, width: 122, height: 170)
-                ReadingProgressBar(progress: source.progress)
-                    .frame(width: 112)
-                    .opacity(source.progress > 0.005 ? 1 : 0)
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                Text(source.format.label.uppercased())
-                    .font(.caption.weight(.bold))
-                    .tracking(0.6)
-                    .foregroundStyle(theme.textSecondary)
-                Text(source.displayTitle)
-                    .font(.system(size: 30, weight: .bold))
-                    .foregroundStyle(theme.textPrimary)
-                    .lineLimit(3)
-                if let author = source.author, !author.isEmpty {
-                    Text(author)
-                        .font(.title3)
-                        .foregroundStyle(theme.textSecondary)
-                }
-                HStack(spacing: 10) {
-                    Button {
-                        LumenSounds.play(.navigate)
-                        onRead(nil)
-                    } label: {
-                        Label(source.progress > 0.005 ? "Продолжить" : "Читать", systemImage: "book")
+        Group {
+            if isCompact {
+                // iPhone: обложка с названием сверху, кнопки во всю ширину под ними.
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(alignment: .center, spacing: 16) {
+                        cover(source, width: 100, height: 140)
+                        titleBlock(source, titleSize: 24)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(theme.accent)
-                    Button {
-                        openNotes()
-                    } label: {
-                        Label("Заметки к книге", systemImage: "note.text")
+                    HStack(spacing: 10) {
+                        actionButtons(source)
                     }
-                    .buttonStyle(.bordered)
                 }
-                .padding(.top, 6)
+            } else {
+                HStack(alignment: .bottom, spacing: 20) {
+                    cover(source, width: 122, height: 170)
+                    VStack(alignment: .leading, spacing: 8) {
+                        titleBlock(source, titleSize: 30)
+                        HStack(spacing: 10) {
+                            actionButtons(source)
+                        }
+                        .fixedSize()
+                        .padding(.top, 6)
+                    }
+                    Spacer(minLength: 0)
+                }
             }
-            Spacer(minLength: 0)
         }
+    }
+
+    private func cover(_ source: Source, width: CGFloat, height: CGFloat) -> some View {
+        VStack(spacing: 8) {
+            SourceCoverArt(source: source, attachments: database.attachments, width: width, height: height)
+            ReadingProgressBar(progress: source.progress)
+                .frame(width: width - 10)
+                .opacity(source.progress > 0.005 ? 1 : 0)
+        }
+    }
+
+    private func titleBlock(_ source: Source, titleSize: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(source.format.label.uppercased())
+                .font(.caption.weight(.bold))
+                .tracking(0.6)
+                .foregroundStyle(theme.textSecondary)
+            Text(source.displayTitle)
+                .font(.system(size: titleSize, weight: .bold, design: .rounded))
+                .foregroundStyle(theme.textPrimary)
+                .lineLimit(4)
+                .minimumScaleFactor(0.8)
+                .fixedSize(horizontal: false, vertical: true)
+            if let author = source.author, !author.isEmpty {
+                Text(author)
+                    .font(isCompact ? .subheadline : .title3)
+                    .foregroundStyle(theme.textSecondary)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func actionButtons(_ source: Source) -> some View {
+        Button {
+            LumenSounds.play(.navigate)
+            onRead(nil)
+        } label: {
+            Label(source.progress > 0.005 ? "Продолжить" : "Читать", systemImage: "book")
+        }
+        .buttonStyle(DashboardPillButtonStyle(isProminent: true, fillsWidth: isCompact))
+        Button {
+            openNotes()
+        } label: {
+            Label(isCompact ? "Заметки" : "Заметки к книге", systemImage: "note.text")
+        }
+        .buttonStyle(DashboardPillButtonStyle(isProminent: false, fillsWidth: isCompact))
+        .accessibilityLabel("Заметки к книге")
+    }
+
+    /// Узкий экран iPhone: шапка складывается в столбик.
+    private var isCompact: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
     }
 
     // MARK: Числа
 
     private func statCards(_ source: Source) -> some View {
         let stats = stats
-        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 14)], spacing: 14) {
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14)], spacing: 14) {
             StatCard(
                 title: "Прочитано",
                 value: "\(Int((source.progress * 100).rounded()))%",
@@ -105,7 +155,7 @@ struct SourceDashboardView: View {
             )
             StatCard(
                 title: "Время",
-                value: ReadingStats.format(stats.totalSeconds),
+                value: ReadingStats.format(stats.totalSeconds, short: true),
                 caption: "сегодня \(ReadingStats.format(stats.todaySeconds))",
                 systemImage: "clock",
                 style: .vivid(0)
@@ -272,7 +322,7 @@ struct SourceDashboardView: View {
     }
 
     private func relative(_ date: Date) -> String {
-        date.formatted(.relative(presentation: .named))
+        date.lumenRelative
     }
 
     static func days(_ count: Int) -> String {
@@ -291,5 +341,37 @@ struct SourceDashboardView: View {
         if units == 1 { return one }
         if (2...4).contains(units) { return few }
         return many
+    }
+}
+
+/// Мягкая кнопка-пилюля в шапке книги: персиковая для «Продолжить», стеклянная для остальных.
+/// Подпись всегда в одну строку.
+private struct DashboardPillButtonStyle: ButtonStyle {
+    var isProminent: Bool
+    var fillsWidth: Bool
+    @Environment(\.lumenTheme) private var theme
+
+    func makeBody(configuration: ButtonStyleConfiguration) -> some View {
+        configuration.label
+            .font(.system(.body, design: .rounded).weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+            .foregroundStyle(isProminent ? ReaderStyle.onPeach : theme.textPrimary)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 13)
+            .frame(maxWidth: fillsWidth ? .infinity : nil)
+            .background {
+                if isProminent {
+                    Capsule().fill(ReaderStyle.peachGradient)
+                        .shadow(color: ReaderStyle.peachDeep.opacity(0.35), radius: 12, y: 6)
+                } else {
+                    Capsule().fill(.white.opacity(0.1))
+                        .overlay(Capsule().strokeBorder(.white.opacity(0.16), lineWidth: 1))
+                }
+            }
+            .contentShape(Capsule())
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.spring(duration: 0.2), value: configuration.isPressed)
     }
 }

@@ -46,8 +46,16 @@ struct ReadingStatsTests {
     @Test func formatting() {
         #expect(ReadingStats.format(0) == "0 мин")
         #expect(ReadingStats.format(20) == "меньше минуты")
+        #expect(ReadingStats.format(20, short: true) == "<1 мин")
+        #expect(ReadingStats.format(25 * 60, short: true) == "25 мин")
         #expect(ReadingStats.format(25 * 60) == "25 мин")
         #expect(ReadingStats.format(120 * 60) == "2 ч")
         #expect(ReadingStats.format(135 * 60 + 30) == "2 ч 15 мин")
+    }
+
+    @Test func relativeDatesAreRussian() {
+        let text = Date().addingTimeInterval(-3600).lumenRelative
+        #expect(!text.contains("ago"))
+        #expect(text.contains("назад"))
     }
 }
