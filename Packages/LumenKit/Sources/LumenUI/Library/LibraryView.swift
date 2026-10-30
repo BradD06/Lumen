@@ -503,7 +503,7 @@ struct LibraryView: View {
         if !entry.subpages.isEmpty {
             return "Подстраниц: \(entry.subpages.count)"
         }
-        return entry.page.updatedAt.formatted(.relative(presentation: .named))
+        return entry.page.updatedAt.lumenRelative
     }
 
     private func select(_ item: LibraryItemID) {

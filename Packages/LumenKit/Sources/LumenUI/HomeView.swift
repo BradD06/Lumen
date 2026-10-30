@@ -185,7 +185,7 @@ struct PagePreviewCard: View {
                 .foregroundStyle(theme.textSecondary)
                 .lineLimit(3)
                 .frame(maxWidth: .infinity, minHeight: 40, alignment: .topLeading)
-            Text(preview.page.updatedAt, format: .relative(presentation: .named))
+            Text(preview.page.updatedAt.lumenRelative)
                 .font(.caption)
                 .foregroundStyle(theme.textSecondary)
         }

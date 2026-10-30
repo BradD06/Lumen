@@ -104,7 +104,7 @@ private struct SubpageCard: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(theme.textPrimary)
                     .lineLimit(1)
-                Text(page.updatedAt.formatted(.relative(presentation: .named)))
+                Text(page.updatedAt.lumenRelative)
                     .font(.caption2)
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(1)
