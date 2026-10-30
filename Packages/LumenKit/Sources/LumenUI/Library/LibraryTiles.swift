@@ -255,7 +255,7 @@ struct LibraryTile<Art: View>: View {
         VStack(spacing: 6) {
             // Под полоску картинка становится чуть ниже: плитка остаётся прежнего размера.
             art()
-                .frame(height: progress == nil ? 132 : 123, alignment: .bottom)
+                .frame(height: progress == nil ? 132 : 132 - 4 - ReadingProgressBar.height, alignment: .bottom)
             if let progress {
                 ReadingProgressBar(progress: progress)
                     .frame(width: SourceCoverArt.size.width)
@@ -331,6 +331,8 @@ extension Int {
 
 /// Полоска прочитанного под обложкой книги: на светлой обложке поверх картинки её не видно.
 struct ReadingProgressBar: View {
+    static let height = 8.0
+
     let progress: Double
 
     @Environment(\.lumenTheme) private var theme
@@ -341,11 +343,11 @@ struct ReadingProgressBar: View {
                 Capsule().fill(theme.textPrimary.opacity(0.16))
                 Capsule()
                     .fill(theme.accent)
-                    .frame(width: max(5, geometry.size.width * min(max(progress, 0), 1)))
+                    .frame(width: max(Self.height, geometry.size.width * min(max(progress, 0), 1)))
                     .shadow(color: theme.accent.opacity(0.6), radius: 4)
             }
         }
-        .frame(height: 5)
+        .frame(height: Self.height)
         .accessibilityElement()
         .accessibilityLabel("Прочитано \(Int((progress * 100).rounded()))%")
     }
