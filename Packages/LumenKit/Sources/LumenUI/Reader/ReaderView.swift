@@ -17,6 +17,7 @@ struct ReaderView: View {
     let highlightId: UUID?
     var onOpenPage: (UUID) -> Void
     var onOpenSource: (UUID, UUID?) -> Void
+    var onShowInfo: () -> Void
     var onClose: () -> Void
 
     @AppStorage("reader.palette") private var paletteRaw = ReaderAppearance.Palette.night.rawValue
@@ -34,6 +35,7 @@ struct ReaderView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     @Environment(\.lumenTheme) private var theme
+    @Environment(\.scenePhase) private var scenePhase
 
     init(
         database: AppDatabase,
@@ -41,12 +43,14 @@ struct ReaderView: View {
         highlightId: UUID?,
         onOpenPage: @escaping (UUID) -> Void,
         onOpenSource: @escaping (UUID, UUID?) -> Void,
+        onShowInfo: @escaping () -> Void = {},
         onClose: @escaping () -> Void
     ) {
         _model = State(initialValue: ReaderModel(database: database, sourceId: sourceId, highlightId: highlightId))
         self.highlightId = highlightId
         self.onOpenPage = onOpenPage
         self.onOpenSource = onOpenSource
+        self.onShowInfo = onShowInfo
         self.onClose = onClose
     }
 
@@ -110,6 +114,10 @@ struct ReaderView: View {
         }
         .onDisappear {
             Task { await model.flush() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Свернули приложение: место чтения и время сохраняются сразу.
+            if phase != .active { Task { await model.flush() } }
         }
     }
 
@@ -463,6 +471,15 @@ struct ReaderView: View {
                     .frame(minWidth: 320, minHeight: 360)
                     .presentationCompactAdaptation(.sheet)
             }
+            Button {
+                Task {
+                    await model.flush()
+                    onShowInfo()
+                }
+            } label: {
+                Label("О книге", systemImage: "chart.bar")
+            }
+            .help("Прогресс, время чтения и все заметки по книге")
             Button {
                 toggleNotes()
             } label: {

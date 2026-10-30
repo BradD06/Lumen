@@ -11,6 +11,8 @@ import SwiftUI
 enum PhoneRoute: Hashable {
     case page(UUID)
     case source(UUID, highlight: UUID?)
+    /// Дашборд книги: прогресс, время чтения, заметки и выделения.
+    case sourceInfo(UUID)
     case folder(UUID)
     case inbox
     case trash
@@ -99,10 +101,18 @@ struct PhoneRootView: View {
                 highlightId: highlight,
                 onOpenPage: { push(.page($0)) },
                 onOpenSource: { push(.source($0, highlight: $1)) },
+                onShowInfo: { push(.sourceInfo(id)) },
                 onClose: pop
             )
             // Книга во весь экран: панель вкладок ей только мешает.
             .toolbar(.hidden, for: .tabBar)
+        case .sourceInfo(let id):
+            SourceDashboardView(
+                database: database,
+                sourceId: id,
+                onRead: { push(.source(id, highlight: $0)) },
+                onOpenPage: { push(.page($0)) }
+            )
         case .folder(let id):
             library(folderId: id)
         case .inbox:
@@ -119,6 +129,7 @@ struct PhoneRootView: View {
             onOpenFolder: openFolder,
             onOpenPage: { push(.page($0)) },
             onOpenSource: { push(.source($0, highlight: nil)) },
+            onShowSourceInfo: { push(.sourceInfo($0)) },
             onOpenTrash: { push(.trash) }
         )
     }

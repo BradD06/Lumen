@@ -180,6 +180,16 @@ extension AppDatabase {
             try Highlight.filter(keys: orphans).updateAll(db, Column("deletedAt").set(to: Date()))
         }
 
+        migrator.registerMigration("v7: reading sessions") { db in
+            try db.create(table: "readingSession") { t in
+                t.primaryKey("id", .blob)
+                t.column("sourceId", .blob).notNull().references("source", onDelete: .cascade).indexed()
+                t.column("startedAt", .datetime).notNull()
+                t.column("endedAt", .datetime).notNull()
+                t.column("seconds", .double).notNull()
+            }
+        }
+
         // Журнал правок для iCloud. Пишется всегда, даже когда синхронизация выключена:
         // включив её, не придётся гадать, что менялось. Старые строки ставит в очередь первый запуск синхронизации.
         migrator.registerMigration("sync: change log") { db in
@@ -210,4 +220,8 @@ extension Source: FetchableRecord, PersistableRecord {
 
 extension Highlight: FetchableRecord, PersistableRecord {
     public static let databaseTableName = "highlight"
+}
+
+extension ReadingSession: FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "readingSession"
 }
