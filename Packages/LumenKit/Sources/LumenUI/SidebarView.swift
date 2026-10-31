@@ -96,7 +96,11 @@ struct SidebarView: View {
             Button("Готово") {
                 if let page = renaming {
                     let title = newTitle
-                    Task { try? await database.renamePage(page.id, title: title) }
+                    Task {
+                        await NoticeCenter.shared.attempt("Не удалось переименовать страницу") {
+                            try await database.renamePage(page.id, title: title)
+                        }
+                    }
                 }
                 renaming = nil
             }
@@ -107,7 +111,11 @@ struct SidebarView: View {
             Button("Готово") {
                 if let folder = renamingFolder {
                     let name = newTitle
-                    Task { try? await database.renameFolder(folder.id, name: name) }
+                    Task {
+                        await NoticeCenter.shared.attempt("Не удалось переименовать папку") {
+                            try await database.renameFolder(folder.id, name: name)
+                        }
+                    }
                 }
                 renamingFolder = nil
             }
@@ -128,8 +136,10 @@ struct SidebarView: View {
         guard !ids.isEmpty else { return false }
         LumenSounds.play(.dropIntoFolder)
         Task {
-            for id in ids {
-                try? await database.movePage(id, toFolder: folderId)
+            await NoticeCenter.shared.attempt("Не удалось переместить страницу") {
+                for id in ids {
+                    try await database.movePage(id, toFolder: folderId)
+                }
             }
         }
         return true
@@ -150,7 +160,13 @@ struct SidebarView: View {
         }
         Picker(selection: Binding(
             get: { folder.color },
-            set: { color in Task { try? await database.setFolderColor(folder.id, color: color) } }
+            set: { color in
+                Task {
+                    await NoticeCenter.shared.attempt("Не удалось поменять цвет") {
+                        try await database.setFolderColor(folder.id, color: color)
+                    }
+                }
+            }
         )) {
             ForEach(FolderPalette.names.indices, id: \.self) { index in
                 Text(FolderPalette.names[index]).tag(index)
@@ -160,7 +176,11 @@ struct SidebarView: View {
         }
         if folder.parentId != nil {
             Button {
-                Task { try? await database.moveFolder(folder.id, toParent: nil) }
+                Task {
+                    await NoticeCenter.shared.attempt("Не удалось переместить") {
+                        try await database.moveFolder(folder.id, toParent: nil)
+                    }
+                }
             } label: {
                 Label("В корень библиотеки", systemImage: "arrow.up.to.line")
             }
@@ -168,8 +188,7 @@ struct SidebarView: View {
         Divider()
         Button(role: .destructive) {
             if selection == .library(folder.id) { selection = .library(nil) }
-            LumenSounds.play(.trash)
-            Task { try? await database.trashFolder(folder.id) }
+            NoticeCenter.shared.moveToTrash(.folder(folder.id), in: database)
         } label: {
             Label("В корзину", systemImage: "trash")
         }
@@ -189,7 +208,11 @@ struct SidebarView: View {
             Label("Новая подстраница", systemImage: "doc.badge.plus")
         }
         Button {
-            Task { try? await database.setFavorite(page.id, !page.isFavorite) }
+            Task {
+                await NoticeCenter.shared.attempt("Не удалось изменить избранное") {
+                    try await database.setFavorite(page.id, !page.isFavorite)
+                }
+            }
         } label: {
             if page.isFavorite {
                 Label("Убрать из избранного", systemImage: "star.slash")
@@ -199,7 +222,11 @@ struct SidebarView: View {
         }
         if page.parentId != nil {
             Button {
-                Task { try? await database.movePage(page.id, toParent: nil) }
+                Task {
+                    await NoticeCenter.shared.attempt("Не удалось переместить") {
+                        try await database.movePage(page.id, toParent: nil)
+                    }
+                }
             } label: {
                 Label("На верхний уровень", systemImage: "arrow.up.to.line")
             }
@@ -207,8 +234,7 @@ struct SidebarView: View {
         Divider()
         Button(role: .destructive) {
             if selection == .page(page.id) { selection = .home }
-            LumenSounds.play(.trash)
-            Task { try? await database.trashPage(page.id) }
+            NoticeCenter.shared.moveToTrash(.page(page.id), in: database)
         } label: {
             Label("Удалить", systemImage: "trash")
         }
@@ -221,7 +247,7 @@ struct SidebarView: View {
                 snapshot = value
             }
         } catch {
-            print("Sidebar observation failed: \(error)")
+            lumenLog.error("Sidebar observation failed: \(String(describing: error), privacy: .public)")
         }
     }
 }

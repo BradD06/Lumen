@@ -24,7 +24,7 @@ enum SourceImporter {
             do {
                 sources.append(try await importFile(url, into: database, folderId: folderId, position: position))
             } catch {
-                print("Failed to import \(url.lastPathComponent): \(error)")
+                await NoticeCenter.shared.report("Не удалось добавить «\(url.lastPathComponent)»", error)
             }
         }
         return sources

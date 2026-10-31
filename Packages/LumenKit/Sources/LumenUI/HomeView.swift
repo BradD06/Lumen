@@ -4,14 +4,20 @@ import LumenStorage
 import LumenThemes
 import SwiftUI
 
-/// Главный экран: дашборд из карточек-виджетов и два главных входа (быстрая заметка и заметки по источнику).
+/// Главный экран: дашборд из карточек-виджетов и два главных входа
+/// (быстрая заметка и продолжить чтение с заметками рядом).
 struct HomeView: View {
     let database: AppDatabase
     var onOpen: (UUID) -> Void
+    /// Открыть книгу в читалке.
+    var onOpenSource: (UUID) -> Void
     var onNewNote: () -> Void
     var onShowInbox: () -> Void
+    /// Книг ещё нет: карточка чтения ведёт в библиотеку, где их добавляют.
+    var onShowLibrary: () -> Void
 
     @State private var snapshot = HomeSnapshot.empty
+    @State private var reading = HomeReadingSnapshot.empty
     @Environment(\.lumenTheme) private var theme
 
     private let columns = [GridItem(.adaptive(minimum: 160), spacing: 14)]
@@ -35,7 +41,8 @@ struct HomeView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .task { await observe() }
+        .task { await observePages() }
+        .task { await observeReading() }
     }
 
     private var header: some View {
@@ -71,13 +78,24 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
 
-            ActionCard(
-                title: "Заметки по книге",
-                subtitle: "Книга или файл рядом с заметкой. Скоро",
-                systemImage: "book.pages",
-                style: .glass
-            )
-            .opacity(0.7)
+            if let source = reading.current {
+                Button {
+                    onOpenSource(source.id)
+                } label: {
+                    ContinueReadingCard(source: source, attachments: database.attachments)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button(action: onShowLibrary) {
+                    ActionCard(
+                        title: "Заметки по книге",
+                        subtitle: "Добавьте книгу или файл в библиотеку и пишите заметки рядом",
+                        systemImage: "book.pages",
+                        style: .glass
+                    )
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
@@ -108,11 +126,30 @@ struct HomeView: View {
                 style: .vivid(3)
             )
             StatCard(
-                title: "Читаю сейчас",
-                value: "—",
-                caption: "Читалка появится вместе с библиотекой",
-                systemImage: "books.vertical"
+                title: "Чтение сегодня",
+                value: ReadingStats.format(reading.stats.todaySeconds, short: true),
+                caption: readingCaption,
+                systemImage: "book"
             )
+        }
+    }
+
+    private var readingCaption: String {
+        let streak = reading.stats.streakDays
+        if streak > 1 { return "\(streak) \(Self.days(streak)) подряд" }
+        if reading.sourceCount == 0 { return "книг пока нет" }
+        return reading.stats.todaySeconds > 0 ? "так держать" : "ещё не читали"
+    }
+
+    /// «день», «дня», «дней» для числа.
+    static func days(_ count: Int) -> String {
+        let lastTwo = count % 100
+        let last = count % 10
+        if (11...14).contains(lastTwo) { return "дней" }
+        switch last {
+        case 1: return "день"
+        case 2, 3, 4: return "дня"
+        default: return "дней"
         }
     }
 
@@ -134,15 +171,55 @@ struct HomeView: View {
         }
     }
 
-    private func observe() async {
+    private func observePages() async {
         let observation = ValueObservation.tracking { db in try HomeSnapshot.fetch(db) }
         do {
             for try await value in observation.values(in: database.reader) {
                 withAnimation { snapshot = value }
             }
         } catch {
-            print("Home observation failed: \(error)")
+            lumenLog.error("Home observation failed: \(String(describing: error), privacy: .public)")
         }
+    }
+
+    private func observeReading() async {
+        let observation = ValueObservation.tracking { db in try HomeReadingSnapshot.fetch(db) }
+        do {
+            for try await value in observation.values(in: database.reader) {
+                withAnimation { reading = value }
+            }
+        } catch {
+            lumenLog.error("Home reading observation failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+}
+
+/// «Продолжить чтение»: обложка последней книги, сколько прочитано, нажатие открывает её на том же месте.
+private struct ContinueReadingCard: View {
+    let source: Source
+    let attachments: AttachmentStore
+
+    var body: some View {
+        HStack(spacing: 14) {
+            SourceCoverArt(source: source, attachments: attachments, width: 44, height: 62)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(source.lastOpenedAt == nil ? "Начать читать" : "Продолжить чтение")
+                    .font(.caption.weight(.bold))
+                    .textCase(.uppercase)
+                    .opacity(0.75)
+                Text(source.displayTitle)
+                    .font(.headline)
+                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    ReadingProgressBar(progress: source.progress)
+                    Text("\(Int((source.progress * 100).rounded()))%")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .opacity(0.75)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .lumenCard(.vivid(4))
     }
 }
 

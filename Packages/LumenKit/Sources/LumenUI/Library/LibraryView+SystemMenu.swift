@@ -21,7 +21,13 @@ extension LibraryView {
         }
         Picker(selection: Binding(
             get: { folder.color },
-            set: { color in Task { try? await database.setFolderColor(folder.id, color: color) } }
+            set: { color in
+                Task {
+                    await NoticeCenter.shared.attempt("Не удалось поменять цвет") {
+                        try await database.setFolderColor(folder.id, color: color)
+                    }
+                }
+            }
         )) {
             ForEach(FolderPalette.names.indices, id: \.self) { index in
                 Text(FolderPalette.names[index]).tag(index)
@@ -37,8 +43,7 @@ extension LibraryView {
         Divider()
         Button(role: .destructive) {
             selection = nil
-            LumenSounds.play(.trash)
-            Task { try? await database.trashFolder(folder.id) }
+            NoticeCenter.shared.moveToTrash(.folder(folder.id), in: database)
         } label: {
             Label("В корзину", systemImage: "trash")
         }
@@ -68,7 +73,7 @@ extension LibraryView {
         }
         Button {
             Task {
-                if let subpage = try? await database.createPage(parentId: page.id) {
+                if let subpage = await NoticeCenter.shared.perform("Не удалось создать страницу", { try await database.createPage(parentId: page.id) }) {
                     LumenSounds.play(.create)
                     onOpenPage(subpage.id)
                 }
@@ -77,7 +82,11 @@ extension LibraryView {
             Label("Новая подстраница", systemImage: "doc.badge.plus")
         }
         Button {
-            Task { try? await database.setFavorite(page.id, !page.isFavorite) }
+            Task {
+                await NoticeCenter.shared.attempt("Не удалось изменить избранное") {
+                    try await database.setFavorite(page.id, !page.isFavorite)
+                }
+            }
         } label: {
             if page.isFavorite {
                 Label("Убрать из избранного", systemImage: "star.slash")
@@ -93,8 +102,7 @@ extension LibraryView {
         Divider()
         Button(role: .destructive) {
             selection = nil
-            LumenSounds.play(.trash)
-            Task { try? await database.trashPage(page.id) }
+            NoticeCenter.shared.moveToTrash(.page(page.id), in: database)
         } label: {
             Label("В корзину", systemImage: "trash")
         }
@@ -130,8 +138,7 @@ extension LibraryView {
         Divider()
         Button(role: .destructive) {
             selection = nil
-            LumenSounds.play(.trash)
-            Task { try? await database.trashSource(source.id) }
+            NoticeCenter.shared.moveToTrash(.source(source.id), in: database)
         } label: {
             Label("В корзину", systemImage: "trash")
         }
