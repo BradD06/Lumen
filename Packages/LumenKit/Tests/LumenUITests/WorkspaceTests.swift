@@ -139,3 +139,75 @@ struct WorkspaceTests {
         #expect(workspace.referencedItems.contains(b))
     }
 }
+
+@MainActor
+struct TabDropTests {
+    let a = SidebarItem.page(UUID())
+    let b = SidebarItem.page(UUID())
+    let c = SidebarItem.page(UUID())
+
+    @Test func tabDroppedOnRightEdgeOpensBesideTheCurrentOne() {
+        let workspace = Workspace()
+        workspace.open(a)
+        workspace.newTab(b)
+        let dragged = workspace.selectedTabId
+        workspace.select(number: 1)
+
+        workspace.dropTab(dragged, toTrailing: true)
+        #expect(workspace.tabs.count == 1)
+        #expect(workspace.selectedTab.panes.map(\.current) == [a, b])
+        #expect(workspace.selectedTab.focusedPane == 1)
+    }
+
+    @Test func tabDroppedOnLeftEdgeGoesLeftAndKeepsItsHistory() {
+        let workspace = Workspace()
+        workspace.open(a)
+        workspace.newTab(b)
+        workspace.open(c)
+        let dragged = workspace.selectedTabId
+        workspace.select(number: 1)
+
+        workspace.dropTab(dragged, toTrailing: false)
+        #expect(workspace.selectedTab.panes.map(\.current) == [c, a])
+        workspace.goBack()
+        #expect(workspace.selectedTab.panes.map(\.current) == [b, a])
+    }
+
+    @Test func draggingTheOpenTabPairsItWithItsNeighbour() {
+        let workspace = Workspace()
+        workspace.open(a)
+        workspace.newTab(b)
+        workspace.dropTab(workspace.selectedTabId, toTrailing: true)
+        #expect(workspace.tabs.count == 1)
+        #expect(workspace.selectedTab.panes.map(\.current) == [a, b])
+    }
+
+    @Test func droppingOnASplitTabReplacesThePaneOnThatSide() {
+        let workspace = Workspace()
+        workspace.open(a)
+        workspace.openBeside(b)
+        workspace.newTab(c)
+        let dragged = workspace.selectedTabId
+        workspace.select(number: 1)
+
+        workspace.dropTab(dragged, toTrailing: true)
+        #expect(workspace.selectedTab.panes.map(\.current) == [a, c])
+    }
+
+    @Test func samePageIsNotOpenedTwice() {
+        let workspace = Workspace()
+        workspace.open(a)
+        workspace.newTab(a)
+        let dragged = workspace.selectedTabId
+        workspace.select(number: 1)
+        workspace.dropTab(dragged, toTrailing: true)
+        #expect(workspace.tabs.count == 1)
+        #expect(!workspace.isSplit)
+    }
+
+    @Test func edgesAreTheOuterThirds() {
+        #expect(TabDropSide(x: 50, width: 900) == .leading)
+        #expect(TabDropSide(x: 450, width: 900) == nil)
+        #expect(TabDropSide(x: 850, width: 900) == .trailing)
+    }
+}
