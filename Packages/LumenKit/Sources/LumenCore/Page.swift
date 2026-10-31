@@ -1,6 +1,6 @@
 import Foundation
 
-/// Страница: заметка, документ или (позже) строка базы данных. Страницы образуют дерево.
+/// Страница: заметка, документ или строка базы данных. Страницы образуют дерево.
 public struct Page: Identifiable, Hashable, Codable, Sendable {
     public var id: UUID
     public var parentId: UUID?
@@ -21,6 +21,10 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
     /// Быстрые заметки лежат во «Входящих», пока их не разложат по разделам.
     public var inInbox: Bool
     public var isFavorite: Bool
+    /// База данных, строкой которой является страница, см. `DataTable`. Строка вложена в страницу базы.
+    public var databaseId: UUID?
+    /// Значения свойств строки базы данных.
+    public var properties: PropertyValues?
     /// Дробный индекс порядка среди соседей, см. `SortKey`.
     public var sortKey: String
     public var createdAt: Date
@@ -40,6 +44,8 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
         position: LibraryPoint? = nil,
         inInbox: Bool = false,
         isFavorite: Bool = false,
+        databaseId: UUID? = nil,
+        properties: PropertyValues? = nil,
         sortKey: String,
         createdAt: Date = Date(),
         updatedAt: Date? = nil,
@@ -57,6 +63,8 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
         self.canvasY = position?.y
         self.inInbox = inInbox
         self.isFavorite = isFavorite
+        self.databaseId = databaseId
+        self.properties = properties
         self.sortKey = sortKey
         self.createdAt = createdAt
         self.updatedAt = updatedAt ?? createdAt
@@ -69,6 +77,9 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
     }
 
     public var isTrashed: Bool { deletedAt != nil }
+
+    /// Строка базы данных, а не самостоятельная страница: в списках подстраниц её нет.
+    public var isDatabaseRow: Bool { databaseId != nil }
 
     public var position: LibraryPoint? {
         get { LibraryPoint(x: canvasX, y: canvasY) }
