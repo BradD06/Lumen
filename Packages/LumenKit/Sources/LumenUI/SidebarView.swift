@@ -16,6 +16,7 @@ struct SidebarView: View {
     @State private var renaming: Page?
     @State private var renamingFolder: Folder?
     @State private var newTitle = ""
+    @State private var isDataSafetyPresented = false
 
     var body: some View {
         List(selection: $selection) {
@@ -87,9 +88,20 @@ struct SidebarView: View {
                 Label("Корзина", systemImage: "trash")
                     .badge(snapshot.trashCount)
                     .tag(SidebarItem.trash)
+                // Не раздел, а окно: резервная копия, восстановление и состояние синхронизации.
+                Button {
+                    isDataSafetyPresented = true
+                } label: {
+                    Label("Данные и копии", systemImage: "externaldrive")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
             }
         }
         .navigationTitle("Lumen")
+        .sheet(isPresented: $isDataSafetyPresented) {
+            DataSafetySheet(database: database) { isDataSafetyPresented = false }
+        }
         .task { await observe() }
         .alert("Переименовать страницу", isPresented: isRenaming) {
             TextField("Название", text: $newTitle)

@@ -45,7 +45,7 @@ extension LibraryView {
         .disabled(snapshot.isMissing)
     }
 
-    /// Корзина и iCloud: на Mac они в сайдбаре, на iPhone в меню корня библиотеки.
+    /// Корзина и «Данные и копии»: на Mac они в сайдбаре, на iPhone в меню корня библиотеки.
     var compactMoreMenu: some View {
         Menu {
             if let onOpenTrash {
@@ -56,7 +56,7 @@ extension LibraryView {
             Button {
                 isSyncInfoPresented = true
             } label: {
-                Label("iCloud", systemImage: "icloud")
+                Label("Данные и копии", systemImage: "externaldrive")
             }
         } label: {
             Label("Ещё", systemImage: "ellipsis.circle")

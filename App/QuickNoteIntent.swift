@@ -14,7 +14,7 @@ struct QuickNoteIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        try await AppEnvironment.database.createQuickNote(text)
+        try await AppEnvironment.database().createQuickNote(text)
         return .result(dialog: "Заметка сохранена во «Входящие»")
     }
 }

@@ -16,21 +16,33 @@ public final class AppDatabase: Sendable {
         try Self.migrator.migrate(writer)
     }
 
-    /// База в `Application Support/Lumen/lumen.sqlite`, вложения рядом в `Attachments`.
-    public static func makeDefault() throws -> AppDatabase {
+    /// Папка с данными приложения: `Application Support/Lumen`.
+    public static func defaultFolder() throws -> URL {
         let fileManager = FileManager.default
         let folder = try fileManager
             .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             .appendingPathComponent("Lumen", isDirectory: true)
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
+    }
+
+    /// База в `Application Support/Lumen/lumen.sqlite`, вложения рядом в `Attachments`.
+    public static func makeDefault() throws -> AppDatabase {
+        let folder = try defaultFolder()
         return try onDisk(
-            at: folder.appendingPathComponent("lumen.sqlite"),
+            at: folder.appendingPathComponent(databaseFileName),
             attachments: AttachmentStore(folder: folder.appendingPathComponent("Attachments", isDirectory: true))
         )
     }
 
+    static let databaseFileName = "lumen.sqlite"
+
+    /// База в файле. Если новая версия приложения меняет схему, перед этим старая база
+    /// копируется в папку `Backups` рядом: при ошибке в миграции данные не пропадут.
     public static func onDisk(at url: URL, attachments: AttachmentStore = .temporary()) throws -> AppDatabase {
-        try AppDatabase(DatabasePool(path: url.path, configuration: configuration), attachments: attachments)
+        let pool = try DatabasePool(path: url.path, configuration: configuration)
+        try copyBeforeMigrating(pool, into: url.deletingLastPathComponent().appendingPathComponent("Backups"))
+        return try AppDatabase(pool, attachments: attachments)
     }
 
     /// База в памяти для тестов и превью.
@@ -38,7 +50,7 @@ public final class AppDatabase: Sendable {
         try AppDatabase(DatabaseQueue(configuration: configuration))
     }
 
-    private static var configuration: Configuration {
+    static var configuration: Configuration {
         var configuration = Configuration()
         configuration.foreignKeysEnabled = true
         return configuration
