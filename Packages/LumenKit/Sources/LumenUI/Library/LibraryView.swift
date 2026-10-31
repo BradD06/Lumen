@@ -66,7 +66,7 @@ struct LibraryView: View {
         case source(LibrarySource)
     }
 
-    private struct ContextMenuState: Equatable {
+    struct ContextMenuState: Equatable {
         var item: LibraryItemID
         var point: CGPoint
     }
