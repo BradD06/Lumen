@@ -303,6 +303,7 @@ extension AppDatabase {
     /// Переносит строки из подготовленной копии в эту базу одной транзакцией:
     /// если что-то пойдёт не так, база останется такой, какой была.
     /// Открытые экраны сразу видят новое содержимое, потому что всё идёт обычной записью.
+    @discardableResult
     private func apply(_ prepared: PreparedBackup) async throws -> BackupSummary {
         let path = prepared.databaseURL.path
         try await writer.writeWithoutTransaction { db in

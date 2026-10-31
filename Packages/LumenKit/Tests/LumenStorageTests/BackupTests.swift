@@ -84,7 +84,7 @@ struct BackupTests {
 
         // Чужая база SQLite тоже не копия Lumen.
         let foreign = folder.appendingPathComponent("foreign.sqlite")
-        try DatabaseQueue(path: foreign.path).write { db in
+        try await DatabaseQueue(path: foreign.path).write { db in
             try db.execute(sql: "CREATE TABLE note (id INTEGER PRIMARY KEY, text TEXT)")
         }
         await #expect(throws: BackupError.notABackup) {
