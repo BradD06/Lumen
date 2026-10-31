@@ -29,6 +29,7 @@ enum PageExportFormat: String, Identifiable, CaseIterable {
 struct ExportFileDocument: FileDocument {
     static let markdownType = UTType(filenameExtension: "md", conformingTo: .plainText) ?? .plainText
     static var readableContentTypes: [UTType] { [.data] }
+    static var writableContentTypes: [UTType] { [markdownType, .zip, .pdf, .data] }
 
     var data: Data
     var contentType: UTType

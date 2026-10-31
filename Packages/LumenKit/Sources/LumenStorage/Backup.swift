@@ -371,8 +371,8 @@ extension AppDatabase {
     static func restorableTables(_ db: Database) throws -> [String] {
         let rows = try Row.fetchAll(db, sql: "SELECT name, sql FROM main.sqlite_master WHERE type = 'table'")
         let tables = rows.map { (name: $0["name"] as String, sql: ($0["sql"] as String?) ?? "") }
-        let virtual = tables.filter { $0.sql.uppercased().hasPrefix("CREATE VIRTUAL TABLE") }.map(\.name)
-        return tables.map(\.name).filter { name in
+        let virtual = tables.filter { $0.sql.uppercased().hasPrefix("CREATE VIRTUAL TABLE") }.map { $0.name }
+        return tables.map { $0.name }.filter { name in
             !name.hasPrefix("sqlite_")
                 && !name.hasPrefix("grdb_")
                 && !name.hasPrefix("sync")
