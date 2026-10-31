@@ -39,15 +39,30 @@ public struct RootView: View {
             #if os(iOS)
             if horizontalSizeClass == .compact {
                 PhoneRootView(database: database)
+                    // Плашка над вкладками, а не поверх них.
+                    .lumenNotices(bottomPadding: 64)
             } else {
                 splitView
+                    .lumenNotices()
             }
             #else
             splitView
+                .lumenNotices()
             #endif
         }
         .tint(theme.accent)
         .preferredColorScheme(.dark)
+        .task { await purgeOldTrash() }
+    }
+
+    /// Что лежит в корзине дольше 30 дней, удаляется само при запуске.
+    private func purgeOldTrash() async {
+        do {
+            let count = try await database.purgeTrash()
+            if count > 0 { lumenLog.info("Removed \(count) old items from the trash") }
+        } catch {
+            lumenLog.error("Trash cleanup failed: \(String(describing: error), privacy: .public)")
+        }
     }
 
     private var splitView: some View {
@@ -78,10 +93,17 @@ public struct RootView: View {
                 }
         }
         .sheet(isPresented: $isSearchPresented) {
-            SearchView(database: database) { pageId in
-                isSearchPresented = false
-                selection = .page(pageId)
-            }
+            SearchView(
+                database: database,
+                onOpen: { pageId in
+                    isSearchPresented = false
+                    selection = .page(pageId)
+                },
+                onOpenSource: { sourceId, highlightId in
+                    isSearchPresented = false
+                    selection = .source(sourceId, highlight: highlightId)
+                }
+            )
         }
     }
 
@@ -92,8 +114,10 @@ public struct RootView: View {
             HomeView(
                 database: database,
                 onOpen: { selection = .page($0) },
+                onOpenSource: { selection = .source($0, highlight: nil) },
                 onNewNote: newQuickNote,
-                onShowInbox: { selection = .inbox }
+                onShowInbox: { selection = .inbox },
+                onShowLibrary: { selection = .library(nil) }
             )
         case .inbox:
             InboxView(database: database, onOpen: { selection = .page($0) }, onNewNote: newQuickNote)
@@ -145,25 +169,33 @@ public struct RootView: View {
     /// Главный сценарий: «+» и сразу пишешь, заметка попадает во «Входящие».
     private func newQuickNote() {
         Task {
-            if let page = try? await database.createPage(inInbox: true) {
+            do {
+                let page = try await database.createPage(inInbox: true)
                 LumenSounds.play(.create)
                 selection = .page(page.id)
+            } catch {
+                NoticeCenter.shared.report("Не удалось создать заметку", error)
             }
         }
     }
 
     private func openNewFolder(parentId: UUID?) {
         Task {
-            if let folder = try? await database.createFolder(name: "Новая папка", parentId: parentId) {
+            do {
+                let folder = try await database.createFolder(name: "Новая папка", parentId: parentId)
                 LumenSounds.play(.create)
                 selection = .library(folder.id)
+            } catch {
+                NoticeCenter.shared.report("Не удалось создать папку", error)
             }
         }
     }
 
     private func openNewDataTable() {
         Task {
-            if let table = try? await database.createDataTable(title: "Новая база", icon: "📋") {
+            if let table = await NoticeCenter.shared.perform("Не удалось создать базу", {
+                try await database.createDataTable(title: "Новая база", icon: "📋")
+            }) {
                 LumenSounds.play(.create)
                 selection = .page(table.pageId)
             }
@@ -172,9 +204,12 @@ public struct RootView: View {
 
     private func openNewPage(parentId: UUID?) {
         Task {
-            if let page = try? await database.createPage(parentId: parentId) {
+            do {
+                let page = try await database.createPage(parentId: parentId)
                 LumenSounds.play(.create)
                 selection = .page(page.id)
+            } catch {
+                NoticeCenter.shared.report("Не удалось создать страницу", error)
             }
         }
     }

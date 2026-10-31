@@ -744,7 +744,11 @@ struct RowPropertiesPanel: View {
                             pages: snapshot.linkablePages,
                             onChange: { value in
                                 let propertyId = property.id
-                                Task { try? await database.setValue(value, property: propertyId, row: rowId) }
+                                Task {
+                                    await NoticeCenter.shared.attempt("Не удалось сохранить значение") {
+                                        try await database.setValue(value, property: propertyId, row: rowId)
+                                    }
+                                }
                             },
                             onAddOption: { name in addOption(name, to: property, tableId: table.id) },
                             onOpenPage: onOpenPage
@@ -780,7 +784,7 @@ struct RowPropertiesPanel: View {
                 snapshot = value
             }
         } catch {
-            print("Row observation failed: \(error)")
+            lumenLog.error("Row observation failed: \(String(describing: error), privacy: .public)")
         }
     }
 }

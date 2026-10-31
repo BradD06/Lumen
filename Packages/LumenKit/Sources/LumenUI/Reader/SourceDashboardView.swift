@@ -14,6 +14,8 @@ struct SourceDashboardView: View {
 
     @State private var snapshot = SourceDashboardSnapshot.empty
     @State private var hasLoaded = false
+    /// Выделение, к которому пишут комментарий.
+    @State private var editingNote: Highlight?
     @Environment(\.lumenTheme) private var theme
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -50,6 +52,15 @@ struct SourceDashboardView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .task { await observe() }
+        .sheet(item: $editingNote) { highlight in
+            HighlightNoteSheet(highlight: highlight) { note in
+                Task {
+                    await NoticeCenter.shared.attempt("Не удалось сохранить комментарий") {
+                        try await database.setHighlightNote(highlight.id, note: note)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: Шапка
@@ -254,6 +265,9 @@ struct SourceDashboardView: View {
                                 .font(.system(.callout, design: .serif))
                                 .lineLimit(4)
                                 .foregroundStyle(theme.textPrimary)
+                            if let note = highlight.note {
+                                HighlightNoteLabel(note: note)
+                            }
                             Text(highlight.label)
                                 .font(.caption)
                                 .foregroundStyle(theme.textSecondary)
@@ -265,6 +279,13 @@ struct SourceDashboardView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Открыть в книге")
+                .contextMenu {
+                    Button {
+                        editingNote = highlight
+                    } label: {
+                        Label(highlight.note == nil ? "Комментарий…" : "Изменить комментарий…", systemImage: "text.bubble")
+                    }
+                }
             }
         }
         .lumenCard()
@@ -308,13 +329,13 @@ struct SourceDashboardView: View {
                 hasLoaded = true
             }
         } catch {
-            print("Dashboard observation failed: \(error)")
+            lumenLog.error("Dashboard observation failed: \(String(describing: error), privacy: .public)")
         }
     }
 
     private func openNotes() {
         Task {
-            if let page = try? await database.notesPage(for: sourceId) {
+            if let page = await NoticeCenter.shared.perform("Не удалось открыть заметки к книге", { try await database.notesPage(for: sourceId) }) {
                 LumenSounds.play(.navigate)
                 onOpenPage(page.id)
             }

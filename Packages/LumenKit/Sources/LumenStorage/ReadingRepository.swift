@@ -77,3 +77,35 @@ public struct SourceDashboardSnapshot: Equatable, Sendable {
         )
     }
 }
+
+/// Чтение для главного экрана: какую книгу продолжить и сколько читали по всем книгам.
+public struct HomeReadingSnapshot: Equatable, Sendable {
+    /// Книга, которую открывали последней, если её ещё не дочитали. Иначе последняя добавленная.
+    public var current: Source?
+    /// Время чтения по всем книгам: сегодня, серия дней и последние две недели.
+    public var stats: ReadingStats
+    /// Сколько книг и файлов в библиотеке.
+    public var sourceCount: Int
+
+    public static let empty = HomeReadingSnapshot(current: nil, stats: .empty, sourceCount: 0)
+
+    public static func fetch(_ db: Database, now: Date = Date(), calendar: Calendar = .current) throws -> HomeReadingSnapshot {
+        let alive = Source.filter(Column("deletedAt") == nil)
+        let current = try alive
+            .filter(Column("lastOpenedAt") != nil && Column("progress") < 0.995)
+            .order(Column("lastOpenedAt").desc)
+            .fetchOne(db)
+            ?? alive.filter(Column("lastOpenedAt") == nil).order(Column("createdAt").desc, Column.rowID.desc).fetchOne(db)
+        // Серия и график берут только последние недели, старые отрезки не нужны.
+        let since = calendar.date(byAdding: .day, value: -400, to: now) ?? now
+        let sessions = try ReadingSession
+            .filter(Column("endedAt") >= since)
+            .filter(sql: "sourceId IN (SELECT id FROM source WHERE deletedAt IS NULL)")
+            .fetchAll(db)
+        return HomeReadingSnapshot(
+            current: current,
+            stats: ReadingStats(sessions: sessions, now: now, calendar: calendar),
+            sourceCount: try alive.fetchCount(db)
+        )
+    }
+}

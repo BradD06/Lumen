@@ -36,6 +36,7 @@ struct PageEditorView: View {
     @State private var wantsBackgroundPhoto = false
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var isEditingBackground = false
+    @State private var isMovingToFolder = false
     @State private var focusTask: Task<Void, Never>?
     #if os(macOS)
     @State private var keyMonitor: Any?
@@ -226,6 +227,19 @@ struct PageEditorView: View {
                 pickedPhoto = nil
             }
         }
+        .sheet(isPresented: $isMovingToFolder) {
+            if let page = model.page {
+                MoveToFolderSheet(
+                    database: model.database,
+                    item: .page(page.id),
+                    currentFolderId: page.folderId,
+                    // Заметке из «Входящих» и подстранице подходит любая папка, включая корень.
+                    isFromInbox: page.inInbox || page.parentId != nil
+                ) {
+                    isMovingToFolder = false
+                }
+            }
+        }
         .sheet(isPresented: $isEditingBackground, onDismiss: {
             if wantsBackgroundPhoto {
                 wantsBackgroundPhoto = false
@@ -311,10 +325,22 @@ struct PageEditorView: View {
                         Label("Перенести в страницы", systemImage: "folder")
                     }
                 }
+                // Заметки к книге живут рядом с книгой, в папку их не кладут.
+                if let page = model.page, page.sourceId == nil {
+                    Button {
+                        isMovingToFolder = true
+                    } label: {
+                        Label("Переместить в папку…", systemImage: "arrow.right.doc.on.clipboard")
+                    }
+                }
+                Button {
+                    duplicatePage()
+                } label: {
+                    Label("Дублировать", systemImage: "plus.square.on.square")
+                }
                 Toggle("Звуки", isOn: $soundsEnabled)
                 Divider()
                 Button(role: .destructive) {
-                    LumenSounds.play(.trash)
                     Task {
                         await model.trash()
                         onClose()
@@ -333,6 +359,22 @@ struct PageEditorView: View {
                 Label("Подстраницы", systemImage: "sidebar.right")
             }
             .help(model.subpages.isEmpty ? "Подстраницы" : "Подстраницы: \(model.subpages.count)")
+        }
+    }
+
+    /// Копия страницы рядом с оригиналом. Сначала записываются несохранённые правки,
+    /// чтобы копия была точной, потом копия открывается.
+    private func duplicatePage() {
+        let database = model.database
+        let pageId = model.pageId
+        Task {
+            await model.flush()
+            if let copy = await NoticeCenter.shared.perform("Не удалось сделать копию страницы", {
+                try await database.duplicatePage(pageId)
+            }) {
+                LumenSounds.play(.create)
+                onOpenPage(copy.id)
+            }
         }
     }
 

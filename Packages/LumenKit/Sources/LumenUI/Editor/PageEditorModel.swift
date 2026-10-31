@@ -104,7 +104,7 @@ final class PageEditorModel {
             reorder()
             isLoaded = true
         } catch {
-            print("Failed to load page \(pageId): \(error)")
+            NoticeCenter.shared.report("Не удалось открыть страницу", error)
         }
     }
 
@@ -123,7 +123,7 @@ final class PageEditorModel {
                 }
             }
         } catch {
-            print("Links observation failed: \(error)")
+            lumenLog.error("Links observation failed: \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -181,7 +181,7 @@ final class PageEditorModel {
                     try await database.deleteBlock(id)
                 }
             } catch {
-                print("Failed to save page \(pageId): \(error)")
+                NoticeCenter.shared.report("Не удалось сохранить изменения на странице", error)
             }
         }
         lastWrite = write
@@ -273,34 +273,55 @@ final class PageEditorModel {
 
     func setIcon(_ icon: String?) {
         page?.icon = icon
-        Task { try? await database.setIcon(pageId, icon: icon) }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось сохранить оформление страницы") {
+                try await database.setIcon(pageId, icon: icon)
+            }
+        }
     }
 
     func toggleFavorite() {
         guard let page else { return }
         self.page?.isFavorite.toggle()
-        Task { try? await database.setFavorite(pageId, !page.isFavorite) }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось изменить избранное") {
+                try await database.setFavorite(pageId, !page.isFavorite)
+            }
+        }
     }
 
     /// Убирает заметку из «Входящих» на верхний уровень дерева страниц.
     func moveOutOfInbox() {
         page?.inInbox = false
-        Task { try? await database.movePage(pageId, toParent: nil) }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось переместить") {
+                try await database.movePage(pageId, toParent: nil)
+            }
+        }
     }
 
+    /// Убирает страницу в корзину и показывает плашку «Страница в корзине · Вернуть».
     func trash() async {
         await flush()
-        try? await database.trashPage(pageId)
+        NoticeCenter.shared.moveToTrash(.page(pageId), in: database)
     }
 
     func setCover(_ cover: PageCover?) {
         page?.pageCover = cover
-        Task { try? await database.setCover(pageId, cover: cover) }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось сохранить оформление страницы") {
+                try await database.setCover(pageId, cover: cover)
+            }
+        }
     }
 
     func setBackground(_ background: PageBackground?) {
         page?.pageBackground = background
-        Task { try? await database.setBackground(pageId, background: background) }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось сохранить оформление страницы") {
+                try await database.setBackground(pageId, background: background)
+            }
+        }
     }
 
     // MARK: Дерево блоков
@@ -519,7 +540,7 @@ final class PageEditorModel {
                     openRequest = child.id
                 }
             } catch {
-                print("Failed to create subpage: \(error)")
+                NoticeCenter.shared.report("Не удалось создать подстраницу", error)
             }
         }
     }
@@ -539,7 +560,7 @@ final class PageEditorModel {
                 await flush()
                 openRequest = child.id
             } catch {
-                print("Failed to create subpage: \(error)")
+                NoticeCenter.shared.report("Не удалось создать подстраницу", error)
             }
         }
     }

@@ -11,6 +11,8 @@ struct MoveToFolderSheet: View {
     let item: LibraryItemID
     /// Где предмет лежит сейчас.
     let currentFolderId: UUID?
+    /// Заметка из «Входящих»: её ещё нет ни в одной папке, поэтому подходит любая, включая корень.
+    var isFromInbox = false
     var onDone: () -> Void
 
     @State private var tree: [FolderNode] = []
@@ -46,7 +48,7 @@ struct MoveToFolderSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Переместить сюда", action: move)
-                        .disabled(target == nil || target == .some(currentFolderId))
+                        .disabled(target == nil || (!isFromInbox && target == .some(currentFolderId)))
                 }
             }
         }
@@ -83,7 +85,7 @@ struct MoveToFolderSheet: View {
                 icon()
                 Text(title)
                 Spacer()
-                if id == currentFolderId {
+                if id == currentFolderId, !isFromInbox {
                     Text("сейчас здесь")
                         .font(.caption)
                         .foregroundStyle(theme.textSecondary)
@@ -105,11 +107,14 @@ struct MoveToFolderSheet: View {
     private func move() {
         guard case .some(let folderId) = target else { return }
         Task {
-            switch item {
-            case .folder(let id): try? await database.moveFolder(id, toParent: folderId)
-            case .page(let id): try? await database.movePage(id, toFolder: folderId)
-            case .source(let id): try? await database.moveSource(id, toFolder: folderId)
+            let moved = await NoticeCenter.shared.attempt("Не удалось переместить") {
+                switch item {
+                case .folder(let id): try await database.moveFolder(id, toParent: folderId)
+                case .page(let id): try await database.movePage(id, toFolder: folderId)
+                case .source(let id): try await database.moveSource(id, toFolder: folderId)
+                }
             }
+            if moved { LumenSounds.play(.dropIntoFolder) }
             onDone()
         }
     }
@@ -121,7 +126,7 @@ struct MoveToFolderSheet: View {
                 tree = value
             }
         } catch {
-            print("Folder tree observation failed: \(error)")
+            lumenLog.error("Folder tree observation failed: \(String(describing: error), privacy: .public)")
         }
     }
 }
