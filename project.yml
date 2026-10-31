@@ -100,8 +100,6 @@ targets:
               - public.plain-text
               - net.daringfireball.markdown
               - public.html
-        # Файл, присланный в Lumen, копируется в библиотеку: оригинал в «Файлах» не меняется.
-        LSSupportsOpeningDocumentsInPlace: false
         # Ссылки lumen:// на страницы, книги, цитаты и места в книгах.
         CFBundleURLTypes:
           - CFBundleURLName: io.github.bradd06.lumen
@@ -127,6 +125,10 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Lumen
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        # Файл, присланный в Lumen на iPhone, копируется в библиотеку: оригинал в «Файлах» не меняется.
+        # Только для iOS: на Mac этот ключ со значением NO не допускается.
+        "INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace[sdk=iphoneos*]": NO
+        "INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace[sdk=iphonesimulator*]": NO
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"

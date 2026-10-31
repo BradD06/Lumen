@@ -184,12 +184,18 @@ struct PhoneRootView: View {
             tab = .library
             route = .source(id, highlight: highlight)
         case .sourceInfo(let id): route = .sourceInfo(id)
-        case .library(let id?): route = .folder(id)
-        case .library(nil):
-            tab = .library
+        case .library(let id):
+            guard let id else {
+                tab = .library
+                return
+            }
+            route = .folder(id)
+        case .home:
+            tab = .home
             return
-        case .home: tab = .home; return
-        case .inbox: tab = .inbox; return
+        case .inbox:
+            tab = .inbox
+            return
         case .trash: route = .trash
         }
         if case .source(let id, _) = route, case .source(id, _)? = paths[tab]?.last {
