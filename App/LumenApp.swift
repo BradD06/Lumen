@@ -6,6 +6,9 @@ import SwiftUI
 @main
 struct LumenApp: App {
     private let database = AppEnvironment.database
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(LumenAppDelegate.self) private var appDelegate
+    #endif
     @State private var syncStatus = SyncStatus()
 
     var body: some Scene {
@@ -23,6 +26,17 @@ struct LumenApp: App {
         }
     }
 }
+
+#if os(macOS)
+/// Книги, которые открыли в Lumen из Finder («Открыть с помощью», перетаскивание на иконку в Dock),
+/// и ссылки lumen:// приходят сюда, даже если окна ещё нет. Окно разберёт их, когда появится.
+@MainActor
+final class LumenAppDelegate: NSObject, NSApplicationDelegate {
+    func application(_ application: NSApplication, open urls: [URL]) {
+        IncomingOpenQueue.shared.receive(urls)
+    }
+}
+#endif
 
 /// Одна база на весь процесс: её же использует быстрая заметка из Shortcuts,
 /// поэтому открытые экраны сразу видят новую заметку.

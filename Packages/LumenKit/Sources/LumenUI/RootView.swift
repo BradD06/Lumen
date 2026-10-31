@@ -125,6 +125,8 @@ public struct RootView: View {
                 selection = .page(pageId)
             }
         }
+        // Книги из «Файлов» и Finder, ссылки lumen:// на страницы, книги и цитаты.
+        .opensIncomingLinks(database: database) { selection = $0 }
     }
 
     /// Один экран в панели. Переходы с него открываются в этой же панели.

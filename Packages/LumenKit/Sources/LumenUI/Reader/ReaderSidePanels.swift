@@ -158,6 +158,11 @@ struct HighlightsList: View {
                             } label: {
                                 Label("Скопировать", systemImage: "doc.on.doc")
                             }
+                            Button {
+                                copyLink(.highlight(sourceId: highlight.sourceId, highlightId: highlight.id))
+                            } label: {
+                                Label("Скопировать ссылку", systemImage: "link")
+                            }
                             Divider()
                             Button(role: .destructive) {
                                 model.deleteHighlight(highlight.id)
