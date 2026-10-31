@@ -8,6 +8,8 @@ public enum SyncTable: String, CaseIterable, Codable, Sendable {
     case folder
     case source
     case page
+    /// База данных после страницы, на которой она живёт.
+    case dataTable
     case block
     case highlight
 
@@ -17,6 +19,7 @@ public enum SyncTable: String, CaseIterable, Codable, Sendable {
         case .folder: "Folder"
         case .source: "Source"
         case .page: "Page"
+        case .dataTable: "DataTable"
         case .block: "Block"
         case .highlight: "Highlight"
         }
@@ -169,7 +172,8 @@ extension AppDatabase {
             t.primaryKey("id", .integer)
         }
 
-        for table in SyncTable.allCases {
+        // Таблицы, появившиеся позже журнала, получают триггеры в своих миграциях.
+        for table in SyncTable.allCases where table != .dataTable {
             try createSyncTriggers(db, table: table.rawValue)
         }
     }

@@ -16,6 +16,7 @@ struct ItemTitle: Hashable, Sendable {
         if item == .home { return ItemTitle(title: "Главная", systemImage: "sparkles") }
         if item == .inbox { return ItemTitle(title: "Входящие", systemImage: "tray") }
         if item == .trash { return ItemTitle(title: "Корзина", systemImage: "trash") }
+        if item == .tasks { return ItemTitle(title: "Задачи", systemImage: "checklist") }
         if item == .library(nil) { return ItemTitle(title: "Библиотека", systemImage: "books.vertical") }
         return nil
     }
