@@ -433,13 +433,16 @@ struct LibraryView: View {
                 .divider,
                 .label("Цвет папки"),
                 .swatches(selected: folder.color) { color in
-                    Task { try? await database.setFolderColor(folder.id, color: color) }
+                    Task {
+                        await NoticeCenter.shared.attempt("Не удалось поменять цвет") {
+                            try await database.setFolderColor(folder.id, color: color)
+                        }
+                    }
                 },
                 .divider,
                 .action(GlassMenuAction(title: "В корзину", systemImage: "trash", shortcut: "⌫", isDestructive: true) {
                     selection = nil
-                    LumenSounds.play(.trash)
-                    Task { try? await database.trashFolder(folder.id) }
+                    NoticeCenter.shared.moveToTrash(.folder(folder.id), in: database)
                 }),
             ]
             return entries
@@ -471,7 +474,7 @@ struct LibraryView: View {
             entries += [
                 .action(GlassMenuAction(title: "Новая подстраница", systemImage: "doc.badge.plus") {
                     Task {
-                        if let subpage = try? await database.createPage(parentId: page.id) {
+                        if let subpage = await NoticeCenter.shared.perform("Не удалось создать страницу", { try await database.createPage(parentId: page.id) }) {
                             LumenSounds.play(.create)
                             onOpenPage(subpage.id)
                         }
@@ -482,7 +485,11 @@ struct LibraryView: View {
                     title: page.isFavorite ? "Убрать из избранного" : "В избранное",
                     systemImage: page.isFavorite ? "star.slash" : "star"
                 ) {
-                    Task { try? await database.setFavorite(page.id, !page.isFavorite) }
+                    Task {
+                        await NoticeCenter.shared.attempt("Не удалось изменить избранное") {
+                            try await database.setFavorite(page.id, !page.isFavorite)
+                        }
+                    }
                 }),
                 .action(GlassMenuAction(title: "Переместить в…", systemImage: "arrow.right") {
                     moving = .page(page.id)
@@ -490,8 +497,7 @@ struct LibraryView: View {
                 .divider,
                 .action(GlassMenuAction(title: "В корзину", systemImage: "trash", shortcut: "⌫", isDestructive: true) {
                     selection = nil
-                    LumenSounds.play(.trash)
-                    Task { try? await database.trashPage(page.id) }
+                    NoticeCenter.shared.moveToTrash(.page(page.id), in: database)
                 }),
             ]
             return entries
@@ -519,8 +525,7 @@ struct LibraryView: View {
                 .divider,
                 .action(GlassMenuAction(title: "В корзину", systemImage: "trash", shortcut: "⌫", isDestructive: true) {
                     selection = nil
-                    LumenSounds.play(.trash)
-                    Task { try? await database.trashSource(source.id) }
+                    NoticeCenter.shared.moveToTrash(.source(source.id), in: database)
                 }),
             ]
             return entries
@@ -544,7 +549,7 @@ struct LibraryView: View {
 
     func openNotes(of sourceId: UUID) {
         Task {
-            if let page = try? await database.notesPage(for: sourceId) {
+            if let page = await NoticeCenter.shared.perform("Не удалось открыть заметки к книге", { try await database.notesPage(for: sourceId) }) {
                 LumenSounds.play(.navigate)
                 onOpenPage(page.id)
             }
@@ -561,7 +566,7 @@ struct LibraryView: View {
                 pendingPositions = [:]
             }
         } catch {
-            print("Library observation failed: \(error)")
+            lumenLog.error("Library observation failed: \(String(describing: error), privacy: .public)")
         }
     }
 }

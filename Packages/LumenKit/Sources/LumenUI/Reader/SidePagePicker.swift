@@ -160,7 +160,7 @@ struct SidePagePicker: View {
             self.pages = pages
             folderName = folder?.name
         } catch {
-            print("Failed to load pages for the side pane: \(error)")
+            lumenLog.error("Failed to load pages for the side pane: \(String(describing: error), privacy: .public)")
         }
     }
 

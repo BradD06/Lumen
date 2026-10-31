@@ -25,7 +25,11 @@ extension LibraryView {
                 pendingPositions[id] = position
             }
         }
-        Task { try? await database.setPositions(positions) }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось переместить") {
+                try await database.setPositions(positions)
+            }
+        }
     }
 
     /// Новый предмет встаёт в первую свободную ячейку, чтобы его сразу было видно.
@@ -36,12 +40,10 @@ extension LibraryView {
     func newFolder() {
         let position = freePosition()
         Task {
-            guard let folder = try? await database.createFolder(
-                name: "Новая папка",
-                parentId: folderId,
-                color: (snapshot.folders.count + 1) % Folder.colorCount,
-                position: position
-            ) else { return }
+            let color = (snapshot.folders.count + 1) % Folder.colorCount
+            guard let folder = await NoticeCenter.shared.perform("Не удалось создать папку", {
+                try await database.createFolder(name: "Новая папка", parentId: folderId, color: color, position: position)
+            }) else { return }
             LumenSounds.play(.create)
             selection = .folder(folder.id)
             renameText = folder.name
@@ -52,7 +54,7 @@ extension LibraryView {
     func newPage() {
         let position = freePosition()
         Task {
-            if let page = try? await database.createPage(folderId: folderId, position: position) {
+            if let page = await NoticeCenter.shared.perform("Не удалось создать страницу", { try await database.createPage(folderId: folderId, position: position) }) {
                 LumenSounds.play(.create)
                 onOpenPage(page.id)
             }
@@ -71,10 +73,12 @@ extension LibraryView {
         renaming = nil
         let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
-            switch item {
-            case .folder(let id): try? await database.renameFolder(id, name: name)
-            case .page(let id): try? await database.renamePage(id, title: name)
-            case .source(let id): try? await database.renameSource(id, title: name)
+            await NoticeCenter.shared.attempt("Не удалось переименовать") {
+                switch item {
+                case .folder(let id): try await database.renameFolder(id, name: name)
+                case .page(let id): try await database.renamePage(id, title: name)
+                case .source(let id): try await database.renameSource(id, title: name)
+                }
             }
         }
     }

@@ -134,11 +134,13 @@ struct SelectionBar: View {
     }
 }
 
-/// Плашка для уже сохранённого выделения: другой цвет, выписка, удаление.
+/// Плашка для уже сохранённого выделения: другой цвет, выписка, комментарий, удаление.
 struct HighlightBar: View {
     let model: ReaderModel
     let highlight: Highlight
     var isCompact = false
+
+    @State private var isEditingNote = false
 
     var body: some View {
         HighlightActionBar(
@@ -152,11 +154,22 @@ struct HighlightBar: View {
             onClose: { model.activeHighlightId = nil }
         ) {
             Button {
+                isEditingNote = true
+            } label: {
+                Image(systemName: highlight.note == nil ? "text.bubble" : "text.bubble.fill")
+            }
+            .help(highlight.note == nil ? "Добавить комментарий" : "Комментарий: \(highlight.note ?? "")")
+            Button {
                 model.deleteHighlight(highlight.id)
             } label: {
                 Image(systemName: "trash")
             }
             .help("Удалить выделение")
+        }
+        .sheet(isPresented: $isEditingNote) {
+            HighlightNoteSheet(highlight: highlight) { note in
+                model.setNote(note, of: highlight.id)
+            }
         }
     }
 }

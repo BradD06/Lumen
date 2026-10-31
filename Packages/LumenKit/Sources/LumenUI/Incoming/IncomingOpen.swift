@@ -61,7 +61,7 @@ enum IncomingOpen {
                 let source = try await SourceImporter.importIncomingFile(url, into: database)
                 return .success(.source(source.id, highlight: nil))
             } catch {
-                print("Failed to open \(url.lastPathComponent): \(error)")
+                lumenLog.error("Failed to open \(url.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
                 return .failure(.importFailed(url.lastPathComponent))
             }
         }

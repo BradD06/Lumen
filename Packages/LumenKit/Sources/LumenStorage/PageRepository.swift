@@ -153,6 +153,63 @@ extension AppDatabase {
         }
     }
 
+    /// Копия страницы со всеми блоками рядом с оригиналом: в той же папке, под тем же родителем
+    /// или во «Входящих». Подстраницы не копируются. Копия заметок к книге становится обычной
+    /// страницей в библиотеке, чтобы у книги не появилось вторых заметок.
+    @discardableResult
+    public func duplicatePage(_ id: UUID) async throws -> Page {
+        try await writer.write { db in
+            guard let original = try Page.fetchOne(db, key: id), !original.isTrashed else {
+                throw StorageError.pageNotFound
+            }
+            let nextKey = try String.fetchOne(
+                db,
+                sql: "SELECT MIN(sortKey) FROM page WHERE parentId IS ? AND inInbox = ? AND sortKey > ?",
+                arguments: [original.parentId, original.inInbox, original.sortKey]
+            )
+            let now = Date()
+            var copy = original
+            copy.id = UUID()
+            copy.title = original.title.isEmpty ? "" : "\(original.title) (копия)"
+            copy.sourceId = nil
+            copy.isFavorite = false
+            copy.position = nil
+            copy.sortKey = SortKey.between(original.sortKey, nextKey)
+            copy.createdAt = now
+            copy.updatedAt = now
+            copy.deletedAt = nil
+            try copy.insert(db)
+
+            // Родительский блок вставляется раньше вложенных: на него ссылается внешний ключ.
+            let blocks = try Block.filter(Column("pageId") == id).order(Column("sortKey")).fetchAll(db)
+            var newIds: [UUID: UUID] = [:]
+            for block in blocks { newIds[block.id] = UUID() }
+            var inserted: Set<UUID> = []
+            var pending = blocks
+            while !pending.isEmpty {
+                let ready = pending.filter { block in
+                    block.parentBlockId.map { inserted.contains($0) || newIds[$0] == nil } ?? true
+                }
+                // Петля в дереве блоков: остальные кладём на верхний уровень, чтобы ничего не потерять.
+                let batch = ready.isEmpty ? pending : ready
+                for block in batch {
+                    var newBlock = block
+                    newBlock.id = newIds[block.id] ?? UUID()
+                    newBlock.pageId = copy.id
+                    newBlock.parentBlockId = ready.isEmpty ? nil : block.parentBlockId.flatMap { newIds[$0] }
+                    newBlock.createdAt = now
+                    newBlock.updatedAt = now
+                    try newBlock.insert(db)
+                    try Self.updateLinks(db, block: newBlock)
+                    inserted.insert(block.id)
+                }
+                pending.removeAll { inserted.contains($0.id) }
+            }
+            try Self.reindex(db, pageId: copy.id)
+            return copy
+        }
+    }
+
     // MARK: Корзина
 
     /// Переносит страницу и все вложенные страницы в корзину.

@@ -43,8 +43,10 @@ struct PhoneRootView: View {
                     HomeView(
                         database: database,
                         onOpen: { push(.page($0)) },
+                        onOpenSource: { push(.source($0, highlight: nil)) },
                         onNewNote: newQuickNote,
-                        onShowInbox: { tab = .inbox }
+                        onShowInbox: { tab = .inbox },
+                        onShowLibrary: { tab = .library }
                     )
                     .toolbar { newNoteButton }
                 }
@@ -67,7 +69,12 @@ struct PhoneRootView: View {
             }
             Tab(value: PhoneTab.search, role: .search) {
                 stack(.search) {
-                    SearchView(database: database, isEmbedded: true) { push(.page($0)) }
+                    SearchView(
+                        database: database,
+                        isEmbedded: true,
+                        onOpen: { push(.page($0)) },
+                        onOpenSource: { push(.source($0, highlight: $1)) }
+                    )
                 }
             }
         }
@@ -215,9 +222,12 @@ struct PhoneRootView: View {
 
     private func newQuickNote() {
         Task {
-            if let page = try? await database.createPage(inInbox: true) {
+            do {
+                let page = try await database.createPage(inInbox: true)
                 LumenSounds.play(.create)
                 push(.page(page.id))
+            } catch {
+                NoticeCenter.shared.report("Не удалось создать заметку", error)
             }
         }
     }

@@ -52,7 +52,7 @@ final class DataTableModel {
                 isLoaded = true
             }
         } catch {
-            print("Data table observation failed: \(error)")
+            lumenLog.error("Data table observation failed: \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -60,12 +60,20 @@ final class DataTableModel {
 
     func rename(_ title: String) {
         let pageId = pageId
-        Task { try? await database.renamePage(pageId, title: title) }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось переименовать") {
+                try await database.renamePage(pageId, title: title)
+            }
+        }
     }
 
     func setIcon(_ icon: String?) {
         let pageId = pageId
-        Task { try? await database.setIcon(pageId, icon: icon) }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось сохранить оформление страницы") {
+                try await database.setIcon(pageId, icon: icon)
+            }
+        }
     }
 
     // MARK: Строки
@@ -81,11 +89,19 @@ final class DataTableModel {
     }
 
     func renameRow(_ rowId: UUID, _ title: String) {
-        Task { try? await database.renamePage(rowId, title: title) }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось переименовать") {
+                try await database.renamePage(rowId, title: title)
+            }
+        }
     }
 
     func setValue(_ value: PropertyValue?, property propertyId: UUID, row rowId: UUID) {
-        Task { try? await database.setValue(value, property: propertyId, row: rowId) }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось сохранить значение") {
+                try await database.setValue(value, property: propertyId, row: rowId)
+            }
+        }
     }
 
     /// Отмечает задачу выполненной или возвращает в работу.
@@ -100,19 +116,26 @@ final class DataTableModel {
     }
 
     func trashRow(_ rowId: UUID) {
-        LumenSounds.play(.trash)
-        Task { try? await database.trashPage(rowId) }
+        NoticeCenter.shared.moveToTrash(.page(rowId), in: database)
     }
 
     func moveRow(_ rowId: UUID, after afterRowId: UUID?) {
-        Task { try? await database.moveRow(rowId, after: afterRowId) }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось переместить строку") {
+                try await database.moveRow(rowId, after: afterRowId)
+            }
+        }
     }
 
     // MARK: Описание базы
 
     func updateTable(_ change: @escaping @Sendable (inout DataTable) -> Void) {
         guard let id = table?.id else { return }
-        Task { try? await database.updateDataTable(id, change) }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось сохранить настройки базы") {
+                try await database.updateDataTable(id, change)
+            }
+        }
     }
 
     /// Меняет выбранное представление.

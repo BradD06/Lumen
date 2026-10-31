@@ -179,7 +179,7 @@ final class ReaderModel {
             LumenSounds.play(.create)
             await openSidePage(page.id)
         } catch {
-            print("Failed to create a page: \(error)")
+            NoticeCenter.shared.report("Не удалось создать страницу", error)
         }
     }
 
@@ -198,7 +198,7 @@ final class ReaderModel {
                 paintHighlights()
             }
         } catch {
-            print("Highlights observation failed: \(error)")
+            lumenLog.error("Highlights observation failed: \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -709,7 +709,7 @@ final class ReaderModel {
             LumenSounds.play(.toggle)
             return highlight
         } catch {
-            print("Failed to save highlight: \(error)")
+            NoticeCenter.shared.report("Не удалось сохранить выделение", error)
             return nil
         }
     }
@@ -738,15 +738,40 @@ final class ReaderModel {
     }
 
     func setColor(_ color: HighlightColor, of id: UUID) {
-        Task { try? await database.setHighlightColor(id, color: color) }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось поменять цвет выделения") {
+                try await database.setHighlightColor(id, color: color)
+            }
+        }
     }
 
     func deleteHighlight(_ id: UUID) {
         if activeHighlightId == id { activeHighlightId = nil }
+        let deleted = highlights.first { $0.id == id }
         highlights.removeAll { $0.id == id }
         paintHighlights()
         LumenSounds.play(.trash)
-        Task { try? await database.deleteHighlight(id) }
+        let database = database
+        Task {
+            let done = await NoticeCenter.shared.attempt("Не удалось удалить выделение") {
+                try await database.deleteHighlight(id)
+            }
+            guard done, let deleted else { return }
+            // «Вернуть» кладёт то же выделение обратно: выписки из него снова открывают книгу.
+            NoticeCenter.shared.show("Выделение удалено") {
+                try await database.addHighlight(deleted)
+            }
+        }
+    }
+
+    /// Комментарий к выделению: показывается в списке выделений, на странице книги и находится поиском.
+    func setNote(_ note: String, of id: UUID) {
+        let database = database
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось сохранить комментарий") {
+                try await database.setHighlightNote(id, note: note)
+            }
+        }
     }
 
     func clearSelection() {

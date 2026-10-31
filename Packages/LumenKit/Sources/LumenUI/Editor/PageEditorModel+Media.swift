@@ -74,7 +74,7 @@ extension PageEditorModel {
             recordUndo()
             update(id) { $0.content.attachment = name }
         } catch {
-            print("Failed to save image: \(error)")
+            NoticeCenter.shared.report("Не удалось сохранить картинку", error)
         }
     }
 
@@ -82,7 +82,7 @@ extension PageEditorModel {
         do {
             setCover(.image(try database.attachments.save(data)))
         } catch {
-            print("Failed to save cover: \(error)")
+            NoticeCenter.shared.report("Не удалось сохранить обложку", error)
         }
     }
 
@@ -90,7 +90,7 @@ extension PageEditorModel {
         do {
             setBackground(.image(try database.attachments.save(data)))
         } catch {
-            print("Failed to save background: \(error)")
+            NoticeCenter.shared.report("Не удалось сохранить фон", error)
         }
     }
 }
