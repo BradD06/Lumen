@@ -21,6 +21,7 @@ enum PhoneRoute: Hashable {
 enum PhoneTab: Hashable {
     case home
     case inbox
+    case tasks
     case library
     case search
 }
@@ -52,6 +53,11 @@ struct PhoneRootView: View {
                 stack(.inbox) {
                     InboxView(database: database, onOpen: { push(.page($0)) }, onNewNote: newQuickNote)
                         .toolbar { newNoteButton }
+                }
+            }
+            Tab("Задачи", systemImage: "checklist", value: PhoneTab.tasks) {
+                stack(.tasks) {
+                    TasksScreen(database: database, onOpenPage: { push(.page($0)) })
                 }
             }
             Tab("Библиотека", systemImage: "books.vertical", value: PhoneTab.library) {
@@ -87,7 +93,7 @@ struct PhoneRootView: View {
     private func destination(_ route: PhoneRoute) -> some View {
         switch route {
         case .page(let id):
-            PageEditorView(
+            PageScreen(
                 database: database,
                 pageId: id,
                 onOpenPage: { push(.page($0)) },

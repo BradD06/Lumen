@@ -59,6 +59,8 @@ extension AppDatabase {
                 page.inInbox = false
                 page.folderId = folderId
                 page.position = nil
+                page.databaseId = nil
+                page.properties = nil
             }
         }
     }

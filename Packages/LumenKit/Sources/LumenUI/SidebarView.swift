@@ -10,6 +10,7 @@ struct SidebarView: View {
     @Binding var selection: SidebarItem?
     var onNewPage: (UUID?) -> Void
     var onNewFolder: (UUID?) -> Void
+    var onNewDataTable: () -> Void
 
     @State private var snapshot = SidebarSnapshot.empty
     @State private var renaming: Page?
@@ -25,6 +26,8 @@ struct SidebarView: View {
                 Label("Входящие", systemImage: "tray")
                     .badge(snapshot.inboxCount)
                     .tag(SidebarItem.inbox)
+                Label("Задачи", systemImage: "checklist")
+                    .tag(SidebarItem.tasks)
                 Label("Библиотека", systemImage: "books.vertical")
                     .tag(SidebarItem.library(nil))
                     .dropDestination(for: PageDragItem.self) { items, _ in
@@ -43,6 +46,21 @@ struct SidebarView: View {
                             }
                     }
                 }
+            }
+
+            Section {
+                ForEach(snapshot.databases) { page in
+                    PageLabel(page: page)
+                        .tag(SidebarItem.page(page.id))
+                        .contextMenu { menu(for: page) }
+                }
+                Button(action: onNewDataTable) {
+                    Label("Новая база данных", systemImage: "plus")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+            } header: {
+                Text("Базы данных")
             }
 
             Section {

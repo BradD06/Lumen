@@ -562,6 +562,12 @@ struct PageEditorView: View {
             .foregroundStyle(theme.textPrimary)
             .focused($focus, equals: .title)
             .onSubmit { model.focusFirstBlock() }
+
+            // Строка базы данных: статус, срок и другие свойства над текстом.
+            if let page = model.page, page.isDatabaseRow {
+                RowPropertiesPanel(database: model.database, rowId: page.id) { model.open($0) }
+                Divider()
+            }
         }
     }
 

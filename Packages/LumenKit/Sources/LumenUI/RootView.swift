@@ -7,6 +7,8 @@ import SwiftUI
 public enum SidebarItem: Hashable, Sendable {
     case home
     case inbox
+    /// База задач, открытая на «Сегодня».
+    case tasks
     /// Библиотека, открытая на папке (`nil` это корень).
     case library(UUID?)
     case trash
@@ -50,7 +52,13 @@ public struct RootView: View {
 
     private var splitView: some View {
         NavigationSplitView {
-            SidebarView(database: database, selection: $selection, onNewPage: openNewPage, onNewFolder: openNewFolder)
+            SidebarView(
+                database: database,
+                selection: $selection,
+                onNewPage: openNewPage,
+                onNewFolder: openNewFolder,
+                onNewDataTable: openNewDataTable
+            )
         } detail: {
             detail
                 .toolbar {
@@ -89,6 +97,8 @@ public struct RootView: View {
             )
         case .inbox:
             InboxView(database: database, onOpen: { selection = .page($0) }, onNewNote: newQuickNote)
+        case .tasks:
+            TasksScreen(database: database, onOpenPage: { selection = .page($0) })
         case .library(let folderId):
             LibraryView(
                 database: database,
@@ -102,7 +112,7 @@ public struct RootView: View {
         case .trash:
             TrashView(database: database)
         case .page(let id):
-            PageEditorView(
+            PageScreen(
                 database: database,
                 pageId: id,
                 onOpenPage: { selection = .page($0) },
@@ -147,6 +157,15 @@ public struct RootView: View {
             if let folder = try? await database.createFolder(name: "Новая папка", parentId: parentId) {
                 LumenSounds.play(.create)
                 selection = .library(folder.id)
+            }
+        }
+    }
+
+    private func openNewDataTable() {
+        Task {
+            if let table = try? await database.createDataTable(title: "Новая база", icon: "📋") {
+                LumenSounds.play(.create)
+                selection = .page(table.pageId)
             }
         }
     }
