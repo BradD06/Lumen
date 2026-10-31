@@ -141,14 +141,7 @@ struct LibraryView: View {
             if usesList && folderId == nil { await observeFavorites() }
         }
         .sheet(isPresented: $isSyncInfoPresented) {
-            NavigationStack {
-                List { SyncStatusRow() }
-                    .navigationTitle("iCloud")
-                    .toolbar {
-                        Button("Готово") { isSyncInfoPresented = false }
-                    }
-            }
-            .presentationDetents([.medium])
+            DataSafetySheet(database: database) { isSyncInfoPresented = false }
         }
     }
 
