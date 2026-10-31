@@ -89,7 +89,8 @@ final class Workspace {
     private(set) var selectedTabId: UUID
 
     /// Какую вкладку сейчас тянут мышью или пальцем: её ловят края экрана и другие вкладки.
-    @ObservationIgnored var draggingTabId: UUID?
+    /// Наблюдаемое: пока вкладку не тянут, подсветка краёв не показывается.
+    var draggingTabId: UUID?
     @ObservationIgnored private let storageKey: String?
     @ObservationIgnored private let defaults: UserDefaults
 

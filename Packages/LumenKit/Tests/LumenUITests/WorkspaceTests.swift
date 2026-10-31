@@ -205,9 +205,11 @@ struct TabDropTests {
         #expect(!workspace.isSplit)
     }
 
-    @Test func edgesAreTheOuterThirds() {
+    @Test func edgesAreTheHalves() {
         #expect(TabDropSide(x: 50, width: 900) == .leading)
-        #expect(TabDropSide(x: 450, width: 900) == nil)
+        #expect(TabDropSide(x: 440, width: 900) == .leading)
+        #expect(TabDropSide(x: 460, width: 900) == .trailing)
         #expect(TabDropSide(x: 850, width: 900) == .trailing)
+        #expect(TabDropSide(x: 50, width: 0) == nil)
     }
 }
