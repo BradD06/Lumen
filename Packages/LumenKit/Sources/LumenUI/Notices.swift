@@ -55,7 +55,7 @@ final class NoticeCenter {
     }
 
     /// То же для действия, которое что-то возвращает: при ошибке плашка и `nil`.
-    func perform<T>(_ failure: String, _ action: () async throws -> T) async -> T? {
+    func perform<T: Sendable>(_ failure: String, _ action: () async throws -> T) async -> T? {
         do {
             return try await action()
         } catch {
