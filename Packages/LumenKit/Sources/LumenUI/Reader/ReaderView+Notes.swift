@@ -67,6 +67,13 @@ extension ReaderView {
                 headerButton("bookmark", help: "Вставить в заметку ссылку на это место в книге") {
                     model.addPlaceLink()
                 }
+                .contextMenu {
+                    Button {
+                        model.copyPlaceLink()
+                    } label: {
+                        Label("Скопировать ссылку на это место", systemImage: "link")
+                    }
+                }
             }
             if model.showsBookNotes {
                 if !model.highlights.isEmpty {

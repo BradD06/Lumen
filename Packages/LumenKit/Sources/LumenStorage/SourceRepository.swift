@@ -37,6 +37,17 @@ extension AppDatabase {
         try await reader.read { db in try Source.fetchOne(db, key: id) }
     }
 
+    /// Книги из библиотеки (не из корзины), добавленные из файла с таким именем, новые первыми.
+    /// По ним видно, что ту же книгу открывают ещё раз, например снова из Telegram.
+    public func sources(originalName: String) async throws -> [Source] {
+        try await reader.read { db in
+            try Source
+                .filter(Column("originalName") == originalName && Column("deletedAt") == nil)
+                .order(Column("createdAt").desc)
+                .fetchAll(db)
+        }
+    }
+
     public func renameSource(_ id: UUID, title: String) async throws {
         try await writer.write { db in
             try Self.updateSource(db, id) { $0.title = title }

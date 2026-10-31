@@ -83,6 +83,8 @@ public struct RootView: View {
                 selection = .page(pageId)
             }
         }
+        // Книги из «Файлов» и Finder, ссылки lumen:// на страницы, книги и цитаты.
+        .opensIncomingLinks(database: database) { selection = $0 }
     }
 
     @ViewBuilder
