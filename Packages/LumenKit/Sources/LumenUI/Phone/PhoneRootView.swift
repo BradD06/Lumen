@@ -202,6 +202,9 @@ struct PhoneRootView: View {
         case .inbox:
             tab = .inbox
             return
+        case .tasks:
+            tab = .tasks
+            return
         case .trash: route = .trash
         }
         if case .source(let id, _) = route, case .source(id, _)? = paths[tab]?.last {
