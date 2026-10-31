@@ -25,6 +25,8 @@ let package = Package(
             dependencies: [
                 "LumenCore",
                 .product(name: "GRDB", package: "GRDB.swift"),
+                // Резервная копия это zip-архив: база, вложения и описание копии.
+                .product(name: "ZIPFoundation", package: "ZIPFoundation"),
             ]
         ),
         // Дизайн-токены, темы, фон и карточки-виджеты.

@@ -36,6 +36,8 @@ struct PageEditorView: View {
     @State private var wantsBackgroundPhoto = false
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var isEditingBackground = false
+    /// Формат, в который выгружают страницу из меню «Экспорт».
+    @State private var exportRequest: PageExportFormat?
     @State private var focusTask: Task<Void, Never>?
     #if os(macOS)
     @State private var keyMonitor: Any?
@@ -124,6 +126,9 @@ struct PageEditorView: View {
             )
         )
         .modifier(EditorNavigationTitle(title: model.isLoaded ? displayTitle : "", isEnabled: !isEmbedded))
+        .pageExport(database: model.database, pageId: model.pageId, request: $exportRequest) {
+            await model.flush()
+        }
         .toolbar {
             #if os(iOS)
             // На экранной клавиатуре нет Tab: вложенность меняется кнопками над клавиатурой.
@@ -311,6 +316,7 @@ struct PageEditorView: View {
                         Label("Перенести в страницы", systemImage: "folder")
                     }
                 }
+                PageExportButtons(request: $exportRequest)
                 Toggle("Звуки", isOn: $soundsEnabled)
                 Divider()
                 Button(role: .destructive) {
