@@ -31,6 +31,7 @@ struct ReaderView: View {
     @State private var isAppearancePresented = false
     @AppStorage("reader.tocOpen") private var showsToc = false
     @State private var isTocSheetPresented = false
+    @Environment(\.isActivePane) private var isActivePane
     @State private var dragStartFraction: Double?
     @State private var isHandleHovered = false
     @State private var isPagePickerPresented = false
@@ -101,7 +102,10 @@ struct ReaderView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .toolbar { toolbar }
+        .toolbar {
+            // В разделённом экране кнопки читалки только у активной панели.
+            if isActivePane { toolbar }
+        }
         .sheet(isPresented: $isTocSheetPresented) {
             TableOfContents(model: model, closesOnSelect: true, isCard: false) { isTocSheetPresented = false }
                 .fontDesign(.rounded)
