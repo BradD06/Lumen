@@ -19,38 +19,38 @@ struct LibraryView: View {
     /// iPhone: корзина открывается из меню библиотеки, отдельной вкладки для неё нет.
     var onOpenTrash: (() -> Void)?
 
-    @State private var snapshot = LibrarySnapshot.empty
-    @State private var hasLoaded = false
-    @State private var selection: LibraryItemID?
-    @State private var drag: DragState?
-    @State private var dropTarget: UUID?
+    @State var snapshot = LibrarySnapshot.empty
+    @State var hasLoaded = false
+    @State var selection: LibraryItemID?
+    @State var drag: DragState?
+    @State var dropTarget: UUID?
     /// Куда предмет положили, пока база не вернула новое место: без этого он на миг прыгает назад.
-    @State private var pendingPositions: [LibraryItemID: LibraryPoint] = [:]
-    @State private var renaming: LibraryItemID?
-    @State private var renameText = ""
-    @State private var moving: LibraryItemID?
+    @State var pendingPositions: [LibraryItemID: LibraryPoint] = [:]
+    @State var renaming: LibraryItemID?
+    @State var renameText = ""
+    @State var moving: LibraryItemID?
     /// Открытое стеклянное меню: у какого предмета и где на холсте.
-    @State private var contextMenu: ContextMenuState?
+    @State var contextMenu: ContextMenuState?
     @State private var contextMenuHeight: CGFloat = 0
     @State private var canvasWidth: CGFloat = 900
-    @State private var isImporting = false
+    @State var isImporting = false
     /// Файлы добавляются: на холсте крутится индикатор.
-    @State private var importingCount = 0
+    @State var importingCount = 0
     /// Над холстом держат файлы из Finder.
     @State private var isDropTargeted = false
     /// iPhone: избранное в начале корня библиотеки, сайдбара с ним на телефоне нет.
-    @State private var favorites: [Page] = []
-    @State private var trashCount = 0
-    @State private var isSyncInfoPresented = false
-    @AppStorage("library.snapToGrid") private var snapToGrid = false
+    @State var favorites: [Page] = []
+    @State var trashCount = 0
+    @State var isSyncInfoPresented = false
+    @AppStorage("library.snapToGrid") var snapToGrid = false
     #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.horizontalSizeClass) var horizontalSizeClass
     #endif
-    @Environment(\.lumenTheme) private var theme
+    @Environment(\.lumenTheme) var theme
 
-    private static let canvasSpace = "libraryCanvas"
+    static let canvasSpace = "libraryCanvas"
 
-    private struct DragState: Equatable {
+    struct DragState: Equatable {
         var item: LibraryItemID
         var origin: LibraryPoint
         var translation: CGSize = .zero
@@ -60,18 +60,18 @@ struct LibraryView: View {
         }
     }
 
-    private enum Content: Hashable {
+    enum Content: Hashable {
         case folder(LibraryFolder)
         case page(LibraryPage)
         case source(LibrarySource)
     }
 
-    private struct ContextMenuState: Equatable {
+    struct ContextMenuState: Equatable {
         var item: LibraryItemID
         var point: CGPoint
     }
 
-    private struct PlacedItem: Identifiable, Hashable {
+    struct PlacedItem: Identifiable, Hashable {
         var id: LibraryItemID
         var position: LibraryPoint
         var content: Content
@@ -356,12 +356,12 @@ struct LibraryView: View {
     }
 
     /// Сколько ячеек сетки помещается в ширину холста.
-    private var columns: Int {
+    var columns: Int {
         max(1, Int((canvasWidth - LibraryLayout.origin.x) / LibraryLayout.cellWidth))
     }
 
     /// Все предметы папки на своих местах. Тем, кого ещё не двигали, достаются свободные ячейки.
-    private var placedItems: [PlacedItem] {
+    var placedItems: [PlacedItem] {
         let contents: [(LibraryItemID, LibraryPoint?, Content)] =
             snapshot.folders.map { (.folder($0.id), $0.folder.position, .folder($0)) }
             + snapshot.pages.map { (.page($0.id), $0.page.position, .page($0)) }
@@ -385,304 +385,9 @@ struct LibraryView: View {
         return placed
     }
 
-    // MARK: Плитки
-
-    @ViewBuilder
-    private func tile(for item: PlacedItem) -> some View {
-        switch item.content {
-        case .folder(let entry):
-            LibraryTile(
-                title: entry.folder.displayName,
-                caption: entry.itemCount.objectCountText,
-                isSelected: selection == item.id,
-                isTargeted: dropTarget == entry.id,
-                isDragging: drag?.item == item.id,
-                renameText: $renameText,
-                isRenaming: renaming == item.id,
-                onCommitRename: commitRename
-            ) {
-                FolderArt(color: entry.folder.color, count: entry.itemCount, isTargeted: dropTarget == entry.id)
-            }
-            .modifier(TileInteraction(
-                onSelect: { select(item.id) },
-                onOpen: {
-                    LumenSounds.play(.navigate)
-                    onOpenFolder(entry.id)
-                },
-                drag: dragGesture(for: item)
-            ))
-            .modifier(LibraryTileMenu(onSecondaryClick: { openContextMenu(for: item, at: $0) }) {
-                folderMenu(entry.folder)
-            })
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Папка \(entry.folder.displayName), \(entry.itemCount.objectCountText)")
-            .accessibilityAction(named: "Открыть") { onOpenFolder(entry.id) }
-
-        case .page(let entry):
-            LibraryTile(
-                title: entry.page.displayTitle,
-                caption: caption(for: entry),
-                isSelected: selection == item.id,
-                isDragging: drag?.item == item.id,
-                renameText: $renameText,
-                isRenaming: renaming == item.id,
-                onCommitRename: commitRename
-            ) {
-                PageCoverArt(preview: entry.preview, attachments: database.attachments, subpageCount: entry.subpages.count)
-            }
-            .modifier(TileInteraction(
-                onSelect: { select(item.id) },
-                onOpen: {
-                    LumenSounds.play(.navigate)
-                    onOpenPage(entry.id)
-                },
-                drag: dragGesture(for: item)
-            ))
-            .modifier(LibraryTileMenu(onSecondaryClick: { openContextMenu(for: item, at: $0) }) {
-                pageMenu(entry)
-            })
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Заметка \(entry.page.displayTitle)")
-            .accessibilityAction(named: "Открыть") { onOpenPage(entry.id) }
-
-        case .source(let entry):
-            LibraryTile(
-                title: entry.source.displayTitle,
-                caption: caption(for: entry),
-                isSelected: selection == item.id,
-                isDragging: drag?.item == item.id,
-                renameText: $renameText,
-                isRenaming: renaming == item.id,
-                onCommitRename: commitRename
-            ) {
-                // Полоска прогресса под обложкой, а не поверх неё: так её видно на любой картинке.
-                VStack(spacing: 6) {
-                    SourceCoverArt(source: entry.source, attachments: database.attachments, width: 88, height: 122)
-                    ReadingProgressBar(progress: entry.source.progress)
-                        .frame(width: 88)
-                        .opacity(entry.source.progress > 0.005 ? 1 : 0)
-                }
-            }
-            .modifier(TileInteraction(
-                onSelect: { select(item.id) },
-                onOpen: { openSource(entry.id) },
-                drag: dragGesture(for: item)
-            ))
-            .modifier(LibraryTileMenu(onSecondaryClick: { openContextMenu(for: item, at: $0) }) {
-                sourceMenu(entry.source)
-            })
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(entry.source.format.isBook ? "Книга" : "Файл") \(entry.source.displayTitle)")
-            .accessibilityAction(named: "Открыть") { openSource(entry.id) }
-        }
-    }
-
-    private func caption(for entry: LibrarySource) -> String {
-        let source = entry.source
-        var parts: [String] = []
-        if source.progress > 0.005 {
-            parts.append("\(Int((source.progress * 100).rounded()))%")
-        }
-        if let author = source.author, parts.isEmpty {
-            parts.append(author)
-        } else {
-            parts.append(source.format.label)
-        }
-        if entry.highlightCount > 0 {
-            parts.append("выделений: \(entry.highlightCount)")
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private func openSource(_ id: UUID) {
-        LumenSounds.play(.navigate)
-        onOpenSource(id)
-    }
-
-    private func caption(for entry: LibraryPage) -> String {
-        if !entry.subpages.isEmpty {
-            return "Подстраниц: \(entry.subpages.count)"
-        }
-        return entry.page.updatedAt.lumenRelative
-    }
-
-    private func select(_ item: LibraryItemID) {
-        if renaming != item { commitRename() }
-        selection = item
-    }
-
-    // MARK: Перетаскивание
-
-    private func dragGesture(for item: PlacedItem) -> some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .named(Self.canvasSpace))
-            .onChanged { value in
-                if drag?.item != item.id {
-                    commitRename()
-                    selection = item.id
-                    drag = DragState(item: item.id, origin: item.position)
-                    LumenSounds.play(.pickUp)
-                }
-                drag?.translation = value.translation
-                if let drag {
-                    dropTarget = folder(under: drag.position, excluding: item.id)
-                }
-            }
-            .onEnded { _ in
-                finishDrag()
-            }
-    }
-
-    /// Папка, на которую сейчас наведён перетаскиваемый предмет (по его центру).
-    private func folder(under position: LibraryPoint, excluding item: LibraryItemID) -> UUID? {
-        let center = CGPoint(
-            x: position.x + LibraryLayout.tileWidth / 2,
-            y: position.y + LibraryLayout.tileHeight / 2
-        )
-        for candidate in placedItems where candidate.id != item {
-            guard case .folder(let entry) = candidate.content else { continue }
-            let frame = CGRect(
-                x: candidate.position.x,
-                y: candidate.position.y,
-                width: LibraryLayout.tileWidth,
-                height: LibraryLayout.tileHeight
-            )
-            if frame.contains(center) { return entry.id }
-        }
-        return nil
-    }
-
-    private func finishDrag() {
-        guard let drag else { return }
-        let target = dropTarget
-        self.drag = nil
-        dropTarget = nil
-        LumenSounds.play(target == nil ? .drop : .dropIntoFolder)
-
-        var position = LibraryPoint(x: max(0, drag.position.x), y: max(0, drag.position.y))
-        if snapToGrid, target == nil {
-            position = LibraryLayout.snapped(position)
-        }
-        withAnimation(.spring(duration: 0.3)) {
-            pendingPositions[drag.item] = position
-        }
-
-        Task {
-            if let target {
-                switch drag.item {
-                case .folder(let id): try? await database.moveFolder(id, toParent: target)
-                case .page(let id): try? await database.movePage(id, toFolder: target)
-                case .source(let id): try? await database.moveSource(id, toFolder: target)
-                }
-                selection = nil
-            } else {
-                try? await database.setPosition(drag.item, position)
-            }
-        }
-    }
-
-    // MARK: Действия
-
-    private func toggleGrid() {
-        if snapToGrid {
-            snapToGrid = false
-            LumenSounds.play(.tap)
-            return
-        }
-        snapToGrid = true
-        LumenSounds.play(.arrange)
-        // Включили сетку: раскладываем всё по ячейкам, сначала папки, потом заметки.
-        var positions: [LibraryItemID: LibraryPoint?] = [:]
-        for (index, item) in placedItems.enumerated() {
-            positions[item.id] = LibraryLayout.cell(index, columns: columns)
-        }
-        withAnimation(.spring(duration: 0.4)) {
-            for (id, position) in positions {
-                pendingPositions[id] = position
-            }
-        }
-        Task { try? await database.setPositions(positions) }
-    }
-
-    /// Новый предмет встаёт в первую свободную ячейку, чтобы его сразу было видно.
-    private func freePosition() -> LibraryPoint {
-        LibraryLayout.freeCells(count: 1, avoiding: placedItems.map(\.position), columns: columns)[0]
-    }
-
-    private func newFolder() {
-        let position = freePosition()
-        Task {
-            guard let folder = try? await database.createFolder(
-                name: "Новая папка",
-                parentId: folderId,
-                color: (snapshot.folders.count + 1) % Folder.colorCount,
-                position: position
-            ) else { return }
-            LumenSounds.play(.create)
-            selection = .folder(folder.id)
-            renameText = folder.name
-            renaming = .folder(folder.id)
-        }
-    }
-
-    private func newPage() {
-        let position = freePosition()
-        Task {
-            if let page = try? await database.createPage(folderId: folderId, position: position) {
-                LumenSounds.play(.create)
-                onOpenPage(page.id)
-            }
-        }
-    }
-
-    private func startRename(_ item: LibraryItemID, current: String) {
-        commitRename()
-        selection = item
-        renameText = current
-        renaming = item
-    }
-
-    private func commitRename() {
-        guard let item = renaming else { return }
-        renaming = nil
-        let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-        Task {
-            switch item {
-            case .folder(let id): try? await database.renameFolder(id, name: name)
-            case .page(let id): try? await database.renamePage(id, title: name)
-            case .source(let id): try? await database.renameSource(id, title: name)
-            }
-        }
-    }
-
-    /// Добавляет файлы: в точку, куда их бросили, или в свободные ячейки.
-    private func importFiles(_ urls: [URL], at point: LibraryPoint?) {
-        guard !urls.isEmpty else { return }
-        var positions = LibraryLayout.freeCells(count: urls.count, avoiding: placedItems.map(\.position), columns: columns)
-        if let point {
-            let first = snapToGrid ? LibraryLayout.snapped(point) : point
-            positions = [first] + LibraryLayout.freeCells(
-                count: urls.count - 1,
-                avoiding: placedItems.map(\.position) + [first],
-                columns: columns
-            )
-        }
-        importingCount += urls.count
-        let folderId = folderId
-        Task {
-            let sources = await SourceImporter.importFiles(urls, into: database, folderId: folderId, positions: positions)
-            importingCount -= urls.count
-            if !sources.isEmpty {
-                LumenSounds.play(.dropIntoFolder)
-            }
-            if sources.count == 1, let source = sources.first {
-                selection = .source(source.id)
-            }
-        }
-    }
-
     // MARK: Стеклянное меню
 
-    private func openContextMenu(for item: PlacedItem, at local: CGPoint) {
+    func openContextMenu(for item: PlacedItem, at local: CGPoint) {
         commitRename()
         selection = item.id
         LumenSounds.play(.tap)
@@ -809,144 +514,12 @@ struct LibraryView: View {
         }
     }
 
-    private func openNotes(of sourceId: UUID) {
+    func openNotes(of sourceId: UUID) {
         Task {
             if let page = try? await database.notesPage(for: sourceId) {
                 LumenSounds.play(.navigate)
                 onOpenPage(page.id)
             }
-        }
-    }
-
-    // MARK: Системное меню (iPhone и iPad)
-
-    @ViewBuilder
-    private func folderMenu(_ folder: Folder) -> some View {
-        Button {
-            onOpenFolder(folder.id)
-        } label: {
-            Label("Открыть", systemImage: "folder")
-        }
-        Button {
-            startRename(.folder(folder.id), current: folder.name)
-        } label: {
-            Label("Переименовать", systemImage: "pencil")
-        }
-        Picker(selection: Binding(
-            get: { folder.color },
-            set: { color in Task { try? await database.setFolderColor(folder.id, color: color) } }
-        )) {
-            ForEach(FolderPalette.names.indices, id: \.self) { index in
-                Text(FolderPalette.names[index]).tag(index)
-            }
-        } label: {
-            Label("Цвет", systemImage: "paintpalette")
-        }
-        Button {
-            moving = .folder(folder.id)
-        } label: {
-            Label("Переместить в…", systemImage: "arrow.right.doc.on.clipboard")
-        }
-        Divider()
-        Button(role: .destructive) {
-            selection = nil
-            LumenSounds.play(.trash)
-            Task { try? await database.trashFolder(folder.id) }
-        } label: {
-            Label("В корзину", systemImage: "trash")
-        }
-    }
-
-    @ViewBuilder
-    private func pageMenu(_ entry: LibraryPage) -> some View {
-        let page = entry.page
-        Button {
-            onOpenPage(page.id)
-        } label: {
-            Label("Открыть", systemImage: "doc.text")
-        }
-        Button {
-            startRename(.page(page.id), current: page.title)
-        } label: {
-            Label("Переименовать", systemImage: "pencil")
-        }
-        if !entry.subpages.isEmpty {
-            Menu {
-                ForEach(entry.subpages) { subpage in
-                    Button(subpage.displayTitle) { onOpenPage(subpage.id) }
-                }
-            } label: {
-                Label("Подстраницы", systemImage: "doc.on.doc")
-            }
-        }
-        Button {
-            Task {
-                if let subpage = try? await database.createPage(parentId: page.id) {
-                    LumenSounds.play(.create)
-                    onOpenPage(subpage.id)
-                }
-            }
-        } label: {
-            Label("Новая подстраница", systemImage: "doc.badge.plus")
-        }
-        Button {
-            Task { try? await database.setFavorite(page.id, !page.isFavorite) }
-        } label: {
-            if page.isFavorite {
-                Label("Убрать из избранного", systemImage: "star.slash")
-            } else {
-                Label("В избранное", systemImage: "star")
-            }
-        }
-        Button {
-            moving = .page(page.id)
-        } label: {
-            Label("Переместить в…", systemImage: "arrow.right.doc.on.clipboard")
-        }
-        Divider()
-        Button(role: .destructive) {
-            selection = nil
-            LumenSounds.play(.trash)
-            Task { try? await database.trashPage(page.id) }
-        } label: {
-            Label("В корзину", systemImage: "trash")
-        }
-    }
-
-    @ViewBuilder
-    private func sourceMenu(_ source: Source) -> some View {
-        Button {
-            openSource(source.id)
-        } label: {
-            Label("Читать", systemImage: "book")
-        }
-        Button {
-            openNotes(of: source.id)
-        } label: {
-            Label("Заметки к книге", systemImage: "note.text")
-        }
-        Button {
-            onShowSourceInfo(source.id)
-        } label: {
-            Label("О книге", systemImage: "chart.bar")
-        }
-        Button {
-            startRename(.source(source.id), current: source.displayTitle)
-        } label: {
-            Label("Переименовать", systemImage: "pencil")
-        }
-        Button {
-            moving = .source(source.id)
-        } label: {
-            Label("Переместить в…", systemImage: "arrow.right.doc.on.clipboard")
-        }
-        Divider()
-        Button(role: .destructive) {
-            selection = nil
-            LumenSounds.play(.trash)
-            Task { try? await database.trashSource(source.id) }
-        } label: {
-            Label("В корзину", systemImage: "trash")
         }
     }
 
@@ -962,315 +535,6 @@ struct LibraryView: View {
         } catch {
             print("Library observation failed: \(error)")
         }
-    }
-}
-
-// MARK: - Список на iPhone
-
-extension LibraryView {
-    /// На узком экране iPhone свободный холст неудобен: его не прокрутить, не задев плитки,
-    /// и в ширину помещаются две-три плитки. Там библиотека это обычный список: папки, книги, заметки.
-    /// Места на холсте при этом не меняются, на Mac и iPad всё лежит, где лежало.
-    var usesList: Bool {
-        #if os(iOS)
-        horizontalSizeClass == .compact
-        #else
-        false
-        #endif
-    }
-
-    /// Переименование в списке идёт через окно с полем: поля прямо в строке на телефоне мелкие.
-    var isRenamingInList: Binding<Bool> {
-        Binding(
-            get: { usesList && renaming != nil },
-            set: { if !$0 { renaming = nil } }
-        )
-    }
-
-    var compactAddMenu: some View {
-        Menu {
-            Button(action: newPage) {
-                Label("Заметка", systemImage: "doc.badge.plus")
-            }
-            Button {
-                isImporting = true
-            } label: {
-                Label("Книга или файл", systemImage: "book.closed")
-            }
-            Button(action: newFolder) {
-                Label("Папка", systemImage: "folder.badge.plus")
-            }
-        } label: {
-            Label("Добавить", systemImage: "plus")
-        }
-        .disabled(snapshot.isMissing)
-    }
-
-    /// Корзина и iCloud: на Mac они в сайдбаре, на iPhone в меню корня библиотеки.
-    var compactMoreMenu: some View {
-        Menu {
-            if let onOpenTrash {
-                Button(action: onOpenTrash) {
-                    Label(trashCount > 0 ? "Корзина (\(trashCount))" : "Корзина", systemImage: "trash")
-                }
-            }
-            Button {
-                isSyncInfoPresented = true
-            } label: {
-                Label("iCloud", systemImage: "icloud")
-            }
-        } label: {
-            Label("Ещё", systemImage: "ellipsis.circle")
-        }
-    }
-
-    func observeFavorites() async {
-        let observation = ValueObservation.tracking { db in try SidebarSnapshot.fetch(db) }
-        do {
-            for try await value in observation.values(in: database.reader) {
-                favorites = value.favorites
-                trashCount = value.trashCount
-            }
-        } catch {
-            print("Favorites observation failed: \(error)")
-        }
-    }
-
-    var compactList: some View {
-        List {
-            if folderId == nil && !favorites.isEmpty {
-                Section("Избранное") {
-                    ForEach(favorites) { page in
-                        Button {
-                            LumenSounds.play(.navigate)
-                            onOpenPage(page.id)
-                        } label: {
-                            CompactLibraryRow(title: page.displayTitle, caption: "") {
-                                Image(systemName: "star.fill")
-                                    .foregroundStyle(theme.accent)
-                            }
-                        }
-                        .swipeActions {
-                            Button {
-                                Task { try? await database.setFavorite(page.id, false) }
-                            } label: {
-                                Label("Убрать из избранного", systemImage: "star.slash")
-                            }
-                        }
-                    }
-                }
-            }
-            if !snapshot.folders.isEmpty {
-                Section("Папки") {
-                    ForEach(snapshot.folders) { entry in
-                        Button {
-                            LumenSounds.play(.navigate)
-                            onOpenFolder(entry.id)
-                        } label: {
-                            CompactLibraryRow(title: entry.folder.displayName, caption: entry.itemCount.objectCountText) {
-                                FolderGlyph(color: entry.folder.color)
-                                    .scaleEffect(1.8)
-                            }
-                        }
-                        .contextMenu { folderMenu(entry.folder) }
-                        .swipeActions {
-                            Button(role: .destructive) {
-                                LumenSounds.play(.trash)
-                                Task { try? await database.trashFolder(entry.id) }
-                            } label: {
-                                Label("В корзину", systemImage: "trash")
-                            }
-                        }
-                    }
-                }
-            }
-            if !snapshot.sources.isEmpty {
-                Section("Книги и файлы") {
-                    ForEach(snapshot.sources) { entry in
-                        Button {
-                            openSource(entry.id)
-                        } label: {
-                            CompactLibraryRow(title: entry.source.displayTitle, caption: caption(for: entry)) {
-                                SourceCoverArt(source: entry.source, attachments: database.attachments, width: 40, height: 56)
-                            }
-                        }
-                        .contextMenu { sourceMenu(entry.source) }
-                        .swipeActions {
-                            Button(role: .destructive) {
-                                LumenSounds.play(.trash)
-                                Task { try? await database.trashSource(entry.id) }
-                            } label: {
-                                Label("В корзину", systemImage: "trash")
-                            }
-                        }
-                    }
-                }
-            }
-            if !snapshot.pages.isEmpty {
-                Section("Заметки") {
-                    ForEach(snapshot.pages) { entry in
-                        Button {
-                            LumenSounds.play(.navigate)
-                            onOpenPage(entry.id)
-                        } label: {
-                            CompactLibraryRow(title: entry.page.displayTitle, caption: caption(for: entry)) {
-                                if let icon = entry.page.icon, !icon.isEmpty {
-                                    Text(icon).font(.title3)
-                                } else {
-                                    Image(systemName: "doc.text")
-                                        .font(.title3)
-                                        .foregroundStyle(theme.textSecondary)
-                                }
-                            }
-                        }
-                        .contextMenu { pageMenu(entry) }
-                        .swipeActions {
-                            Button(role: .destructive) {
-                                LumenSounds.play(.trash)
-                                Task { try? await database.trashPage(entry.id) }
-                            } label: {
-                                Label("В корзину", systemImage: "trash")
-                            }
-                        }
-                        .swipeActions(edge: .leading) {
-                            Button {
-                                Task { try? await database.setFavorite(entry.id, !entry.page.isFavorite) }
-                            } label: {
-                                Label(entry.page.isFavorite ? "Убрать из избранного" : "В избранное", systemImage: "star")
-                            }
-                            .tint(theme.accent)
-                        }
-                    }
-                }
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .overlay {
-            if hasLoaded && snapshot.folders.isEmpty && snapshot.pages.isEmpty && snapshot.sources.isEmpty && importingCount == 0 {
-                ContentUnavailableView {
-                    Label("Пока пусто", systemImage: "folder")
-                } description: {
-                    Text("Создайте папку или заметку, или добавьте книгу из «Файлов».")
-                } actions: {
-                    Button("Новая папка", action: newFolder)
-                        .buttonStyle(.borderedProminent)
-                    Button("Добавить книгу") { isImporting = true }
-                        .buttonStyle(.bordered)
-                }
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if importingCount > 0 {
-                Label {
-                    Text(importingCount == 1 ? "Добавляю книгу…" : "Добавляю файлы: \(importingCount)…")
-                } icon: {
-                    ProgressView().controlSize(.small)
-                }
-                .font(.subheadline.weight(.medium))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: Capsule())
-                .padding(.bottom, 16)
-            }
-        }
-    }
-}
-
-/// Строка списка библиотеки на iPhone: значок, название и подпись.
-private struct CompactLibraryRow<Icon: View>: View {
-    let title: String
-    let caption: String
-    @ViewBuilder var icon: () -> Icon
-    @Environment(\.lumenTheme) private var theme
-
-    var body: some View {
-        HStack(spacing: 14) {
-            icon()
-                .frame(width: 42)
-                .frame(minHeight: 42)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(theme.textPrimary)
-                    .lineLimit(2)
-                if !caption.isEmpty {
-                    Text(caption)
-                        .font(.caption)
-                        .foregroundStyle(theme.textSecondary)
-                        .lineLimit(1)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
-    }
-}
-
-/// Меню плитки. На Mac правый щелчок открывает стеклянное меню библиотеки,
-/// на iPhone и iPad долгое нажатие показывает системное: оно там родное и с превью.
-private struct LibraryTileMenu<MenuItems: View>: ViewModifier {
-    var onSecondaryClick: (CGPoint) -> Void
-    @ViewBuilder var menuItems: () -> MenuItems
-
-    func body(content: Content) -> some View {
-        #if os(macOS)
-        content.overlay(SecondaryClickCatcher(onSecondaryClick: onSecondaryClick))
-        #else
-        content.contextMenu { menuItems() }
-        #endif
-    }
-}
-
-/// Щелчок выделяет, двойной открывает (на Mac). На iPhone и iPad касание сразу открывает.
-private struct TileInteraction<DragGestureType: Gesture>: ViewModifier {
-    var onSelect: () -> Void
-    var onOpen: () -> Void
-    var drag: DragGestureType
-
-    func body(content: Content) -> some View {
-        #if os(macOS)
-        content
-            .gesture(drag)
-            .onTapGesture(count: 2, perform: onOpen)
-            .onTapGesture(perform: onSelect)
-        #else
-        content
-            .gesture(drag)
-            .onTapGesture(perform: onOpen)
-        #endif
-    }
-}
-
-/// Кнопки шапки библиотеки: стеклянные, главная закатная.
-struct LibraryButtonStyle: ButtonStyle {
-    var isOn = false
-    var isProminent = false
-    @Environment(\.lumenTheme) private var theme
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: ButtonStyleConfiguration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
-        configuration.label
-            .font(.subheadline.weight(.semibold))
-            .labelStyle(.titleAndIcon)
-            .foregroundStyle(isProminent ? theme.vividCard(0).foreground : theme.textPrimary)
-            .padding(.horizontal, 13)
-            .frame(height: 34)
-            .background {
-                if isProminent {
-                    shape.fill(LinearGradient(colors: theme.vividCard(0).colors, startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .shadow(color: (theme.vividCard(0).colors.last ?? .clear).opacity(0.6), radius: 9, y: 6)
-                } else {
-                    shape.fill(isOn ? theme.accent.opacity(0.3) : theme.cardFill)
-                }
-            }
-            .overlay(shape.strokeBorder(isOn ? theme.accent.opacity(0.6) : theme.cardStroke, lineWidth: 1))
-            .overlay(shape.strokeBorder(
-                LinearGradient(colors: [.white.opacity(isProminent ? 0.5 : 0.12), .clear], startPoint: .top, endPoint: .center),
-                lineWidth: 1
-            ))
-            .opacity(configuration.isPressed ? 0.8 : (isEnabled ? 1 : 0.5))
     }
 }
 
