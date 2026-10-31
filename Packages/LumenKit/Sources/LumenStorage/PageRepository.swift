@@ -7,6 +7,7 @@ public enum StorageError: Error, Equatable {
     case folderNotFound
     case sourceNotFound
     case highlightNotFound
+    case dataTableNotFound
     /// Попытка переместить страницу или папку внутрь самой себя.
     case invalidMove
 }
@@ -135,6 +136,11 @@ extension AppDatabase {
                 arguments: [parentId, id]
             )
             try Self.updatePage(db, id) { page in
+                // Строка, вынесенная из своей базы, становится обычной страницей.
+                if page.parentId != parentId {
+                    page.databaseId = nil
+                    page.properties = nil
+                }
                 page.parentId = parentId
                 page.inInbox = false
                 page.sortKey = SortKey.between(lastKey, nil)
@@ -171,7 +177,12 @@ extension AppDatabase {
             guard let page = try Page.fetchOne(db, key: id) else { throw StorageError.pageNotFound }
             if let parentId = page.parentId,
                try Page.fetchOne(db, key: parentId)?.isTrashed ?? true {
-                try Self.updatePage(db, id) { $0.parentId = nil }
+                // Строка без своей базы становится обычной страницей.
+                try Self.updatePage(db, id) { page in
+                    page.parentId = nil
+                    page.databaseId = nil
+                    page.properties = nil
+                }
             }
             // Папка тоже могла остаться в корзине: тогда страница возвращается в корень библиотеки.
             if let folderId = page.folderId,

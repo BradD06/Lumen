@@ -196,6 +196,29 @@ extension AppDatabase {
             try Self.createSyncSchema(db)
         }
 
+        migrator.registerMigration("v8: databases") { db in
+            // База данных живёт на странице. Свойства и представления хранятся JSON:
+            // их мало, а меняются они всегда вместе с базой.
+            try db.create(table: "dataTable") { t in
+                t.primaryKey("id", .blob)
+                t.column("pageId", .blob).notNull().references("page", onDelete: .cascade).unique()
+                t.column("properties", .text).notNull()
+                t.column("views", .text).notNull()
+                t.column("template", .text)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            // Строка базы это страница, вложенная в страницу базы, со значениями свойств в JSON.
+            // Внешнего ключа на dataTable нет: строки удаляются вместе со страницей базы, а при
+            // синхронизации строка может прийти раньше базы.
+            try db.alter(table: "page") { t in
+                t.add(column: "databaseId", .blob)
+                t.add(column: "properties", .text)
+            }
+            try db.create(index: "page_on_databaseId", on: "page", columns: ["databaseId"])
+            try Self.createSyncTriggers(db, table: "dataTable")
+        }
+
         return migrator
     }
 }
@@ -220,6 +243,10 @@ extension Source: FetchableRecord, PersistableRecord {
 
 extension Highlight: FetchableRecord, PersistableRecord {
     public static let databaseTableName = "highlight"
+}
+
+extension DataTable: FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "dataTable"
 }
 
 extension ReadingSession: FetchableRecord, PersistableRecord {
