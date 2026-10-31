@@ -47,6 +47,10 @@ targets:
             UTTypeDescription: Lumen Page
             UTTypeConformsTo: [public.data]
             UTTypeTagSpecification: {}
+          - UTTypeIdentifier: app.lumen.tab
+            UTTypeDescription: Lumen Tab
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification: {}
           # Форматы, которых нет в системе: без объявления iPhone не знает, что .fb2 и .cbz это книги.
           - UTTypeIdentifier: io.github.bradd06.lumen.fb2
             UTTypeDescription: FictionBook
