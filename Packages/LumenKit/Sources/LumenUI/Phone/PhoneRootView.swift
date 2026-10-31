@@ -65,6 +65,8 @@ struct PhoneRootView: View {
                 }
             }
         }
+        // Книги из «Файлов», Telegram и «Поделиться», ссылки lumen:// на страницы, книги и цитаты.
+        .opensIncomingLinks(database: database, open: openIncoming)
     }
 
     private func stack<Root: View>(_ tab: PhoneTab, @ViewBuilder root: () -> Root) -> some View {
@@ -170,6 +172,30 @@ struct PhoneRootView: View {
         } else {
             push(.folder(id))
         }
+    }
+
+    /// Открытое снаружи: книга встаёт поверх библиотеки, страница поверх текущей вкладки.
+    /// Если та же книга уже открыта сверху, второй экран не нужен.
+    private func openIncoming(_ item: SidebarItem) {
+        let route: PhoneRoute
+        switch item {
+        case .page(let id): route = .page(id)
+        case .source(let id, let highlight):
+            tab = .library
+            route = .source(id, highlight: highlight)
+        case .sourceInfo(let id): route = .sourceInfo(id)
+        case .library(let id?): route = .folder(id)
+        case .library(nil):
+            tab = .library
+            return
+        case .home: tab = .home; return
+        case .inbox: tab = .inbox; return
+        case .trash: route = .trash
+        }
+        if case .source(let id, _) = route, case .source(id, _)? = paths[tab]?.last {
+            paths[tab]?.removeLast()
+        }
+        push(route)
     }
 
     private func newQuickNote() {

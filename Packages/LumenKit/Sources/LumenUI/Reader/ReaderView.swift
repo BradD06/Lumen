@@ -537,6 +537,13 @@ struct ReaderView: View {
                 headerButton("bookmark", help: "Вставить в заметку ссылку на это место в книге") {
                     model.addPlaceLink()
                 }
+                .contextMenu {
+                    Button {
+                        model.copyPlaceLink()
+                    } label: {
+                        Label("Скопировать ссылку на это место", systemImage: "link")
+                    }
+                }
             }
             if model.showsBookNotes {
                 if !model.highlights.isEmpty {
@@ -1025,6 +1032,11 @@ private struct HighlightsList: View {
                                 copyToPasteboard(highlight.text)
                             } label: {
                                 Label("Скопировать", systemImage: "doc.on.doc")
+                            }
+                            Button {
+                                copyLink(.highlight(sourceId: highlight.sourceId, highlightId: highlight.id))
+                            } label: {
+                                Label("Скопировать ссылку", systemImage: "link")
                             }
                             Divider()
                             Button(role: .destructive) {

@@ -302,18 +302,18 @@ public struct ExcerptReference: Hashable, Codable, Sendable {
     /// Ссылка на место, а не выписка из выделения.
     public var isPlace: Bool { highlightId == nil && locator != nil }
 
-    /// Ссылка вида `lumen://source/<id>/highlight/<id>`, у ссылки на место `lumen://source/<id>`.
-    public var url: URL {
-        guard let highlightId else { return URL(string: "lumen://source/\(sourceId.uuidString)")! }
-        return URL(string: "lumen://source/\(sourceId.uuidString)/highlight/\(highlightId.uuidString)")!
-    }
+    /// Ссылка `lumen://` на выделение или место, см. `LumenLink`.
+    public var url: URL { link.url }
 
+    /// Выписка из ссылки на выделение или место. Подписи места в ссылке нет.
     public init?(url: URL) {
-        guard url.scheme == "lumen", url.host == "source" else { return nil }
-        let parts = url.pathComponents.filter { $0 != "/" }
-        guard parts.count == 3, parts[1] == "highlight",
-              let sourceId = UUID(uuidString: parts[0]),
-              let highlightId = UUID(uuidString: parts[2]) else { return nil }
-        self.init(sourceId: sourceId, highlightId: highlightId, label: "")
+        switch LumenLink(url: url) {
+        case .highlight(let sourceId, let highlightId):
+            self.init(sourceId: sourceId, highlightId: highlightId, label: "")
+        case .place(let sourceId, let locator):
+            self.init(sourceId: sourceId, locator: locator, label: "")
+        default:
+            return nil
+        }
     }
 }

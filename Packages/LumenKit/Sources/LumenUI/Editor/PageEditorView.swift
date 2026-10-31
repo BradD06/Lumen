@@ -311,6 +311,11 @@ struct PageEditorView: View {
                         Label("Перенести в страницы", systemImage: "folder")
                     }
                 }
+                Button {
+                    copyLink(.page(model.pageId))
+                } label: {
+                    Label("Скопировать ссылку", systemImage: "link")
+                }
                 Toggle("Звуки", isOn: $soundsEnabled)
                 Divider()
                 Button(role: .destructive) {

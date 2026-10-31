@@ -47,6 +47,66 @@ targets:
             UTTypeDescription: Lumen Page
             UTTypeConformsTo: [public.data]
             UTTypeTagSpecification: {}
+          # Форматы, которых нет в системе: без объявления iPhone не знает, что .fb2 и .cbz это книги.
+          - UTTypeIdentifier: io.github.bradd06.lumen.fb2
+            UTTypeDescription: FictionBook
+            UTTypeConformsTo: [public.xml, public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [fb2]
+              public.mime-type: [application/x-fictionbook+xml]
+          - UTTypeIdentifier: io.github.bradd06.lumen.cbz
+            UTTypeDescription: Comic Book Archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [cbz]
+              public.mime-type: [application/vnd.comicbook+zip]
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: net.daringfireball.markdown
+            UTTypeDescription: Markdown
+            UTTypeConformsTo: [public.plain-text]
+            UTTypeTagSpecification:
+              public.filename-extension: [md, markdown]
+              public.mime-type: [text/markdown]
+        # Какие файлы открываются в Lumen: книга из «Файлов», Telegram, почты и меню «Поделиться»
+        # на iPhone, «Открыть с помощью» и перетаскивание на иконку в Dock на Mac.
+        # Alternate: Lumen есть в списке, но не забирает файлы у Книг и Просмотра по умолчанию.
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Книга
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - org.idpf.epub-container
+              - org.idpf.epub-folder
+              - com.adobe.pdf
+          - CFBundleTypeName: FictionBook и комиксы
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Default
+            LSItemContentTypes:
+              - io.github.bradd06.lumen.fb2
+              - io.github.bradd06.lumen.cbz
+          - CFBundleTypeName: Документ
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - org.openxmlformats.wordprocessingml.document
+              - com.microsoft.word.doc
+              - org.oasis-open.opendocument.text
+              - public.rtf
+              - org.openxmlformats.presentationml.presentation
+          - CFBundleTypeName: Текст
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.plain-text
+              - net.daringfireball.markdown
+              - public.html
+        # Файл, присланный в Lumen, копируется в библиотеку: оригинал в «Файлах» не меняется.
+        LSSupportsOpeningDocumentsInPlace: false
+        # Ссылки lumen:// на страницы, книги, цитаты и места в книгах.
+        CFBundleURLTypes:
+          - CFBundleURLName: io.github.bradd06.lumen
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes: [lumen]
         # Контейнер iCloud для синхронизации. Пусто = синхронизация выключена.
         # Задаётся в Config/Local.xcconfig, см. README, раздел про iCloud.
         LumenCloudKitContainer: $(LUMEN_CLOUDKIT_CONTAINER)
