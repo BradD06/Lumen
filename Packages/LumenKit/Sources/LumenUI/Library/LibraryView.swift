@@ -32,6 +32,8 @@ struct LibraryView: View {
     /// Открытое стеклянное меню: у какого предмета и где на холсте.
     @State var contextMenu: ContextMenuState?
     @State private var contextMenuHeight: CGFloat = 0
+    /// Открыть в новой вкладке или рядом: есть только там, где есть вкладки (Mac и iPad).
+    @Environment(\.workspaceActions) private var workspaceActions
     @State private var canvasWidth: CGFloat = 900
     @State var isImporting = false
     /// Файлы добавляются: на холсте крутится индикатор.
@@ -414,11 +416,14 @@ struct LibraryView: View {
         switch item {
         case .folder(let id):
             guard let folder = snapshot.folders.first(where: { $0.id == id })?.folder else { return [] }
-            return [
+            var entries: [GlassMenuEntry] = [
                 .action(GlassMenuAction(title: "Открыть", systemImage: "folder", shortcut: "⏎") {
                     LumenSounds.play(.navigate)
                     onOpenFolder(folder.id)
                 }),
+            ]
+            entries += openElsewhereEntries(.library(folder.id))
+            entries += [
                 .action(GlassMenuAction(title: "Переименовать", systemImage: "pencil") {
                     startRename(.folder(folder.id), current: folder.name)
                 }),
@@ -440,6 +445,7 @@ struct LibraryView: View {
                     NoticeCenter.shared.moveToTrash(.folder(folder.id), in: database)
                 }),
             ]
+            return entries
         case .page(let id):
             guard let entry = snapshot.pages.first(where: { $0.id == id }) else { return [] }
             let page = entry.page
@@ -448,6 +454,9 @@ struct LibraryView: View {
                     LumenSounds.play(.navigate)
                     onOpenPage(page.id)
                 }),
+            ]
+            entries += openElsewhereEntries(.page(page.id))
+            entries += [
                 .action(GlassMenuAction(title: "Переименовать", systemImage: "pencil") {
                     startRename(.page(page.id), current: page.title)
                 }),
@@ -494,10 +503,13 @@ struct LibraryView: View {
             return entries
         case .source(let id):
             guard let source = snapshot.sources.first(where: { $0.id == id })?.source else { return [] }
-            return [
+            var entries: [GlassMenuEntry] = [
                 .action(GlassMenuAction(title: "Читать", systemImage: "book", shortcut: "⏎") {
                     openSource(source.id)
                 }),
+            ]
+            entries += openElsewhereEntries(.source(source.id, highlight: nil))
+            entries += [
                 .action(GlassMenuAction(title: "Заметки к книге", systemImage: "note.text") {
                     openNotes(of: source.id)
                 }),
@@ -516,7 +528,23 @@ struct LibraryView: View {
                     NoticeCenter.shared.moveToTrash(.source(source.id), in: database)
                 }),
             ]
+            return entries
         }
+    }
+
+    /// «В новой вкладке» и «Рядом» для предмета: книгу рядом с конспектом, папку в отдельной вкладке.
+    private func openElsewhereEntries(_ item: SidebarItem) -> [GlassMenuEntry] {
+        guard let workspaceActions else { return [] }
+        return [
+            .action(GlassMenuAction(title: "Открыть в новой вкладке", systemImage: "plus.square.on.square") {
+                LumenSounds.play(.navigate)
+                workspaceActions.openInNewTab(item)
+            }),
+            .action(GlassMenuAction(title: "Открыть рядом", systemImage: "rectangle.split.2x1") {
+                LumenSounds.play(.navigate)
+                workspaceActions.openBeside(item)
+            }),
+        ]
     }
 
     func openNotes(of sourceId: UUID) {

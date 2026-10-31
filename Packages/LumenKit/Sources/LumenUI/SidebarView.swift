@@ -16,6 +16,7 @@ struct SidebarView: View {
     @State private var renaming: Page?
     @State private var renamingFolder: Folder?
     @State private var newTitle = ""
+    @Environment(\.workspaceActions) private var workspaceActions
 
     var body: some View {
         List(selection: $selection) {
@@ -145,8 +146,27 @@ struct SidebarView: View {
         return true
     }
 
+    /// «В новой вкладке» и «Рядом», как ссылка в браузере.
+    @ViewBuilder
+    private func openElsewhereButtons(_ item: SidebarItem) -> some View {
+        if let workspaceActions {
+            Button {
+                workspaceActions.openInNewTab(item)
+            } label: {
+                Label("Открыть в новой вкладке", systemImage: "plus.square.on.square")
+            }
+            Button {
+                workspaceActions.openBeside(item)
+            } label: {
+                Label("Открыть рядом", systemImage: "rectangle.split.2x1")
+            }
+            Divider()
+        }
+    }
+
     @ViewBuilder
     private func folderMenu(for folder: Folder) -> some View {
+        openElsewhereButtons(.library(folder.id))
         Button {
             newTitle = folder.name
             renamingFolder = folder
@@ -196,6 +216,7 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func menu(for page: Page) -> some View {
+        openElsewhereButtons(.page(page.id))
         Button {
             newTitle = page.title
             renaming = page

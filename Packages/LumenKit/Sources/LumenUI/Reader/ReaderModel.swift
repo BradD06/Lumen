@@ -435,18 +435,8 @@ final class ReaderModel {
 
     /// Ссылка на место, где сейчас читают, в заметку рядом. Без выделения текста.
     func addPlaceLink() {
-        guard let notes else { return }
-        let locator = readingLocator
-        let label: String
-        switch content {
-        case .pdf:
-            label = "стр. \(locator.section + 1)"
-        case .web:
-            label = webLabel(progression: locator.progression)
-        default:
-            return
-        }
-        notes.appendPlaceLink(ExcerptReference(sourceId: sourceId, locator: locator, label: label))
+        guard let notes, let reference = currentPlace else { return }
+        notes.appendPlaceLink(reference)
         Task { await notes.flush() }
         LumenSounds.play(.create)
         if showsBookNotes {
@@ -455,6 +445,28 @@ final class ReaderModel {
             let title = notes.title.trimmingCharacters(in: .whitespacesAndNewlines)
             showToast(title.isEmpty ? "Ссылка на место добавлена в заметку" : "Ссылка добавлена в «\(title)»")
         }
+    }
+
+    /// Ссылка `lumen://` на это место в буфер обмена: её можно вставить в другое приложение.
+    func copyPlaceLink() {
+        guard let reference = currentPlace else { return }
+        copyLink(reference.link)
+        showToast("Ссылка на это место скопирована")
+    }
+
+    /// Место, где сейчас читают, с подписью. У системного просмотра места нет.
+    private var currentPlace: ExcerptReference? {
+        let locator = readingLocator
+        let label: String
+        switch content {
+        case .pdf:
+            label = "стр. \(locator.section + 1)"
+        case .web:
+            label = webLabel(progression: locator.progression)
+        default:
+            return nil
+        }
+        return ExcerptReference(sourceId: sourceId, locator: locator, label: label)
     }
 
     /// Можно ли сослаться на место: у системного просмотра места нет.

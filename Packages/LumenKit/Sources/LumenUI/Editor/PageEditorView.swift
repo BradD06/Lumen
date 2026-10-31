@@ -29,6 +29,8 @@ struct PageEditorView: View {
     var onOpenSource: (UUID, UUID?) -> Void = { _, _ in }
 
     @FocusState private var focus: EditorFocus?
+    /// В разделённом экране кнопки в панели окна и ⌘Z только у активной панели.
+    @Environment(\.isActivePane) private var isActivePane
     /// Куда пойдёт фото из галереи: в обложку или в фон страницы.
     @State private var photoTarget: PhotoTarget = .cover
     @State private var isPickingPhoto = false
@@ -124,7 +126,7 @@ struct PageEditorView: View {
                 sunset: scrollOffset / 700
             )
         )
-        .modifier(EditorNavigationTitle(title: model.isLoaded ? displayTitle : "", isEnabled: !isEmbedded))
+        .modifier(EditorNavigationTitle(title: model.isLoaded ? displayTitle : "", isEnabled: !isEmbedded && isActivePane))
         .toolbar {
             #if os(iOS)
             // На экранной клавиатуре нет Tab: вложенность меняется кнопками над клавиатурой.
@@ -161,7 +163,7 @@ struct PageEditorView: View {
                 }
             }
             #endif
-            if !isEmbedded {
+            if !isEmbedded && isActivePane {
                 editorToolbar
             }
         }
@@ -198,7 +200,7 @@ struct PageEditorView: View {
             }
             await model.observeLinks()
         }
-        .focusedSceneValue(\.pageEditor, model)
+        .focusedSceneValue(\.pageEditor, isActivePane ? model : nil)
         .onChange(of: model.openRequest) { _, request in
             guard let request else { return }
             model.openRequest = nil
@@ -337,6 +339,11 @@ struct PageEditorView: View {
                     duplicatePage()
                 } label: {
                     Label("Дублировать", systemImage: "plus.square.on.square")
+                }
+                Button {
+                    copyLink(.page(model.pageId))
+                } label: {
+                    Label("Скопировать ссылку", systemImage: "link")
                 }
                 Toggle("Звуки", isOn: $soundsEnabled)
                 Divider()

@@ -124,6 +124,7 @@ struct TrashView: View {
 
     @State private var trash = TrashSnapshot.empty
     @State private var isConfirmingEmpty = false
+    @Environment(\.isActivePane) private var isActivePane
     /// Вещь, которую собираются удалить навсегда: сначала спрашиваем.
     @State private var deleting: TrashEntry?
     @Environment(\.lumenTheme) private var theme
@@ -171,9 +172,11 @@ struct TrashView: View {
         .background(ThemedBackground())
         .navigationTitle("Корзина")
         .toolbar {
-            ToolbarItem(placement: .destructiveAction) {
-                Button("Очистить", role: .destructive) { isConfirmingEmpty = true }
-                    .disabled(trash.isEmpty)
+            if isActivePane {
+                ToolbarItem(placement: .destructiveAction) {
+                    Button("Очистить", role: .destructive) { isConfirmingEmpty = true }
+                        .disabled(trash.isEmpty)
+                }
             }
         }
         .confirmationDialog("Удалить всё из корзины навсегда?", isPresented: $isConfirmingEmpty) {

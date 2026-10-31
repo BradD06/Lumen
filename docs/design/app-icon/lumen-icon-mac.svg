@@ -1,0 +1,20 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'>
+<defs><filter id='sh' x='-20%' y='-20%' width='140%' height='140%'><feDropShadow dx='0' dy='10' stdDeviation='12' flood-color='#000' flood-opacity='.35'/></filter>
+<clipPath id='body'><rect x='100' y='100' width='824' height='824' rx='185'/></clipPath></defs>
+<rect x='100' y='100' width='824' height='824' rx='185' fill='#160F1A' filter='url(#sh)'/>
+<g clip-path='url(#body)'><svg x='100' y='100' width='824' height='824' viewBox='0 0 100 100'><defs>
+<linearGradient id="sun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFEC9E"/><stop offset=".45" stop-color="#FFB36B"/><stop offset="1" stop-color="#F0705A"/></linearGradient>
+<radialGradient id="glow"><stop offset="0" stop-color="#FFB36B" stop-opacity=".75"/><stop offset=".45" stop-color="#FF8A5B" stop-opacity=".28"/><stop offset="1" stop-color="#FF8A5B" stop-opacity="0"/></radialGradient>
+<linearGradient id="night" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3B2740"/><stop offset="1" stop-color="#160F1A"/></linearGradient>
+<linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<clipPath id="up"><rect width="100" height="58"/></clipPath>
+</defs>
+<rect width="100" height="100" fill="url(#night)"/>
+<circle cx="50" cy="56" r="44" fill="url(#glow)"/>
+<circle cx="50" cy="58" r="27" fill="url(#sun)" clip-path="url(#up)"/>
+<rect x="16" y="62" width="68" height="5" rx="2.5" fill="#FFC48A"/>
+<rect x="27" y="72" width="46" height="5" rx="2.5" fill="#FF8A5B" opacity=".55"/>
+<rect x="38" y="82" width="24" height="5" rx="2.5" fill="#FF8A5B" opacity=".28"/>
+<rect width="100" height="100" fill="url(#gloss)"/></svg></g>
+<rect x='101' y='101' width='822' height='822' rx='184' fill='none' stroke='#fff' stroke-opacity='.12' stroke-width='2'/>
+</svg>

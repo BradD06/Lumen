@@ -93,6 +93,13 @@ struct BlockRow: View {
         } label: {
             Label("Дублировать", systemImage: "plus.square.on.square")
         }
+        if let reference = block.content.excerpt {
+            Button {
+                copyLink(reference.link)
+            } label: {
+                Label(reference.isPlace ? "Скопировать ссылку на место" : "Скопировать ссылку на цитату", systemImage: "link")
+            }
+        }
         Divider()
         Button {
             model.moveBlock(block.id, by: -1)

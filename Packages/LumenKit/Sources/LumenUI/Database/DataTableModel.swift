@@ -131,7 +131,11 @@ final class DataTableModel {
 
     func updateTable(_ change: @escaping @Sendable (inout DataTable) -> Void) {
         guard let id = table?.id else { return }
-        Task { try? await database.updateDataTable(id, change) }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось сохранить настройки базы") {
+                try await database.updateDataTable(id, change)
+            }
+        }
     }
 
     /// Меняет выбранное представление.
