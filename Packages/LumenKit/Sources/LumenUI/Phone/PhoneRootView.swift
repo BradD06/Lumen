@@ -43,8 +43,10 @@ struct PhoneRootView: View {
                     HomeView(
                         database: database,
                         onOpen: { push(.page($0)) },
+                        onOpenSource: { push(.source($0, highlight: nil)) },
                         onNewNote: newQuickNote,
-                        onShowInbox: { tab = .inbox }
+                        onShowInbox: { tab = .inbox },
+                        onShowLibrary: { tab = .library }
                     )
                     .toolbar { newNoteButton }
                 }
@@ -67,10 +69,17 @@ struct PhoneRootView: View {
             }
             Tab(value: PhoneTab.search, role: .search) {
                 stack(.search) {
-                    SearchView(database: database, isEmbedded: true) { push(.page($0)) }
+                    SearchView(
+                        database: database,
+                        isEmbedded: true,
+                        onOpen: { push(.page($0)) },
+                        onOpenSource: { push(.source($0, highlight: $1)) }
+                    )
                 }
             }
         }
+        // Книги из «Файлов», Telegram и «Поделиться», ссылки lumen:// на страницы, книги и цитаты.
+        .opensIncomingLinks(database: database, open: openIncoming)
     }
 
     private func stack<Root: View>(_ tab: PhoneTab, @ViewBuilder root: () -> Root) -> some View {
@@ -178,11 +187,47 @@ struct PhoneRootView: View {
         }
     }
 
+    /// Открытое снаружи: книга встаёт поверх библиотеки, страница поверх текущей вкладки.
+    /// Если та же книга уже открыта сверху, второй экран не нужен.
+    private func openIncoming(_ item: SidebarItem) {
+        let route: PhoneRoute
+        switch item {
+        case .page(let id): route = .page(id)
+        case .source(let id, let highlight):
+            tab = .library
+            route = .source(id, highlight: highlight)
+        case .sourceInfo(let id): route = .sourceInfo(id)
+        case .library(let id):
+            guard let id else {
+                tab = .library
+                return
+            }
+            route = .folder(id)
+        case .home:
+            tab = .home
+            return
+        case .inbox:
+            tab = .inbox
+            return
+        case .tasks:
+            tab = .tasks
+            return
+        case .trash: route = .trash
+        }
+        if case .source(let id, _) = route, case .source(id, _)? = paths[tab]?.last {
+            paths[tab]?.removeLast()
+        }
+        push(route)
+    }
+
     private func newQuickNote() {
         Task {
-            if let page = try? await database.createPage(inInbox: true) {
+            do {
+                let page = try await database.createPage(inInbox: true)
                 LumenSounds.play(.create)
                 push(.page(page.id))
+            } catch {
+                NoticeCenter.shared.report("Не удалось создать заметку", error)
             }
         }
     }

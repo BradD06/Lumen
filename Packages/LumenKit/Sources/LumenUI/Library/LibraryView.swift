@@ -32,6 +32,8 @@ struct LibraryView: View {
     /// Открытое стеклянное меню: у какого предмета и где на холсте.
     @State var contextMenu: ContextMenuState?
     @State private var contextMenuHeight: CGFloat = 0
+    /// Открыть в новой вкладке или рядом: есть только там, где есть вкладки (Mac и iPad).
+    @Environment(\.workspaceActions) private var workspaceActions
     @State private var canvasWidth: CGFloat = 900
     @State var isImporting = false
     /// Файлы добавляются: на холсте крутится индикатор.
@@ -407,11 +409,14 @@ struct LibraryView: View {
         switch item {
         case .folder(let id):
             guard let folder = snapshot.folders.first(where: { $0.id == id })?.folder else { return [] }
-            return [
+            var entries: [GlassMenuEntry] = [
                 .action(GlassMenuAction(title: "Открыть", systemImage: "folder", shortcut: "⏎") {
                     LumenSounds.play(.navigate)
                     onOpenFolder(folder.id)
                 }),
+            ]
+            entries += openElsewhereEntries(.library(folder.id))
+            entries += [
                 .action(GlassMenuAction(title: "Переименовать", systemImage: "pencil") {
                     startRename(.folder(folder.id), current: folder.name)
                 }),
@@ -421,15 +426,19 @@ struct LibraryView: View {
                 .divider,
                 .label("Цвет папки"),
                 .swatches(selected: folder.color) { color in
-                    Task { try? await database.setFolderColor(folder.id, color: color) }
+                    Task {
+                        await NoticeCenter.shared.attempt("Не удалось поменять цвет") {
+                            try await database.setFolderColor(folder.id, color: color)
+                        }
+                    }
                 },
                 .divider,
                 .action(GlassMenuAction(title: "В корзину", systemImage: "trash", shortcut: "⌫", isDestructive: true) {
                     selection = nil
-                    LumenSounds.play(.trash)
-                    Task { try? await database.trashFolder(folder.id) }
+                    NoticeCenter.shared.moveToTrash(.folder(folder.id), in: database)
                 }),
             ]
+            return entries
         case .page(let id):
             guard let entry = snapshot.pages.first(where: { $0.id == id }) else { return [] }
             let page = entry.page
@@ -438,6 +447,9 @@ struct LibraryView: View {
                     LumenSounds.play(.navigate)
                     onOpenPage(page.id)
                 }),
+            ]
+            entries += openElsewhereEntries(.page(page.id))
+            entries += [
                 .action(GlassMenuAction(title: "Переименовать", systemImage: "pencil") {
                     startRename(.page(page.id), current: page.title)
                 }),
@@ -455,7 +467,7 @@ struct LibraryView: View {
             entries += [
                 .action(GlassMenuAction(title: "Новая подстраница", systemImage: "doc.badge.plus") {
                     Task {
-                        if let subpage = try? await database.createPage(parentId: page.id) {
+                        if let subpage = await NoticeCenter.shared.perform("Не удалось создать страницу", { try await database.createPage(parentId: page.id) }) {
                             LumenSounds.play(.create)
                             onOpenPage(subpage.id)
                         }
@@ -466,7 +478,11 @@ struct LibraryView: View {
                     title: page.isFavorite ? "Убрать из избранного" : "В избранное",
                     systemImage: page.isFavorite ? "star.slash" : "star"
                 ) {
-                    Task { try? await database.setFavorite(page.id, !page.isFavorite) }
+                    Task {
+                        await NoticeCenter.shared.attempt("Не удалось изменить избранное") {
+                            try await database.setFavorite(page.id, !page.isFavorite)
+                        }
+                    }
                 }),
                 .action(GlassMenuAction(title: "Переместить в…", systemImage: "arrow.right") {
                     moving = .page(page.id)
@@ -474,17 +490,19 @@ struct LibraryView: View {
                 .divider,
                 .action(GlassMenuAction(title: "В корзину", systemImage: "trash", shortcut: "⌫", isDestructive: true) {
                     selection = nil
-                    LumenSounds.play(.trash)
-                    Task { try? await database.trashPage(page.id) }
+                    NoticeCenter.shared.moveToTrash(.page(page.id), in: database)
                 }),
             ]
             return entries
         case .source(let id):
             guard let source = snapshot.sources.first(where: { $0.id == id })?.source else { return [] }
-            return [
+            var entries: [GlassMenuEntry] = [
                 .action(GlassMenuAction(title: "Читать", systemImage: "book", shortcut: "⏎") {
                     openSource(source.id)
                 }),
+            ]
+            entries += openElsewhereEntries(.source(source.id, highlight: nil))
+            entries += [
                 .action(GlassMenuAction(title: "Заметки к книге", systemImage: "note.text") {
                     openNotes(of: source.id)
                 }),
@@ -500,16 +518,31 @@ struct LibraryView: View {
                 .divider,
                 .action(GlassMenuAction(title: "В корзину", systemImage: "trash", shortcut: "⌫", isDestructive: true) {
                     selection = nil
-                    LumenSounds.play(.trash)
-                    Task { try? await database.trashSource(source.id) }
+                    NoticeCenter.shared.moveToTrash(.source(source.id), in: database)
                 }),
             ]
+            return entries
         }
+    }
+
+    /// «В новой вкладке» и «Рядом» для предмета: книгу рядом с конспектом, папку в отдельной вкладке.
+    private func openElsewhereEntries(_ item: SidebarItem) -> [GlassMenuEntry] {
+        guard let workspaceActions else { return [] }
+        return [
+            .action(GlassMenuAction(title: "Открыть в новой вкладке", systemImage: "plus.square.on.square") {
+                LumenSounds.play(.navigate)
+                workspaceActions.openInNewTab(item)
+            }),
+            .action(GlassMenuAction(title: "Открыть рядом", systemImage: "rectangle.split.2x1") {
+                LumenSounds.play(.navigate)
+                workspaceActions.openBeside(item)
+            }),
+        ]
     }
 
     func openNotes(of sourceId: UUID) {
         Task {
-            if let page = try? await database.notesPage(for: sourceId) {
+            if let page = await NoticeCenter.shared.perform("Не удалось открыть заметки к книге", { try await database.notesPage(for: sourceId) }) {
                 LumenSounds.play(.navigate)
                 onOpenPage(page.id)
             }
@@ -526,7 +559,7 @@ struct LibraryView: View {
                 pendingPositions = [:]
             }
         } catch {
-            print("Library observation failed: \(error)")
+            lumenLog.error("Library observation failed: \(String(describing: error), privacy: .public)")
         }
     }
 }

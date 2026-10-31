@@ -71,7 +71,7 @@ extension LibraryView {
                 trashCount = value.trashCount
             }
         } catch {
-            print("Favorites observation failed: \(error)")
+            lumenLog.error("Favorites observation failed: \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -91,7 +91,11 @@ extension LibraryView {
                         }
                         .swipeActions {
                             Button {
-                                Task { try? await database.setFavorite(page.id, false) }
+                                Task {
+                                    await NoticeCenter.shared.attempt("Не удалось изменить избранное") {
+                                        try await database.setFavorite(page.id, false)
+                                    }
+                                }
                             } label: {
                                 Label("Убрать из избранного", systemImage: "star.slash")
                             }
@@ -114,8 +118,7 @@ extension LibraryView {
                         .contextMenu { folderMenu(entry.folder) }
                         .swipeActions {
                             Button(role: .destructive) {
-                                LumenSounds.play(.trash)
-                                Task { try? await database.trashFolder(entry.id) }
+                                NoticeCenter.shared.moveToTrash(.folder(entry.id), in: database)
                             } label: {
                                 Label("В корзину", systemImage: "trash")
                             }
@@ -136,8 +139,7 @@ extension LibraryView {
                         .contextMenu { sourceMenu(entry.source) }
                         .swipeActions {
                             Button(role: .destructive) {
-                                LumenSounds.play(.trash)
-                                Task { try? await database.trashSource(entry.id) }
+                                NoticeCenter.shared.moveToTrash(.source(entry.id), in: database)
                             } label: {
                                 Label("В корзину", systemImage: "trash")
                             }
@@ -165,15 +167,18 @@ extension LibraryView {
                         .contextMenu { pageMenu(entry) }
                         .swipeActions {
                             Button(role: .destructive) {
-                                LumenSounds.play(.trash)
-                                Task { try? await database.trashPage(entry.id) }
+                                NoticeCenter.shared.moveToTrash(.page(entry.id), in: database)
                             } label: {
                                 Label("В корзину", systemImage: "trash")
                             }
                         }
                         .swipeActions(edge: .leading) {
                             Button {
-                                Task { try? await database.setFavorite(entry.id, !entry.page.isFavorite) }
+                                Task {
+                                    await NoticeCenter.shared.attempt("Не удалось изменить избранное") {
+                                        try await database.setFavorite(entry.id, !entry.page.isFavorite)
+                                    }
+                                }
                             } label: {
                                 Label(entry.page.isFavorite ? "Убрать из избранного" : "В избранное", systemImage: "star")
                             }

@@ -3,6 +3,9 @@ import Foundation
 import GRDB
 import LumenStorage
 import Observation
+import OSLog
+
+private let syncLog = Logger(subsystem: "io.github.bradd06.lumen", category: "sync")
 
 /// Что показывать человеку о синхронизации.
 @MainActor
@@ -113,7 +116,7 @@ public actor CloudSync {
                     await self?.schedule(changes)
                 }
             } catch {
-                print("Sync observation failed: \(error)")
+                syncLog.error("Sync observation failed: \(String(describing: error), privacy: .public)")
             }
         }
     }

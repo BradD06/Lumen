@@ -189,14 +189,18 @@ extension LibraryView {
 
         Task {
             if let target {
-                switch drag.item {
-                case .folder(let id): try? await database.moveFolder(id, toParent: target)
-                case .page(let id): try? await database.movePage(id, toFolder: target)
-                case .source(let id): try? await database.moveSource(id, toFolder: target)
+                await NoticeCenter.shared.attempt("Не удалось переместить") {
+                    switch drag.item {
+                    case .folder(let id): try await database.moveFolder(id, toParent: target)
+                    case .page(let id): try await database.movePage(id, toFolder: target)
+                    case .source(let id): try await database.moveSource(id, toFolder: target)
+                    }
                 }
                 selection = nil
             } else {
-                try? await database.setPosition(drag.item, position)
+                await NoticeCenter.shared.attempt("Не удалось переместить") {
+                    try await database.setPosition(drag.item, position)
+                }
             }
         }
     }

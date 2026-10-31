@@ -111,6 +111,8 @@ struct TableOfContents: View {
 struct HighlightsList: View {
     let model: ReaderModel
     var onClose: () -> Void
+    /// Выделение, к которому пишут комментарий.
+    @State private var editingNote: Highlight?
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
@@ -138,6 +140,9 @@ struct HighlightsList: View {
                                         .font(.system(.callout, design: .serif))
                                         .lineLimit(4)
                                         .foregroundStyle(theme.textPrimary)
+                                    if let note = highlight.note {
+                                        HighlightNoteLabel(note: note)
+                                    }
                                     Text(highlight.label)
                                         .font(.caption)
                                         .foregroundStyle(theme.textSecondary)
@@ -154,9 +159,19 @@ struct HighlightsList: View {
                                 Label("В заметки", systemImage: "quote.opening")
                             }
                             Button {
+                                editingNote = highlight
+                            } label: {
+                                Label(highlight.note == nil ? "Комментарий…" : "Изменить комментарий…", systemImage: "text.bubble")
+                            }
+                            Button {
                                 copyToPasteboard(highlight.text)
                             } label: {
                                 Label("Скопировать", systemImage: "doc.on.doc")
+                            }
+                            Button {
+                                copyLink(.highlight(sourceId: highlight.sourceId, highlightId: highlight.id))
+                            } label: {
+                                Label("Скопировать ссылку", systemImage: "link")
                             }
                             Divider()
                             Button(role: .destructive) {
@@ -172,5 +187,10 @@ struct HighlightsList: View {
             }
         }
         .background(ThemedBackground())
+        .sheet(item: $editingNote) { highlight in
+            HighlightNoteSheet(highlight: highlight) { note in
+                model.setNote(note, of: highlight.id)
+            }
+        }
     }
 }
