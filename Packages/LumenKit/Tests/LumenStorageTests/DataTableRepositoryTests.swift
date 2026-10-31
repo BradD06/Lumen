@@ -117,4 +117,11 @@ struct DataTableRepositoryTests {
         let record = try #require(try await db.syncRecord(for: SyncRecordID(table: .dataTable, id: table.id)))
         #expect(record.record.fields["properties"] != nil)
     }
+
+    @Test func rowsStayOutOfHomeScreen() async throws {
+        let table = try await db.tasksDataTable()
+        let home = try await db.reader.read { try HomeSnapshot.fetch($0) }
+        #expect(home.pageCount == 1, "Считается только страница «Задачи», не сами задачи")
+        #expect(home.recent.map(\.page.id) == [table.pageId])
+    }
 }

@@ -277,7 +277,8 @@ public struct HomeSnapshot: Equatable, Sendable {
     public static let empty = HomeSnapshot(inboxCount: 0, pageCount: 0, editedToday: 0, recent: [])
 
     public static func fetch(_ db: Database, now: Date = Date(), calendar: Calendar = .current) throws -> HomeSnapshot {
-        let alive = Page.filter(Column("deletedAt") == nil)
+        // Строки баз данных (задачи) это тоже страницы, но в «Недавних» и счётчиках им не место.
+        let alive = Page.filter(Column("deletedAt") == nil && Column("databaseId") == nil)
         let startOfDay = calendar.startOfDay(for: now)
         return HomeSnapshot(
             inboxCount: try alive.filter(Column("inInbox") == true).fetchCount(db),
@@ -287,7 +288,7 @@ public struct HomeSnapshot: Equatable, Sendable {
                 SELECT page.*, pageSearch.body AS excerpt
                 FROM page
                 LEFT JOIN pageSearch ON pageSearch.pageId = \(uuidText("page.id"))
-                WHERE page.deletedAt IS NULL
+                WHERE page.deletedAt IS NULL AND page.databaseId IS NULL
                 ORDER BY page.updatedAt DESC
                 LIMIT 6
                 """)
