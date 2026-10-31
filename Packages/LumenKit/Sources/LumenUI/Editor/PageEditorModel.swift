@@ -903,7 +903,7 @@ final class PageEditorModel {
     /// Подстраницы этой страницы в их порядке.
     var subpages: [Page] {
         links.pages
-            .filter { $0.parentId == pageId }
+            .filter { $0.parentId == pageId && !$0.isDatabaseRow }
             .sorted { $0.sortKey < $1.sortKey }
     }
 

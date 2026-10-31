@@ -27,11 +27,13 @@ public struct PagePreview: Identifiable, Hashable, Sendable {
 /// Всё, что нужно сайдбару. Пересчитывается при любом изменении страниц и папок.
 public struct SidebarSnapshot: Equatable, Sendable {
     public var favorites: [Page]
+    /// Страницы баз данных, кроме задач: у них свой пункт.
+    public var databases: [Page]
     public var folders: [FolderNode]
     public var inboxCount: Int
     public var trashCount: Int
 
-    public static let empty = SidebarSnapshot(favorites: [], folders: [], inboxCount: 0, trashCount: 0)
+    public static let empty = SidebarSnapshot(favorites: [], databases: [], folders: [], inboxCount: 0, trashCount: 0)
 
     public static func fetch(_ db: Database) throws -> SidebarSnapshot {
         let alive = Page.filter(Column("deletedAt") == nil)
@@ -44,6 +46,7 @@ public struct SidebarSnapshot: Equatable, Sendable {
         let trashedSources = try Source.filter(Column("deletedAt") != nil).fetchCount(db)
         return SidebarSnapshot(
             favorites: favorites,
+            databases: try DataTableListQuery.fetch(db),
             folders: try FolderTreeQuery.fetch(db),
             inboxCount: try alive.filter(Column("inInbox") == true).fetchCount(db),
             trashCount: trashedPages + trashedFolders + trashedSources
@@ -144,7 +147,7 @@ public struct LibrarySnapshot: Equatable, Sendable {
                     preview: preview,
                     subpages: try Page
                         .filter(Column("parentId") == preview.page.id)
-                        .filter(Column("deletedAt") == nil)
+                        .filter(Column("deletedAt") == nil && Column("databaseId") == nil)
                         .order(Column("sortKey"))
                         .fetchAll(db)
                 )
