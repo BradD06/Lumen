@@ -70,6 +70,8 @@ targets:
         # Какие файлы открываются в Lumen: книга из «Файлов», Telegram, почты и меню «Поделиться»
         # на iPhone, «Открыть с помощью» и перетаскивание на иконку в Dock на Mac.
         # Alternate: Lumen есть в списке, но не забирает файлы у Книг и Просмотра по умолчанию.
+        # LSSupportsOpeningDocumentsInPlace не задан: на iPhone это значит, что присланный файл
+        # система копирует в Lumen, и книга ложится в библиотеку. На Mac ключ со значением NO запрещён.
         CFBundleDocumentTypes:
           - CFBundleTypeName: Книга
             CFBundleTypeRole: Viewer
@@ -125,10 +127,6 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Lumen
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        # Файл, присланный в Lumen на iPhone, копируется в библиотеку: оригинал в «Файлах» не меняется.
-        # Только для iOS: на Mac этот ключ со значением NO не допускается.
-        "INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace[sdk=iphoneos*]": NO
-        "INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace[sdk=iphonesimulator*]": NO
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
