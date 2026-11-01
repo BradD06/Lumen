@@ -196,13 +196,22 @@ extension ReaderView {
                 #endif
             }
             .gesture(
-                DragGesture(minimumDistance: 1)
+                // Сдвиг мыши считается в координатах окна. В своих координатах ручка уезжает
+                // вместе с мышью, сдвиг выходил то больше, то меньше, и колонки дёргались туда-сюда.
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
                         let start = dragStartFraction ?? notesFraction
                         if dragStartFraction == nil { dragStartFraction = start }
-                        notesFraction = min(max(start - value.translation.width / max(totalWidth, 1), 0.25), 0.65)
+                        let fraction = min(max(start - value.translation.width / max(totalWidth, 1), 0.25), 0.65)
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) { dragFraction = fraction }
                     }
-                    .onEnded { _ in dragStartFraction = nil }
+                    .onEnded { _ in
+                        if let dragFraction { notesFraction = dragFraction }
+                        dragFraction = nil
+                        dragStartFraction = nil
+                    }
             )
             .accessibilityLabel("Ширина заметок")
     }

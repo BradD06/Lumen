@@ -63,6 +63,9 @@ public struct BlockContent: Hashable, Codable, Sendable {
     public var excerpt: ExcerptReference?
     /// Высота области рисунка в пунктах. `nil` это высота по умолчанию, см. `DrawingArea`.
     public var drawingHeight: Double?
+    /// Ширина холста рисунка в пунктах: сколько места по ширине занимают штрихи.
+    /// Если область уже, рисунок уменьшается целиком, см. `DrawingArea.scale`.
+    public var drawingWidth: Double?
     /// Листы рукописной заметки: сколько их, какая на них линовка и цвет бумаги.
     public var sheetCount: Int?
     public var paper: PaperPattern?
@@ -81,6 +84,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         columnWidth: Double? = nil,
         excerpt: ExcerptReference? = nil,
         drawingHeight: Double? = nil,
+        drawingWidth: Double? = nil,
         sheetCount: Int? = nil,
         paper: PaperPattern? = nil,
         paperTone: PaperTone? = nil,
@@ -96,6 +100,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         self.columnWidth = columnWidth
         self.excerpt = excerpt
         self.drawingHeight = drawingHeight
+        self.drawingWidth = drawingWidth
         self.sheetCount = sheetCount
         self.paper = paper
         self.paperTone = paperTone
@@ -115,7 +120,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case runs, isChecked, pageId, attachment, isCollapsed, textColor, backgroundColor, columnWidth, excerpt
-        case drawingHeight, sheetCount, paper, paperTone, items
+        case drawingHeight, drawingWidth, sheetCount, paper, paperTone, items
     }
 
     public init(from decoder: any Decoder) throws {
@@ -132,6 +137,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         columnWidth = try container.decodeIfPresent(Double.self, forKey: .columnWidth)
         excerpt = try container.decodeIfPresent(ExcerptReference.self, forKey: .excerpt)
         drawingHeight = try container.decodeIfPresent(Double.self, forKey: .drawingHeight)
+        drawingWidth = try container.decodeIfPresent(Double.self, forKey: .drawingWidth)
         sheetCount = try container.decodeIfPresent(Int.self, forKey: .sheetCount)
         // Неизвестная линовка или бумага из более новой версии читается как обычная.
         paper = try container.decodeIfPresent(String.self, forKey: .paper).flatMap(PaperPattern.init(rawValue:))

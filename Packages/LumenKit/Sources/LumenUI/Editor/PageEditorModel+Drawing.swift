@@ -24,12 +24,23 @@ extension PageEditorModel {
 
     /// Новые штрихи блока. `recordsUndo: false` продолжает прошлый шаг отмены,
     /// например когда ластик за одно движение стирает несколько штрихов.
-    func setDrawing(_ id: UUID, data: Data?, recordsUndo: Bool = true) {
+    /// `visibleWidth`: сколько пунктов рисунка видно по ширине области. По нему запоминается
+    /// ширина холста, чтобы в узкой панели рисунок уменьшался целиком, а не обрезался.
+    func setDrawing(_ id: UUID, data: Data?, recordsUndo: Bool = true, visibleWidth: Double? = nil) {
         guard let block = findBlock(id), block.drawing != data else { return }
         if recordsUndo {
             recordUndo()
         }
-        update(id) { $0.drawing = data }
+        let inkWidth = DrawingSupport.inkWidth(of: data)
+        let width = DrawingArea.updatedWidth(
+            stored: block.content.drawingWidth,
+            inkWidth: inkWidth,
+            visibleWidth: visibleWidth ?? inkWidth ?? 0
+        )
+        update(id) {
+            $0.drawing = data
+            $0.content.drawingWidth = width
+        }
     }
 
     func clearDrawing(_ id: UUID) {
@@ -98,6 +109,17 @@ extension PageEditorModel {
             $0.content.sheetCount = count - 1
             let drawing = NotebookEditing.removingSheet(index, from: DrawingSupport.drawing(from: $0.drawing))
             $0.drawing = DrawingSupport.data(of: drawing)
+        }
+    }
+
+    /// Рисунок и элементы тетради одной правкой: так правка лассо отменяется целиком.
+    /// `nil` значит, что это не менялось.
+    func setNotebookContent(drawing: PKDrawing?, items: [NotebookItem]?, recordsUndo: Bool) {
+        guard let block = notebookBlock else { return }
+        if recordsUndo { recordUndo() }
+        update(block.id) {
+            if let drawing { $0.drawing = DrawingSupport.data(of: drawing) }
+            if let items { $0.content.items = items.isEmpty ? nil : items }
         }
     }
 

@@ -67,6 +67,34 @@ struct DrawingTests {
         #expect(try await db.blocks(of: page.id).first { $0.id == blockId }?.drawing == nil)
     }
 
+    @Test func drawingRemembersCanvasWidthSoNarrowPanesShrinkIt() async throws {
+        let page = try await db.createPage()
+        let model = PageEditorModel(database: db, pageId: page.id)
+        await model.load()
+        let blockId = try #require(model.blocks.first?.id)
+        model.setType(blockId, .drawing)
+
+        let near = PKDrawing(strokes: [stroke(from: CGPoint(x: 20, y: 20), to: CGPoint(x: 200, y: 40))])
+        model.setDrawing(blockId, data: DrawingSupport.data(of: near), visibleWidth: 600)
+        let first = try #require(model.findBlock(blockId)?.content.drawingWidth)
+        #expect(first > 200 && first < 210)
+
+        var far = near
+        far.strokes.append(stroke(from: CGPoint(x: 300, y: 60), to: CGPoint(x: 560, y: 80)))
+        model.setDrawing(blockId, data: DrawingSupport.data(of: far), visibleWidth: 600)
+        let second = try #require(model.findBlock(blockId)?.content.drawingWidth)
+        #expect(second > 560 && second <= 600)
+        #expect(DrawingArea.scale(canvasWidth: second, available: second / 2) == 0.5)
+
+        model.undo()
+        #expect(model.findBlock(blockId)?.content.drawingWidth == first)
+
+        model.clearDrawing(blockId)
+        #expect(model.findBlock(blockId)?.content.drawingWidth == nil)
+        try await waitForAutosave()
+        #expect(try await db.blocks(of: page.id).first { $0.id == blockId }?.content.drawingWidth == nil)
+    }
+
     @Test func drawingAreaHeightIsClampedAndUndoable() async throws {
         let page = try await db.createPage()
         let model = PageEditorModel(database: db, pageId: page.id)

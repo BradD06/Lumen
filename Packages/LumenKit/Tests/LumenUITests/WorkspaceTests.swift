@@ -113,6 +113,35 @@ struct WorkspaceTests {
         #expect(workspace.current == b)
     }
 
+    @Test func linksFromANoteOpenInTheOtherHalfOfTheScreen() {
+        let workspace = Workspace()
+        let book = UUID()
+        workspace.open(a)
+
+        // Без разделения ссылка открывается в той же панели.
+        #expect(!workspace.openLink(b, from: 0))
+        #expect(workspace.current == b)
+        workspace.goBack()
+
+        // Заметка слева, ссылка из неё открывается справа, заметка остаётся.
+        workspace.openBeside(c)
+        workspace.focus(pane: 0)
+        #expect(!workspace.openLink(.source(book, highlight: nil), from: 0))
+        #expect(workspace.selectedTab.panes.map(\.current) == [a, .source(book, highlight: nil)])
+        #expect(workspace.selectedTab.focusedPane == 1)
+
+        // Выписка из той же книги: книга не открывается заново, её только прокручивают.
+        workspace.focus(pane: 0)
+        #expect(workspace.openLink(.source(book, highlight: UUID()), from: 0))
+        #expect(workspace.selectedTab.panes.map(\.current) == [a, .source(book, highlight: nil)])
+        #expect(workspace.selectedTab.focusedPane == 1)
+
+        // Заметка справа: ссылка открывается слева.
+        workspace.swapPanes()
+        #expect(!workspace.openLink(b, from: 1))
+        #expect(workspace.selectedTab.panes.map(\.current) == [b, a])
+    }
+
     @Test func tabsSurviveRelaunch() throws {
         let defaults = try #require(UserDefaults(suiteName: "WorkspaceTests-\(UUID().uuidString)"))
         let first = Workspace(storageKey: "workspace", defaults: defaults)
