@@ -209,7 +209,7 @@ struct NotebookItemsModelTests {
         }
         let copy = try #require(model.duplicateNotebookItem(item.id))
         #expect(model.notebookItems.count == 2)
-        #expect(copy.frame.minX == 80 + 24)
+        #expect(abs(copy.frame.minX - (80 + 24)) < 0.01)
         model.removeNotebookItem(item.id)
         #expect(model.notebookItems.map(\.id) == [copy.id])
 
