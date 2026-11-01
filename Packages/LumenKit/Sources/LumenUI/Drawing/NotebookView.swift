@@ -115,6 +115,35 @@ struct NotebookView: View {
         return true
     }
 
+    /// Картинки, брошенные на лист: файлы из Finder, превью скриншота из угла экрана,
+    /// картинки из браузера и других программ. Встают серединой туда, куда их бросили,
+    /// а если точка неизвестна, на видимый лист.
+    private func dropImages(_ images: [DroppedImage], at point: CGPoint?) -> Bool {
+        var inserted = false
+        for (offset, image) in images.enumerated() {
+            guard let item = model.addNotebookImage(data: image.data, fileExtension: image.fileExtension, onSheet: visibleSheet)
+            else { continue }
+            if let point {
+                // Несколько картинок разом ложатся лесенкой, а не друг на друга.
+                let shift = CGFloat(offset) * 24
+                let frame = CGRect(
+                    x: point.x - item.width / 2 + shift,
+                    y: point.y - item.height / 2 + shift,
+                    width: item.width,
+                    height: item.height
+                )
+                model.updateNotebookItem(item.id, recordsUndo: false) { $0.frame = frame }
+            }
+            selection = item.id
+            inserted = true
+        }
+        if inserted {
+            LumenSounds.play(.create)
+            tool = .select
+        }
+        return inserted
+    }
+
     /// Нажатие на пустое место листа в координатах холста.
     private func tapEmpty(at point: CGPoint) {
         if editingId != nil {
@@ -324,6 +353,10 @@ struct NotebookView: View {
             }
             .clipped()
             .ignoresSafeArea(.container, edges: .bottom)
+            .dropDestination(for: DroppedImage.self) { images, location in
+                // Где холст на экране, известно, только пока открыт слой правки.
+                dropImages(images, at: tool == .draw ? nil : viewport.toCanvas(location))
+            }
             #else
             macSheets(block)
             #endif
@@ -455,8 +488,8 @@ struct NotebookView: View {
                 )
             }
         }
-        .dropDestination(for: URL.self) { urls, location in
-            dropImages(urls, at: viewport.toCanvas(location))
+        .dropDestination(for: DroppedImage.self) { images, location in
+            dropImages(images, at: viewport.toCanvas(location))
         }
         .contextMenu {
             Button {
@@ -476,25 +509,6 @@ struct NotebookView: View {
         .accessibilityLabel("Лист \(index + 1)")
     }
 
-    /// Картинки, брошенные на лист из Finder, встают туда, куда их бросили.
-    private func dropImages(_ urls: [URL], at point: CGPoint) -> Bool {
-        var inserted = false
-        for url in urls {
-            guard let type = UTType(filenameExtension: url.pathExtension), type.conforms(to: .image),
-                  let data = try? Data(contentsOf: url),
-                  let item = model.addNotebookImage(data: data, fileExtension: url.pathExtension, onSheet: visibleSheet)
-            else { continue }
-            let frame = CGRect(x: point.x - item.width / 2, y: point.y - item.height / 2, width: item.width, height: item.height)
-            model.updateNotebookItem(item.id, recordsUndo: false) { $0.frame = frame }
-            selection = item.id
-            inserted = true
-        }
-        if inserted {
-            LumenSounds.play(.create)
-            tool = .select
-        }
-        return inserted
-    }
     #endif
 }
 

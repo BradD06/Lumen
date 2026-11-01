@@ -1,3 +1,4 @@
+import CoreTransferable
 import Foundation
 import UniformTypeIdentifiers
 #if canImport(UIKit)
@@ -65,4 +66,22 @@ enum NotebookPasteboard {
         }
     }
     #endif
+}
+
+/// Картинка, которую бросили на лист. Принимает и настоящие файлы, и обещанные: превью
+/// скриншота в углу экрана Mac отдаёт файл только в момент броска.
+struct DroppedImage: Transferable {
+    var data: Data
+    var fileExtension: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .image) { received in
+            let ext = received.file.pathExtension.lowercased()
+            // Файл временный и исчезнет после броска: читаем его сразу.
+            return DroppedImage(data: try Data(contentsOf: received.file), fileExtension: ext.isEmpty ? "png" : ext)
+        }
+        DataRepresentation(importedContentType: .image) { data in
+            DroppedImage(data: data, fileExtension: "png")
+        }
+    }
 }
