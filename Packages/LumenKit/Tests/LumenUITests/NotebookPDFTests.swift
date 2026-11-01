@@ -89,7 +89,7 @@ struct NotebookPDFTests {
         let lifted = try #require(model.notebookItem(note.id))
         #expect(NotebookLayout.sheetIndex(at: lifted.frame.midY, sheets: 3) == 2)
 
-        try await Task.sleep(for: .milliseconds(900))
+        await model.flush()
         let saved = try #require(try await db.blocks(of: page.id).first)
         #expect(saved.content.sheetBackgrounds?.map { $0?.page } == [nil, 1])
     }
