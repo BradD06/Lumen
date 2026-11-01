@@ -11,28 +11,68 @@ import AppKit
 extension ReaderView {
     // MARK: Заметки
 
-    func notesPane(_ notes: PageEditorModel) -> some View {
+    func notesPane(_ notes: PageEditorModel?) -> some View {
         VStack(spacing: 0) {
             notesHeader(notes, closes: true)
-            PageEditorView(model: notes, onOpenPage: openSidePage, onOpenSource: openSource)
-                .id(notes.pageId)
+            notesBody(notes)
         }
         .readerGlassCard(theme)
     }
 
+    /// Редактор открытой заметки. Пока к книге не завели ни одной заметки, вместо него
+    /// приглашение начать: заметка появится в библиотеке рядом с книгой только после нажатия.
+    @ViewBuilder
+    func notesBody(_ notes: PageEditorModel?) -> some View {
+        if let notes {
+            PageEditorView(model: notes, onOpenPage: openSidePage, onOpenSource: openSource)
+                .id(notes.pageId)
+        } else {
+            VStack(spacing: 14) {
+                Spacer(minLength: 0)
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundStyle(ReaderStyle.peach)
+                Text("Заметок к книге пока нет")
+                    .font(.system(size: 17, weight: .heavy, design: .rounded))
+                    .foregroundStyle(theme.textPrimary)
+                Text("Заметка появится там же, где лежит книга, когда вы её начнёте")
+                    .font(.callout)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(theme.textSecondary)
+                    .frame(maxWidth: 280)
+                Button {
+                    LumenSounds.play(.create)
+                    Task { await model.ensureNotes() }
+                } label: {
+                    Label("Начать заметку", systemImage: "plus")
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .foregroundStyle(ReaderStyle.onPeach)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(ReaderStyle.peach, in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                Spacer(minLength: 0)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
     /// Шапка панели заметок: какая заметка открыта и кнопка выбрать другую.
-    func notesHeader(_ notes: PageEditorModel, closes: Bool) -> some View {
+    func notesHeader(_ notes: PageEditorModel?, closes: Bool) -> some View {
         HStack(spacing: 8) {
             Button {
                 isPagePickerPresented.toggle()
             } label: {
                 HStack(spacing: 7) {
-                    if model.showsBookNotes {
-                        Image(systemName: "book")
-                        Text("Заметки к книге").lineLimit(1)
-                    } else {
+                    if let notes, !model.showsBookNotes {
                         Text(notes.page?.icon ?? "📄")
                         Text(notes.isLoaded ? sideTitle(notes) : "").lineLimit(1)
+                    } else {
+                        Image(systemName: "book")
+                        Text("Заметки к книге").lineLimit(1)
                     }
                     Image(systemName: "chevron.down")
                         .font(.caption2.weight(.heavy))
@@ -52,9 +92,14 @@ extension ReaderView {
                 SidePagePicker(
                     database: model.database,
                     source: model.source,
-                    currentPageId: notes.pageId,
+                    currentPageId: notes?.pageId,
                     bookNotesPageId: model.bookNotesPageId,
                     onOpen: openSidePage,
+                    onOpenBookNotes: {
+                        isPagePickerPresented = false
+                        LumenSounds.play(.navigate)
+                        Task { await model.openBookNotes() }
+                    },
                     onCreate: {
                         isPagePickerPresented = false
                         Task { await model.createSidePage() }
@@ -65,7 +110,7 @@ extension ReaderView {
             Spacer(minLength: 4)
             if model.canLinkPlace {
                 headerButton("bookmark", help: "Вставить в заметку ссылку на это место в книге") {
-                    model.addPlaceLink()
+                    Task { await model.addPlaceLink() }
                 }
                 .contextMenu {
                     Button {
@@ -84,7 +129,7 @@ extension ReaderView {
                         .padding(.vertical, 5)
                         .background(ReaderStyle.peach.opacity(0.16), in: Capsule())
                 }
-            } else {
+            } else if let notes {
                 headerButton("book", help: "Вернуться к заметкам к книге") {
                     LumenSounds.play(.navigate)
                     Task { await model.openBookNotes() }

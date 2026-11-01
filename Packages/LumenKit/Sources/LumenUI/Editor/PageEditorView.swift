@@ -346,13 +346,10 @@ struct PageEditorView: View {
                         Label("Перенести в страницы", systemImage: "folder")
                     }
                 }
-                // Заметки к книге живут рядом с книгой, в папку их не кладут.
-                if let page = model.page, page.sourceId == nil {
-                    Button {
-                        isMovingToFolder = true
-                    } label: {
-                        Label("Переместить в папку…", systemImage: "arrow.right.doc.on.clipboard")
-                    }
+                Button {
+                    isMovingToFolder = true
+                } label: {
+                    Label("Переместить в папку…", systemImage: "arrow.right.doc.on.clipboard")
                 }
                 Button {
                     duplicatePage()
