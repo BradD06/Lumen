@@ -16,6 +16,17 @@ enum DrawingSupport {
         return drawing
     }
 
+    /// Правый край штрихов в пунктах рисунка, `nil` у пустого рисунка.
+    static func inkWidth(of data: Data?) -> Double? {
+        inkWidth(of: drawing(from: data))
+    }
+
+    static func inkWidth(of drawing: PKDrawing) -> Double? {
+        let bounds = drawing.bounds
+        guard !drawing.strokes.isEmpty, !bounds.isNull, bounds.maxX > 0 else { return nil }
+        return Double(bounds.maxX)
+    }
+
     /// Данные для базы: пустой рисунок не хранится.
     static func data(of drawing: PKDrawing) -> Data? {
         drawing.strokes.isEmpty ? nil : drawing.dataRepresentation()

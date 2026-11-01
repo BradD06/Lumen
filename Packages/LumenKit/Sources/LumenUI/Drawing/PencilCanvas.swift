@@ -23,6 +23,8 @@ struct PencilCanvas: UIViewRepresentable {
     var showsToolPicker: Bool
     var isDark: Bool
     var notebook: Notebook?
+    /// Масштаб области рисунка в заметке (`notebook == nil`): меньше 1, когда холст шире области.
+    var areaZoom: CGFloat = 1
     var onChange: (Data?) -> Void
     /// Лист рукописной заметки, который сейчас посередине экрана.
     var onVisibleSheet: (Int) -> Void = { _ in }
@@ -99,6 +101,7 @@ struct PencilCanvas: UIViewRepresentable {
             canvas.overrideUserInterfaceStyle = style
         }
         canvas.drawingGestureRecognizer.isEnabled = isDrawingEnabled
+        canvas.areaZoom = notebook == nil ? areaZoom : 1
         canvas.paper = notebook
         canvas.items = items
         canvas.isPaperDark = isDark
@@ -207,6 +210,14 @@ final class NotebookCanvasView: PKCanvasView {
         }
     }
 
+    /// Масштаб области рисунка в заметке, когда холст шире области. У тетради свой, щипком.
+    var areaZoom: CGFloat = 1 {
+        didSet {
+            guard areaZoom != oldValue else { return }
+            setNeedsLayout()
+        }
+    }
+
     /// Тексты и картинки: SwiftUI внутри холста, под штрихами. Перестраивается под масштаб,
     /// поэтому текст остаётся чётким при увеличении.
     private var itemsHost: UIHostingController<NotebookItemsLayer>?
@@ -240,6 +251,9 @@ final class NotebookCanvasView: PKCanvasView {
         super.layoutSubviews()
         guard let paper, bounds.width > 0 else {
             paperView.isHidden = true
+            if paper == nil {
+                layoutArea()
+            }
             return
         }
         paperView.isHidden = false
@@ -269,6 +283,24 @@ final class NotebookCanvasView: PKCanvasView {
         }
         layoutItems(scale: scale, size: size)
         sendSubviewToBack(paperView)
+    }
+
+    /// Область в заметке не прокручивается: масштаб задан снаружи, холст ровно по размеру области.
+    private func layoutArea() {
+        let zoom = max(areaZoom, 0.05)
+        if abs(zoomScale - zoom) > 0.0001 {
+            minimumZoomScale = min(minimumZoomScale, zoom)
+            maximumZoomScale = max(maximumZoomScale, zoom)
+            zoomScale = zoom
+            minimumZoomScale = zoom
+            maximumZoomScale = zoom
+        }
+        if contentSize != bounds.size {
+            contentSize = bounds.size
+        }
+        if contentOffset != .zero {
+            contentOffset = .zero
+        }
     }
 
     private func layoutItems(scale: CGFloat, size: CGSize) {

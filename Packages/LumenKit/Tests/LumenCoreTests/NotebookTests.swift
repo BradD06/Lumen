@@ -27,6 +27,34 @@ struct NotebookTests {
         #expect(DrawingArea.clampedHeight(500) == 500)
     }
 
+    @Test func drawingWidthRoundTripsThroughJSON() throws {
+        let content = BlockContent(drawingWidth: 640)
+        let decoded = try JSONDecoder().decode(BlockContent.self, from: JSONEncoder().encode(content))
+        #expect(decoded.drawingWidth == 640)
+        let old = try JSONDecoder().decode(BlockContent.self, from: Data(#"{"runs":[]}"#.utf8))
+        #expect(old.drawingWidth == nil)
+    }
+
+    @Test func narrowAreaShrinksDrawingButWideOneDoesNotStretchIt() {
+        #expect(DrawingArea.scale(canvasWidth: 600, available: 300) == 0.5)
+        #expect(DrawingArea.scale(canvasWidth: 600, available: 900) == 1)
+        // Край штриха чуть за границей области не сжимает рисунок.
+        #expect(DrawingArea.scale(canvasWidth: 602, available: 600) == 1)
+        // До замера ширины области рисунок в натуральную величину.
+        #expect(DrawingArea.scale(canvasWidth: 600, available: 0) == 1)
+    }
+
+    @Test func canvasWidthGrowsWithInkButNeverPastWhatIsVisible() {
+        #expect(DrawingArea.updatedWidth(stored: nil, inkWidth: 300, visibleWidth: 800) == 300)
+        #expect(DrawingArea.updatedWidth(stored: 300, inkWidth: 700, visibleWidth: 800) == 700)
+        // Штрих у самого края: холст не шире видимого, иначе рисунок сжимался бы на ходу.
+        #expect(DrawingArea.updatedWidth(stored: 300, inkWidth: 806, visibleWidth: 800) == 800)
+        // Стёрли дальний штрих: холст прежний, рисунок не прыгает.
+        #expect(DrawingArea.updatedWidth(stored: 700, inkWidth: 200, visibleWidth: 800) == 700)
+        // Стёрли всё: ширина забыта.
+        #expect(DrawingArea.updatedWidth(stored: 700, inkWidth: nil, visibleWidth: 800) == nil)
+    }
+
     @Test func sheetsAreStackedWithGaps() {
         let stride = NotebookLayout.sheetHeight + NotebookLayout.sheetGap
         #expect(NotebookLayout.sheetRect(0).minY == 0)

@@ -68,6 +68,25 @@ public enum DrawingArea {
     public static func height(of content: BlockContent) -> Double {
         clampedHeight(content.drawingHeight ?? defaultHeight)
     }
+
+    /// Насколько холст может быть шире области, прежде чем рисунок начнёт уменьшаться:
+    /// край штриха у самой границы не должен сжимать весь рисунок.
+    public static let widthSlack: Double = 4
+
+    /// Во сколько раз уменьшить рисунок, чтобы холст шириной `canvasWidth` целиком влез
+    /// в область шириной `available`. В широком окне рисунок не растягивается, масштаб не больше 1.
+    public static func scale(canvasWidth: Double, available: Double) -> Double {
+        guard available > 0, canvasWidth > available + widthSlack else { return 1 }
+        return available / canvasWidth
+    }
+
+    /// Ширина холста после правки. `inkWidth` это правый край штрихов, `visibleWidth` сколько
+    /// пунктов рисунка сейчас видно в области. Холст не сужается, пока рисунок не стёрли целиком:
+    /// иначе при стирании дальнего штриха рисунок вдруг становился бы крупнее.
+    public static func updatedWidth(stored: Double?, inkWidth: Double?, visibleWidth: Double) -> Double? {
+        guard let inkWidth, inkWidth > 0 else { return nil }
+        return max(stored ?? 0, min(inkWidth, visibleWidth))
+    }
 }
 
 /// Раскладка листов рукописной заметки. Все листы лежат на одном холсте друг под другом
