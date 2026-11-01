@@ -158,6 +158,10 @@ extension PageExport {
                     quote += "\n\n— \(Self.escape(caption))"
                 }
                 line = Self.quoted(quote, indent: indent)
+            case .drawing:
+                // Штрихи в текст не перевести: в Markdown остаётся пометка, сам рисунок есть в PDF.
+                guard block.drawing?.isEmpty == false else { continue }
+                line = "_✍️ Рисунок от руки_"
             case .columnList, .column:
                 continue
             }

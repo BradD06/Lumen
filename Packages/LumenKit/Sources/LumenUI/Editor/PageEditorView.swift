@@ -89,30 +89,11 @@ struct PageEditorView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(spacing: 0) {
-                    // Обложка на всю ширину окна, от края до края, как в Notion.
-                    if let cover = model.page?.pageCover {
-                        PageCoverView(cover: cover, attachments: model.database.attachments, sunset: scrollOffset / 220)
-                    }
-                    content
-                }
-            }
-            .onScrollTargetVisibilityChange(idType: UUID.self) { ids in
-                visibleBlockIds = ids
-            }
-            .overlay(alignment: .trailing) {
-                let outline = model.outline
-                if showsOutline, !showsSubpages, outline.count >= 2 {
-                    PageOutlineView(items: outline, currentId: currentHeadingId(in: outline)) { item in
-                        LumenSounds.play(.navigate)
-                        withAnimation(.easeInOut(duration: 0.35)) {
-                            proxy.scrollTo(item.anchorId, anchor: .top)
-                        }
-                    }
-                    .padding(.trailing, 6)
-                }
+        Group {
+            if model.isNotebook {
+                NotebookView(model: model, focus: $focus, isCompact: isCompact)
+            } else {
+                blockPage
             }
         }
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
@@ -200,7 +181,8 @@ struct PageEditorView: View {
         .onAppear { showsSubpages = remembersSubpages && !isEmbedded }
         .task {
             await model.load()
-            if model.title.isEmpty {
+            // В новой рукописной заметке сразу пишут на листе, клавиатура не нужна.
+            if model.title.isEmpty, !model.isNotebook {
                 focus = .title
             }
             await model.observeLinks()
@@ -271,6 +253,8 @@ struct PageEditorView: View {
         .onChange(of: focus) { _, newFocus in
             if case .block(let id) = newFocus {
                 model.focusedBlockId = id
+                // Курсор ушёл в текст: рисование в блоке «Рисунок» заканчивается.
+                model.stopDrawing()
             } else {
                 model.focusedBlockId = nil
             }
@@ -293,6 +277,36 @@ struct PageEditorView: View {
             }
             #endif
             Task { await model.flush() }
+        }
+    }
+
+    /// Обычная страница из блоков: обложка, заголовок, блоки и обратные ссылки.
+    private var blockPage: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Обложка на всю ширину окна, от края до края, как в Notion.
+                    if let cover = model.page?.pageCover {
+                        PageCoverView(cover: cover, attachments: model.database.attachments, sunset: scrollOffset / 220)
+                    }
+                    content
+                }
+            }
+            .onScrollTargetVisibilityChange(idType: UUID.self) { ids in
+                visibleBlockIds = ids
+            }
+            .overlay(alignment: .trailing) {
+                let outline = model.outline
+                if showsOutline, !showsSubpages, outline.count >= 2 {
+                    PageOutlineView(items: outline, currentId: currentHeadingId(in: outline)) { item in
+                        LumenSounds.play(.navigate)
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            proxy.scrollTo(item.anchorId, anchor: .top)
+                        }
+                    }
+                    .padding(.trailing, 6)
+                }
+            }
         }
     }
 

@@ -236,6 +236,17 @@ extension AppDatabase {
             try Self.moveBookNotesBesideBooks(db)
         }
 
+        migrator.registerMigration("v9: drawings, notebooks") { db in
+            // Штрихи блока «Рисунок» (PencilKit) двоичными данными рядом с JSON содержимого.
+            try db.alter(table: "block") { t in
+                t.add(column: "drawing", .blob)
+            }
+            // Вид страницы: пусто у обычной, `notebook` у рукописной заметки.
+            try db.alter(table: "page") { t in
+                t.add(column: "kind", .text)
+            }
+        }
+
         return migrator
     }
 }

@@ -49,7 +49,7 @@ extension LibraryView {
                 isRenaming: renaming == item.id,
                 onCommitRename: commitRename
             ) {
-                PageCoverArt(preview: entry.preview, attachments: database.attachments, subpageCount: entry.subpages.count)
+                PageCoverArt(preview: entry.preview, attachments: database.attachments, subpageCount: entry.subpages.count, database: database)
             }
             .modifier(TileInteraction(
                 onSelect: { select(item.id) },

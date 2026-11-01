@@ -130,12 +130,22 @@ struct PageCoverArt: View {
     let preview: PagePreview
     let attachments: AttachmentStore
     var subpageCount = 0
+    /// Нужна рукописной заметке: на плитке её первый лист с тем, что на нём написано.
+    var database: AppDatabase?
 
     @Environment(\.lumenTheme) private var theme
 
     private var page: Page { preview.page }
 
     var body: some View {
+        if page.isNotebook {
+            NotebookPageArt(page: page, database: database)
+        } else {
+            notebookCover
+        }
+    }
+
+    private var notebookCover: some View {
         ZStack {
             // Не больше двух листов: дальше стопка только шумит.
             ForEach(Array(0..<min(subpageCount, 2)).reversed(), id: \.self) { index in
@@ -426,5 +436,57 @@ struct ReadingProgressBar: View {
         .frame(height: 5)
         .accessibilityElement()
         .accessibilityLabel("Прочитано \(Int((progress * 100).rounded()))%")
+    }
+}
+
+/// Рукописная заметка на холсте библиотеки: лист бумаги с линовкой и тем, что на нём написано.
+struct NotebookPageArt: View {
+    let page: Page
+    let database: AppDatabase?
+
+    @State private var block: Block?
+
+    /// Лист A4 высотой с плитку.
+    private static let size = CGSize(width: (132 * NotebookLayout.sheetWidth / NotebookLayout.sheetHeight).rounded(), height: 132)
+
+    var body: some View {
+        let content = block?.content
+        let tone = content?.paperTone ?? .white
+        let scale = Self.size.width / NotebookLayout.sheetWidth
+        let firstSheet = NotebookLayout.sheetRect(0)
+        ZStack(alignment: .topLeading) {
+            PaperSheet(pattern: content?.paper ?? .lined, tone: tone)
+            if let database, let items = content?.items {
+                NotebookItemsLayer(
+                    items: items.filter { $0.frame.intersects(firstSheet) },
+                    viewport: NotebookViewport(origin: .zero, scale: scale),
+                    isDark: tone.isDark,
+                    attachments: database.attachments
+                )
+            }
+            if let block, block.drawing != nil {
+                DrawingImageView(data: block.drawing, rect: firstSheet, isDark: tone.isDark)
+            }
+        }
+        .frame(width: Self.size.width, height: Self.size.height)
+        .overlay(alignment: .topTrailing) {
+            // Загнутый уголок листа.
+            Path { path in
+                path.move(to: .zero)
+                path.addLine(to: CGPoint(x: 14, y: 14))
+                path.addLine(to: CGPoint(x: 0, y: 14))
+                path.closeSubpath()
+            }
+            .fill(Color.black.opacity(0.12))
+            .frame(width: 14, height: 14)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(.black.opacity(0.08), lineWidth: 0.5))
+        .rotationEffect(.degrees(-1.5))
+        .shadow(color: .black.opacity(0.45), radius: 10, y: 8)
+        .task(id: page.updatedAt) {
+            block = try? await database?.blocks(of: page.id).first { $0.type == .drawing }
+        }
+        .accessibilityLabel("Рукописная заметка")
     }
 }
