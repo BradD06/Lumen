@@ -33,6 +33,9 @@ struct ReaderView: View {
     @State private var isTocSheetPresented = false
     @Environment(\.isActivePane) private var isActivePane
     @State var dragStartFraction: Double?
+    /// Доля заметок, пока тянут ручку. В настройки она уходит, когда ручку отпустили:
+    /// запись в UserDefaults на каждый сдвиг мыши заставляла перестраиваться весь экран.
+    @State var dragFraction: Double?
     @State var isHandleHovered = false
     @State var isPagePickerPresented = false
     #if os(iOS)
@@ -69,7 +72,7 @@ struct ReaderView: View {
     var body: some View {
         GeometryReader { geometry in
             let isWide = isWide(geometry.size.width)
-            let notesWidth: CGFloat = geometry.size.width * CGFloat(notesFraction)
+            let notesWidth: CGFloat = (geometry.size.width * CGFloat(dragFraction ?? notesFraction)).rounded()
             // Панель видна и до первой заметки: в ней кнопка начать заметку.
             let showsNotesPane: Bool = isWide && showsNotes && model.source != nil
             // Содержание встаёт отдельной колонкой, только если книге останется достаточно места.
