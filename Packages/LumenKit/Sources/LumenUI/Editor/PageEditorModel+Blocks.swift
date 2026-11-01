@@ -123,6 +123,18 @@ extension PageEditorModel {
             createSubpage(from: id, title: "", open: true)
             return
         }
+        if type == .drawing {
+            recordUndo()
+            update(id) {
+                $0.type = .drawing
+                $0.text = ""
+            }
+            // Рисовать можно сразу. Абзац ниже нужен, чтобы продолжить писать текстом.
+            insertBlock(after: id, type: .paragraph)
+            focusRequest = nil
+            activeDrawingId = id
+            return
+        }
         recordUndo()
         update(id) {
             $0.type = type

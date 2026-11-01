@@ -40,6 +40,9 @@ final class PageEditorModel {
     var openRequest: UUID?
     /// Книга, которую нужно открыть (из выписки или шапки страницы заметок). Вью сбрасывает её после перехода.
     var openSourceRequest: SourceRequest?
+    /// Блок «Рисунок», в котором сейчас рисуют. В остальных рисунок только показан,
+    /// поэтому страницу можно листать пальцем прямо по ним.
+    var activeDrawingId: UUID?
 
     struct SourceRequest: Equatable {
         var sourceId: UUID

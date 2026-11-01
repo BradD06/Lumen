@@ -61,6 +61,19 @@ extension LibraryView {
         }
     }
 
+    /// Рукописная заметка: листы бумаги, на которых пишут от руки.
+    func newNotebook() {
+        let position = freePosition()
+        Task {
+            if let page = await NoticeCenter.shared.perform("Не удалось создать рукописную заметку", {
+                try await database.createNotebook(folderId: folderId, position: position)
+            }) {
+                LumenSounds.play(.create)
+                onOpenPage(page.id)
+            }
+        }
+    }
+
     func startRename(_ item: LibraryItemID, current: String) {
         commitRename()
         selection = item

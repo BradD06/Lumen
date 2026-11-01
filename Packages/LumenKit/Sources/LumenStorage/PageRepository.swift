@@ -33,6 +33,40 @@ extension AppDatabase {
         }
     }
 
+    /// Новая рукописная заметка: один лист бумаги, на котором пишут от руки.
+    /// Все листы и штрихи лежат в единственном блоке «Рисунок» этой страницы.
+    @discardableResult
+    public func createNotebook(
+        title: String = "",
+        parentId: UUID? = nil,
+        inInbox: Bool = false,
+        folderId: UUID? = nil,
+        position: LibraryPoint? = nil,
+        paper: PaperPattern = .lined,
+        tone: PaperTone = .white
+    ) async throws -> Page {
+        try await writer.write { db in
+            var page = try Self.insertPage(
+                db, title: title, parentId: parentId, inInbox: inInbox,
+                folderId: folderId, position: position, bodyLines: []
+            )
+            page.pageKind = .notebook
+            page.icon = "✍️"
+            try page.update(db)
+            // Пустой абзац, который вставляет `insertPage`, заменяется листами.
+            try Block.filter(Column("pageId") == page.id).deleteAll(db)
+            try Block(
+                pageId: page.id,
+                type: .drawing,
+                content: BlockContent(sheetCount: 1, paper: paper, paperTone: tone),
+                sortKey: SortKey.between(nil, nil),
+                createdAt: page.createdAt
+            ).insert(db)
+            try Self.reindex(db, pageId: page.id)
+            return page
+        }
+    }
+
     /// Быстрая заметка во «Входящие»: первая строка становится названием, остальные строки абзацами.
     @discardableResult
     public func createQuickNote(_ text: String) async throws -> Page {
@@ -301,11 +335,10 @@ extension AppDatabase {
     static func reindex(_ db: Database, pageId: UUID) throws {
         try db.execute(sql: "DELETE FROM pageSearch WHERE pageId = ?", arguments: [pageId.uuidString])
         guard let page = try Page.fetchOne(db, key: pageId), !page.isTrashed else { return }
-        let body = try Block
-            .filter(Column("pageId") == pageId)
-            .order(Column("sortKey"))
-            .fetchAll(db)
-            .map(\.text)
+        // Только содержимое блоков: штрихи рисунков для поиска не нужны, а весят много.
+        let body = try Data
+            .fetchAll(db, sql: "SELECT content FROM block WHERE pageId = ? ORDER BY sortKey", arguments: [pageId])
+            .compactMap { try? JSONDecoder().decode(BlockContent.self, from: $0).text }
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
         try db.execute(

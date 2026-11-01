@@ -8,6 +8,9 @@ public struct Block: Identifiable, Hashable, Codable, Sendable {
     public var parentBlockId: UUID?
     public var type: BlockType
     public var content: BlockContent
+    /// Штрихи блока «Рисунок» в формате PencilKit (`PKDrawing.dataRepresentation()`).
+    /// Лежат отдельной колонкой, а не в JSON содержимого: это двоичные данные, и их бывает много.
+    public var drawing: Data?
     public var sortKey: String
     public var createdAt: Date
     public var updatedAt: Date
@@ -18,6 +21,7 @@ public struct Block: Identifiable, Hashable, Codable, Sendable {
         parentBlockId: UUID? = nil,
         type: BlockType = .paragraph,
         content: BlockContent = BlockContent(),
+        drawing: Data? = nil,
         sortKey: String,
         createdAt: Date = Date(),
         updatedAt: Date? = nil
@@ -27,6 +31,7 @@ public struct Block: Identifiable, Hashable, Codable, Sendable {
         self.parentBlockId = parentBlockId
         self.type = type
         self.content = content
+        self.drawing = drawing
         self.sortKey = sortKey
         self.createdAt = createdAt
         self.updatedAt = updatedAt ?? createdAt
@@ -56,6 +61,12 @@ public struct BlockContent: Hashable, Codable, Sendable {
     public var columnWidth: Double?
     /// Выделение в источнике, из которого сделана выписка. Текст цитаты лежит в `runs`.
     public var excerpt: ExcerptReference?
+    /// Высота области рисунка в пунктах. `nil` это высота по умолчанию, см. `DrawingArea`.
+    public var drawingHeight: Double?
+    /// Листы рукописной заметки: сколько их, какая на них линовка и цвет бумаги.
+    public var sheetCount: Int?
+    public var paper: PaperPattern?
+    public var paperTone: PaperTone?
 
     public init(
         runs: [TextRun] = [],
@@ -66,7 +77,11 @@ public struct BlockContent: Hashable, Codable, Sendable {
         textColor: BlockColor? = nil,
         backgroundColor: BlockColor? = nil,
         columnWidth: Double? = nil,
-        excerpt: ExcerptReference? = nil
+        excerpt: ExcerptReference? = nil,
+        drawingHeight: Double? = nil,
+        sheetCount: Int? = nil,
+        paper: PaperPattern? = nil,
+        paperTone: PaperTone? = nil
     ) {
         self.runs = runs
         self.isChecked = isChecked
@@ -77,6 +92,10 @@ public struct BlockContent: Hashable, Codable, Sendable {
         self.backgroundColor = backgroundColor
         self.columnWidth = columnWidth
         self.excerpt = excerpt
+        self.drawingHeight = drawingHeight
+        self.sheetCount = sheetCount
+        self.paper = paper
+        self.paperTone = paperTone
     }
 
     public init(text: String, isChecked: Bool = false) {
@@ -92,6 +111,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case runs, isChecked, pageId, attachment, isCollapsed, textColor, backgroundColor, columnWidth, excerpt
+        case drawingHeight, sheetCount, paper, paperTone
     }
 
     public init(from decoder: any Decoder) throws {
@@ -107,6 +127,11 @@ public struct BlockContent: Hashable, Codable, Sendable {
             .flatMap(BlockColor.init(rawValue:))
         columnWidth = try container.decodeIfPresent(Double.self, forKey: .columnWidth)
         excerpt = try container.decodeIfPresent(ExcerptReference.self, forKey: .excerpt)
+        drawingHeight = try container.decodeIfPresent(Double.self, forKey: .drawingHeight)
+        sheetCount = try container.decodeIfPresent(Int.self, forKey: .sheetCount)
+        // Неизвестная линовка или бумага из более новой версии читается как обычная.
+        paper = try container.decodeIfPresent(String.self, forKey: .paper).flatMap(PaperPattern.init(rawValue:))
+        paperTone = try container.decodeIfPresent(String.self, forKey: .paperTone).flatMap(PaperTone.init(rawValue:))
     }
 }
 

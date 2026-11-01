@@ -1,6 +1,7 @@
 import Foundation
 import LumenCore
 import LumenStorage
+import PencilKit
 
 #if canImport(UIKit)
 import UIKit
@@ -127,6 +128,13 @@ enum PagePDFRenderer {
                     ]))
                 }
                 text.append(newline(paragraph(indent: indent, hanging: 14, after: 8)))
+            case .drawing:
+                for attachment in drawingAttachments(block) {
+                    text.append(NSAttributedString(attachment: attachment))
+                    let style = paragraph(indent: indent, before: 4, after: 10)
+                    style.alignment = .center
+                    text.append(newline(style))
+                }
             case .columnList, .column:
                 continue
             }
@@ -213,6 +221,29 @@ enum PagePDFRenderer {
         let scale = min(1, contentSize.width / image.size.width, contentSize.height * 0.55 / image.size.height)
         let size = CGSize(width: (image.size.width * scale).rounded(), height: (image.size.height * scale).rounded())
         return attachment(image, size: size)
+    }
+
+    /// Рисунок от руки на белом листе: чернила в светлой теме. Область рисунка в заметке
+    /// это одна картинка, рукописная заметка даёт по картинке на каждый лист.
+    private static func drawingAttachments(_ block: Block) -> [NSTextAttachment] {
+        guard block.drawing != nil else { return [] }
+        let drawing = DrawingSupport.drawing(from: block.drawing)
+        guard !drawing.strokes.isEmpty else { return [] }
+        let rects: [CGRect]
+        if block.content.sheetCount != nil {
+            rects = (0..<NotebookLayout.sheetCount(of: block.content)).map(NotebookLayout.sheetRect)
+        } else {
+            // Область шире листа PDF: рисунок берётся по его штрихам, а не по ширине окна.
+            let bounds = drawing.bounds
+            rects = [CGRect(x: 0, y: 0, width: max(bounds.maxX, 1), height: max(bounds.maxY, 1)).insetBy(dx: -8, dy: -8)]
+        }
+        // Пустые листы тетради в PDF не попадают.
+        return rects.filter { rect in drawing.strokes.contains { $0.renderBounds.intersects(rect) } }.compactMap { rect in
+            guard let image = DrawingSupport.image(of: drawing, in: rect, scale: 2, isDark: false) else { return nil }
+            let scale = min(1, contentSize.width / rect.width, contentSize.height * 0.92 / rect.height)
+            let size = CGSize(width: (rect.width * scale).rounded(), height: (rect.height * scale).rounded())
+            return attachment(image, size: size)
+        }
     }
 
     /// Тонкая линия разделителя во всю ширину текста.

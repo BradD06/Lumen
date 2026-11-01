@@ -25,6 +25,9 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
     public var databaseId: UUID?
     /// Значения свойств строки базы данных.
     public var properties: PropertyValues?
+    /// Вид страницы строкой, см. `pageKind`. Строкой, а не перечислением: вид из более новой
+    /// версии приложения не должен ломать чтение страницы в старой.
+    public var kind: String?
     /// Дробный индекс порядка среди соседей, см. `SortKey`.
     public var sortKey: String
     public var createdAt: Date
@@ -46,6 +49,7 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
         isFavorite: Bool = false,
         databaseId: UUID? = nil,
         properties: PropertyValues? = nil,
+        kind: PageKind? = nil,
         sortKey: String,
         createdAt: Date = Date(),
         updatedAt: Date? = nil,
@@ -65,6 +69,7 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
         self.isFavorite = isFavorite
         self.databaseId = databaseId
         self.properties = properties
+        self.kind = kind?.rawValue
         self.sortKey = sortKey
         self.createdAt = createdAt
         self.updatedAt = updatedAt ?? createdAt
@@ -80,6 +85,15 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
 
     /// Строка базы данных, а не самостоятельная страница: в списках подстраниц её нет.
     public var isDatabaseRow: Bool { databaseId != nil }
+
+    /// Рукописная заметка: листы, на которых пишут от руки, а не блоки текста.
+    public var isNotebook: Bool { pageKind == .notebook }
+
+    /// Вид страницы: обычная из блоков (`nil`) или рукописная заметка.
+    public var pageKind: PageKind? {
+        get { kind.flatMap(PageKind.init(rawValue:)) }
+        set { kind = newValue?.rawValue }
+    }
 
     public var position: LibraryPoint? {
         get { LibraryPoint(x: canvasX, y: canvasY) }

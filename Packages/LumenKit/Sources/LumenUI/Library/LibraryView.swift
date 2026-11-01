@@ -183,6 +183,12 @@ struct LibraryView: View {
                 }
                 .buttonStyle(LibraryButtonStyle())
 
+                Button(action: newNotebook) {
+                    Label("От руки", systemImage: "pencil.and.scribble")
+                }
+                .buttonStyle(LibraryButtonStyle())
+                .help("Рукописная заметка, как в Goodnotes: листы, на которых пишут пальцем, Apple Pencil или мышью")
+
                 Button {
                     isImporting = true
                 } label: {

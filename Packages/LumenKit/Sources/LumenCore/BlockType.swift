@@ -24,6 +24,9 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     case column
     /// Выписка из источника: цитата (`content.runs`) и место в книге (`content.excerpt`).
     case excerpt
+    /// Рисунок от руки: штрихи PencilKit (`Block.drawing`), высоту области меняют перетаскиванием (`content.drawingHeight`).
+    /// У рукописной заметки (`Page.kind == .notebook`) один такой блок хранит все её листы.
+    case drawing
 
     public var id: String { rawValue }
 
@@ -46,6 +49,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .columnList: "Колонки"
         case .column: "Колонка"
         case .excerpt: "Выписка"
+        case .drawing: "Рисунок"
         }
     }
 
@@ -67,6 +71,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .toggle: "chevron.right.circle"
         case .columnList, .column: "rectangle.split.3x1"
         case .excerpt: "quote.opening"
+        case .drawing: "pencil.and.scribble"
         }
     }
 
@@ -89,13 +94,14 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .toggle: ["toggle", "collapse", "свернуть", "раскрывающийся", "тоггл"]
         case .columnList, .column: ["columns", "колонки"]
         case .excerpt: ["excerpt", "quote", "выписка", "цитата"]
+        case .drawing: ["draw", "drawing", "sketch", "pencil", "handwriting", "рисунок", "рисовать", "от руки", "почерк", "карандаш"]
         }
     }
 
     /// Есть ли у блока редактируемый текст.
     public var hasText: Bool {
         switch self {
-        case .divider, .page, .image, .columnList, .column, .excerpt: false
+        case .divider, .page, .image, .columnList, .column, .excerpt, .drawing: false
         default: true
         }
     }

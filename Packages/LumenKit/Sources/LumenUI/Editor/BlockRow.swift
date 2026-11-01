@@ -292,6 +292,9 @@ struct BlockRow: View {
         case .image:
             ImageBlock(block: block, model: model)
 
+        case .drawing:
+            DrawingBlock(block: block, model: model)
+
         case .excerpt:
             ExcerptBlock(
                 text: block.text,
@@ -383,7 +386,7 @@ struct BlockRow: View {
         case .callout: "Выноска"
         case .code: "Код"
         case .toggle: "Сворачиваемый блок"
-        case .divider, .page, .image, .columnList, .column, .excerpt: ""
+        case .divider, .page, .image, .columnList, .column, .excerpt, .drawing: ""
         }
     }
 

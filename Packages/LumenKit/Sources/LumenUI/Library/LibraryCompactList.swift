@@ -31,6 +31,9 @@ extension LibraryView {
             Button(action: newPage) {
                 Label("Заметка", systemImage: "doc.badge.plus")
             }
+            Button(action: newNotebook) {
+                Label("Рукописная заметка", systemImage: "pencil.and.scribble")
+            }
             Button {
                 isImporting = true
             } label: {
