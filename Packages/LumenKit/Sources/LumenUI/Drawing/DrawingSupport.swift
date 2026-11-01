@@ -305,3 +305,41 @@ struct DrawingImageView: View {
         .accessibilityHidden(true)
     }
 }
+
+// MARK: - Текст на листе
+
+enum TextBoxMetrics {
+    #if canImport(UIKit)
+    static func font(size: CGFloat, bold: Bool) -> UIFont {
+        .systemFont(ofSize: size, weight: bold ? .semibold : .regular)
+    }
+    #else
+    static func font(size: CGFloat, bold: Bool) -> NSFont {
+        .systemFont(ofSize: size, weight: bold ? .semibold : .regular)
+    }
+    #endif
+
+    /// Внутренний отступ текста от рамки блока, в пунктах листа.
+    static let padding: CGFloat = 4
+
+    /// Высота текстового блока под его текст при заданной ширине.
+    static func height(of item: NotebookItem) -> CGFloat {
+        let text = item.text.isEmpty ? " " : item.text
+        let width = max(CGFloat(item.width) - padding * 2, 10)
+        let bounds = (text as NSString).boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font(size: CGFloat(item.fontSize), bold: item.isBold)],
+            context: nil
+        )
+        return ceil(bounds.height) + padding * 2
+    }
+
+    /// Блок с высотой по тексту.
+    static func fitted(_ item: NotebookItem) -> NotebookItem {
+        guard item.kind == .text else { return item }
+        var item = item
+        item.height = max(Double(height(of: item)), NotebookItem.minSize)
+        return item
+    }
+}

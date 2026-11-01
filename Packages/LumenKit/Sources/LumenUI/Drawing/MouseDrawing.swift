@@ -13,8 +13,42 @@ final class MouseInk {
     static let shared = MouseInk()
 
     var tool: Tool = .pen
-    var color: InkColor = .black
-    var size: InkSize = .medium
+    /// Цвет чернил для светлой бумаги, в нём PencilKit хранит штрихи.
+    var color = HexColor(red: 0.08, green: 0.08, blue: 0.1)
+    /// Толщина ручки и карандаша в пунктах рисунка.
+    var penWidth: Double = 4
+    var markerWidth: Double = 20
+    /// Последние цвета, которыми писали: сверху панели, чтобы не искать их в палитре.
+    private(set) var recentColors: [HexColor]
+
+    static let penWidthRange: ClosedRange<Double> = 1...30
+    static let markerWidthRange: ClosedRange<Double> = 6...60
+    private static let recentKey = "drawing.recentColors"
+    private static let recentLimit = 8
+
+    init() {
+        let saved = UserDefaults.standard.stringArray(forKey: Self.recentKey) ?? []
+        let colors = saved.compactMap(HexColor.init(hex:))
+        recentColors = colors.isEmpty ? MouseInk.starterColors : colors
+    }
+
+    /// Цвета для начала: чёрный, синий, красный, зелёный, оранжевый, фиолетовый, жёлтый.
+    static let starterColors: [HexColor] = ["#141419", "#2A6BE6", "#E03D3D", "#2E9E57", "#F28533", "#8C57DB", "#F9CC29"]
+        .compactMap(HexColor.init(hex:))
+
+    /// Выбрать цвет. Цвет из палитры запоминается среди последних, выбор из последних их не переставляет.
+    func choose(_ color: HexColor, remember: Bool) {
+        self.color = color
+        if tool == .eraser { tool = .pen }
+        if remember { rememberRecent(color) }
+    }
+
+    private func rememberRecent(_ color: HexColor) {
+        var colors = recentColors.filter { $0 != color }
+        colors.insert(color, at: 0)
+        recentColors = Array(colors.prefix(Self.recentLimit))
+        UserDefaults.standard.set(recentColors.map(\.hex), forKey: Self.recentKey)
+    }
 
     enum Tool: String, CaseIterable, Identifiable {
         case pen, pencil, marker, eraser
@@ -48,74 +82,18 @@ final class MouseInk {
         }
     }
 
-    enum InkColor: String, CaseIterable, Identifiable {
-        case black, blue, red, green, orange, purple, yellow
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .black: "Чёрный"
-            case .blue: "Синий"
-            case .red: "Красный"
-            case .green: "Зелёный"
-            case .orange: "Оранжевый"
-            case .purple: "Фиолетовый"
-            case .yellow: "Жёлтый"
-            }
-        }
-
-        /// Цвет для светлой темы: в нём PencilKit хранит чернила.
-        var rgb: (Double, Double, Double) {
-            switch self {
-            case .black: (0.08, 0.08, 0.10)
-            case .blue: (0.16, 0.42, 0.90)
-            case .red: (0.88, 0.24, 0.24)
-            case .green: (0.18, 0.62, 0.34)
-            case .orange: (0.95, 0.52, 0.20)
-            case .purple: (0.55, 0.34, 0.86)
-            case .yellow: (0.98, 0.80, 0.16)
-            }
-        }
-
-        var nsColor: NSColor {
-            NSColor(srgbRed: rgb.0, green: rgb.1, blue: rgb.2, alpha: 1)
-        }
-
-        /// Как цвет выглядит на экране. На тёмном фоне чёрная ручка пишет белым, как и у PencilKit.
-        func display(isDark: Bool) -> Color {
-            if isDark, self == .black { return Color(white: 0.94) }
-            return Color(red: rgb.0, green: rgb.1, blue: rgb.2)
-        }
-    }
-
-    enum InkSize: String, CaseIterable, Identifiable {
-        case thin, medium, thick
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .thin: "Тонко"
-            case .medium: "Средне"
-            case .thick: "Толсто"
-            }
-        }
+    var nsColor: NSColor {
+        NSColor(srgbRed: color.red, green: color.green, blue: color.blue, alpha: 1)
     }
 
     /// Толщина штриха в пунктах рисунка.
     var width: CGFloat {
-        let widths: [CGFloat] = switch tool {
-        case .pen, .eraser: [2, 4, 7]
-        case .pencil: [2, 3.5, 6]
-        case .marker: [12, 20, 30]
-        }
-        return widths[InkSize.allCases.firstIndex(of: size) ?? 1]
+        CGFloat(tool == .marker ? markerWidth : penWidth)
     }
 
     /// Ластик стирает штрихи целиком, которых касается в этом радиусе (в пунктах экрана).
     var eraserRadius: CGFloat {
-        [6, 10, 18][InkSize.allCases.firstIndex(of: size) ?? 1]
+        CGFloat(min(max(penWidth * 2.5, 6), 30))
     }
 }
 
@@ -231,13 +209,14 @@ struct MouseDrawingLayer: View {
             ))
         }
         let path = PKStrokePath(controlPoints: controlPoints, creationDate: startedAt)
-        return PKStroke(ink: PKInk(ink.tool.inkType, color: ink.color.nsColor), path: path)
+        return PKStroke(ink: PKInk(ink.tool.inkType, color: ink.nsColor), path: path)
     }
 }
 
-/// Панель пера на Mac: ручка, карандаш, маркер, ластик, цвет и толщина.
+/// Панель пера на Mac: ручка, карандаш, маркер, ластик, последние цвета, вся палитра и толщина.
 struct MouseInkBar: View {
     private var ink: MouseInk { .shared }
+    @State private var isPaletteShown = false
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
@@ -263,46 +242,32 @@ struct MouseInkBar: View {
                 }
             }
             Divider().frame(height: 20)
-            HStack(spacing: 6) {
-                ForEach(MouseInk.InkColor.allCases) { color in
-                    Button {
-                        ink.color = color
-                        if ink.tool == .eraser { ink.tool = .pen }
-                    } label: {
-                        Circle()
-                            .fill(color.display(isDark: true))
-                            .frame(width: 18, height: 18)
-                            .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 1))
-                            .padding(3)
-                            .overlay(
-                                Circle().strokeBorder(theme.accent, lineWidth: ink.color == color ? 2 : 0)
-                            )
-                            .contentShape(Circle())
+            HStack(spacing: 5) {
+                ForEach(ink.recentColors, id: \.self) { color in
+                    ColorDot(color: color, isSelected: ink.color == color && ink.tool != .eraser, size: 18) {
+                        ink.choose(color, remember: false)
                     }
-                    .buttonStyle(.plain)
-                    .help(color.title)
-                    .accessibilityLabel(color.title)
                 }
-            }
-            Divider().frame(height: 20)
-            HStack(spacing: 4) {
-                ForEach(Array(MouseInk.InkSize.allCases.enumerated()), id: \.element) { index, size in
-                    Button {
-                        ink.size = size
-                    } label: {
-                        Circle()
-                            .fill(theme.textPrimary)
-                            .frame(width: CGFloat(4 + index * 4), height: CGFloat(4 + index * 4))
-                            .frame(width: 24, height: 24)
-                            .background(
-                                ink.size == size ? theme.accent.opacity(0.25) : .clear,
-                                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            )
-                            .contentShape(Rectangle())
+                Button {
+                    isPaletteShown = true
+                } label: {
+                    Image(systemName: "paintpalette")
+                        .frame(width: 26, height: 26)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.textPrimary)
+                .help("Все цвета и толщина")
+                .popover(isPresented: $isPaletteShown, arrowEdge: .bottom) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        ColorPalette(selection: ink.color) { color in
+                            ink.choose(color, remember: true)
+                        }
+                        WidthSlider(title: "Ручка и карандаш", value: Binding(get: { ink.penWidth }, set: { ink.penWidth = $0 }), range: MouseInk.penWidthRange)
+                        WidthSlider(title: "Маркер", value: Binding(get: { ink.markerWidth }, set: { ink.markerWidth = $0 }), range: MouseInk.markerWidthRange)
                     }
-                    .buttonStyle(.plain)
-                    .help(size.title)
-                    .accessibilityLabel(size.title)
+                    .padding(16)
+                    .frame(width: 360)
                 }
             }
         }
@@ -310,6 +275,29 @@ struct MouseInkBar: View {
         .padding(.vertical, 6)
         .background(.regularMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(theme.textSecondary.opacity(0.15), lineWidth: 1))
+    }
+}
+
+/// Толщина пера ползунком, с кружком той же толщины.
+private struct WidthSlider: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("\(title): \(value, format: .number.precision(.fractionLength(0...1))) пт")
+                .font(.caption)
+                .foregroundStyle(theme.textSecondary)
+            HStack(spacing: 10) {
+                Slider(value: $value, in: range)
+                Circle()
+                    .fill(theme.textPrimary)
+                    .frame(width: min(value, 28), height: min(value, 28))
+                    .frame(width: 30, height: 30)
+            }
+        }
     }
 }
 #endif

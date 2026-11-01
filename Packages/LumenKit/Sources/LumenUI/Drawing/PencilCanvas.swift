@@ -1,5 +1,6 @@
 #if os(iOS)
 import LumenCore
+import LumenStorage
 import PencilKit
 import SwiftUI
 import UIKit
@@ -25,6 +26,22 @@ struct PencilCanvas: UIViewRepresentable {
     var onChange: (Data?) -> Void
     /// Лист рукописной заметки, который сейчас посередине экрана.
     var onVisibleSheet: (Int) -> Void = { _ in }
+    /// Тексты и картинки тетради: лежат под чернилами.
+    var items: NotebookItemsContent?
+    /// Нажатие на пустое место холста, в координатах холста. Пока `nil`, нажатия не ловятся.
+    var onTap: ((CGPoint) -> Void)?
+    /// Где сейчас холст на экране: по нему слой правки ставит рамки поверх элементов.
+    var onViewport: ((NotebookViewport) -> Void)?
+
+    struct NotebookItemsContent: Equatable {
+        var items: [NotebookItem]
+        var hiddenId: UUID?
+        var attachments: AttachmentStore
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.items == rhs.items && lhs.hiddenId == rhs.hiddenId && lhs.attachments.folder == rhs.attachments.folder
+        }
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -51,6 +68,10 @@ struct PencilCanvas: UIViewRepresentable {
         coordinator.canvas = canvas
         coordinator.lastData = data
         coordinator.toolPicker.addObserver(canvas)
+        let tap = UITapGestureRecognizer(target: coordinator, action: #selector(Coordinator.tapped(_:)))
+        tap.isEnabled = false
+        canvas.addGestureRecognizer(tap)
+        coordinator.tap = tap
         return canvas
     }
 
@@ -58,6 +79,14 @@ struct PencilCanvas: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.onChange = onChange
         coordinator.onVisibleSheet = onVisibleSheet
+        coordinator.onTap = onTap
+        coordinator.tap?.isEnabled = onTap != nil
+        let wantsViewport = onViewport != nil && coordinator.onViewport == nil
+        coordinator.onViewport = onViewport
+        if wantsViewport {
+            // Слой правки только что появился: ему сразу нужно знать, где холст.
+            Task { @MainActor in coordinator.reportViewport() }
+        }
         if data != coordinator.lastData {
             // Рисунок поменялся не на холсте (отмена, удаление листа): холст показывает новый.
             coordinator.isApplying = true
@@ -71,6 +100,8 @@ struct PencilCanvas: UIViewRepresentable {
         }
         canvas.drawingGestureRecognizer.isEnabled = isDrawingEnabled
         canvas.paper = notebook
+        canvas.items = items
+        canvas.isPaperDark = isDark
         coordinator.setToolPicker(visible: showsToolPicker && isDrawingEnabled)
     }
 
@@ -88,6 +119,9 @@ struct PencilCanvas: UIViewRepresentable {
         var isApplying = false
         var onChange: (Data?) -> Void = { _ in }
         var onVisibleSheet: (Int) -> Void = { _ in }
+        var onTap: ((CGPoint) -> Void)?
+        var onViewport: ((NotebookViewport) -> Void)?
+        weak var tap: UITapGestureRecognizer?
         private var isToolPickerShown = false
         private var visibleSheet = -1
 
@@ -99,7 +133,23 @@ struct PencilCanvas: UIViewRepresentable {
             onChange(data)
         }
 
+        @objc func tapped(_ recognizer: UITapGestureRecognizer) {
+            guard let canvas, canvas.zoomScale > 0 else { return }
+            let point = recognizer.location(in: canvas)
+            onTap?(CGPoint(x: point.x / canvas.zoomScale, y: point.y / canvas.zoomScale))
+        }
+
+        func reportViewport() {
+            guard let canvas, let onViewport, canvas.zoomScale > 0 else { return }
+            let scale = canvas.zoomScale
+            onViewport(NotebookViewport(
+                origin: CGPoint(x: canvas.contentOffset.x / scale, y: canvas.contentOffset.y / scale),
+                scale: scale
+            ))
+        }
+
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            reportViewport()
             guard let canvas, let paper = canvas.paper, canvas.zoomScale > 0 else { return }
             let middle = (scrollView.contentOffset.y + scrollView.bounds.height / 2) / canvas.zoomScale
             let index = NotebookLayout.sheetIndex(at: middle, sheets: paper.sheets)
@@ -111,6 +161,7 @@ struct PencilCanvas: UIViewRepresentable {
 
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
             canvas?.setNeedsLayout()
+            reportViewport()
         }
 
         /// Панель инструментов видна, пока холст первый отвечающий. Холст становится им
@@ -141,6 +192,25 @@ final class NotebookCanvasView: PKCanvasView {
             setNeedsLayout()
         }
     }
+
+    var items: PencilCanvas.NotebookItemsContent? {
+        didSet {
+            guard items != oldValue else { return }
+            setNeedsLayout()
+        }
+    }
+
+    var isPaperDark = false {
+        didSet {
+            guard isPaperDark != oldValue else { return }
+            setNeedsLayout()
+        }
+    }
+
+    /// Тексты и картинки: SwiftUI внутри холста, под штрихами. Перестраивается под масштаб,
+    /// поэтому текст остаётся чётким при увеличении.
+    private var itemsHost: UIHostingController<NotebookItemsLayer>?
+    private var laidOutItems: (content: PencilCanvas.NotebookItemsContent, scale: CGFloat, isDark: Bool)?
 
     private struct SheetLayers {
         var sheet = CALayer()
@@ -197,7 +267,37 @@ final class NotebookCanvasView: PKCanvasView {
         if scale != laidOutScale || paper != laidOutPaper {
             layoutSheets(paper, scale: scale, size: size)
         }
+        layoutItems(scale: scale, size: size)
         sendSubviewToBack(paperView)
+    }
+
+    private func layoutItems(scale: CGFloat, size: CGSize) {
+        guard let items, !items.items.isEmpty || itemsHost != nil else { return }
+        let layer = NotebookItemsLayer(
+            items: items.items,
+            viewport: NotebookViewport(origin: .zero, scale: scale),
+            isDark: isPaperDark,
+            attachments: items.attachments,
+            hiddenId: items.hiddenId
+        )
+        let host: UIHostingController<NotebookItemsLayer>
+        if let itemsHost {
+            host = itemsHost
+            if let laid = laidOutItems, laid.content == items, laid.scale == scale, laid.isDark == isPaperDark {
+                if host.view.frame.size != size { host.view.frame = CGRect(origin: .zero, size: size) }
+                return
+            }
+            host.rootView = layer
+        } else {
+            host = UIHostingController(rootView: layer)
+            host.view.backgroundColor = .clear
+            host.view.isUserInteractionEnabled = false
+            host.safeAreaRegions = []
+            paperView.addSubview(host.view)
+            itemsHost = host
+        }
+        host.view.frame = CGRect(origin: .zero, size: size)
+        laidOutItems = (items, scale, isPaperDark)
     }
 
     private func layoutSheets(_ paper: PencilCanvas.Notebook, scale: CGFloat, size: CGSize) {

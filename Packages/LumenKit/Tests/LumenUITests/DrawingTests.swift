@@ -163,3 +163,81 @@ struct DrawingTests {
         #expect(DrawingSupport.drawing(from: Data([1, 2, 3])).strokes.isEmpty)
     }
 }
+
+@MainActor
+struct NotebookItemsModelTests {
+    let db: AppDatabase
+
+    init() throws {
+        db = try AppDatabase.inMemory()
+    }
+
+    /// Картинка 2×1 пикселя в PNG.
+    private var png: Data {
+        Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAADklEQVR4nGP4z8DwH4QBEfcD/ePF9e8AAAAASUVORK5CYII=")!
+    }
+
+    @Test func textBoxesAreAddedEditedAndRemoved() async throws {
+        let page = try await db.createNotebook()
+        let model = PageEditorModel(database: db, pageId: page.id)
+        await model.load()
+
+        let item = try #require(model.addTextBox(at: CGPoint(x: 100, y: 200)))
+        #expect(model.notebookItems.map(\.id) == [item.id])
+        #expect(item.frame.minX == 100)
+
+        model.updateNotebookItem(item.id) { $0.text = "Формула" }
+        model.updateNotebookItem(item.id, recordsUndo: false) { $0.text = "Формула Эйлера" }
+        #expect(model.notebookItem(item.id)?.text == "Формула Эйлера")
+        // Набор одним шагом: отмена возвращает пустой блок, а не половину слова.
+        model.undo()
+        #expect(model.notebookItem(item.id)?.text == "")
+
+        model.removeIfEmpty(item.id)
+        #expect(model.notebookItems.isEmpty)
+    }
+
+    @Test func itemsAreMovedDuplicatedDeletedAndSaved() async throws {
+        let page = try await db.createNotebook()
+        let model = PageEditorModel(database: db, pageId: page.id)
+        await model.load()
+
+        let item = try #require(model.addTextBox(at: CGPoint(x: 50, y: 50)))
+        model.updateNotebookItem(item.id) {
+            $0.text = "Вопрос"
+            $0.frame = $0.frame.offsetBy(dx: 30, dy: 40)
+        }
+        let copy = try #require(model.duplicateNotebookItem(item.id))
+        #expect(model.notebookItems.count == 2)
+        #expect(copy.frame.minX == 80 + 24)
+        model.removeNotebookItem(item.id)
+        #expect(model.notebookItems.map(\.id) == [copy.id])
+
+        try await Task.sleep(for: .milliseconds(900))
+        let saved = try #require(try await db.blocks(of: page.id).first)
+        #expect(saved.content.items?.map(\.text) == ["Вопрос"])
+    }
+
+    @Test func imageIsStoredAsAttachmentAndPlacedOnTheSheet() async throws {
+        let page = try await db.createNotebook()
+        let model = PageEditorModel(database: db, pageId: page.id)
+        await model.load()
+        model.addNotebookSheet()
+
+        let item = try #require(model.addNotebookImage(data: png, fileExtension: "png", onSheet: 1))
+        #expect(item.kind == .image)
+        let name = try #require(item.attachment)
+        #expect(db.attachments.data(for: name) == png)
+        #expect(NotebookLayout.sheetRect(1).contains(CGPoint(x: item.frame.midX, y: item.frame.midY)))
+        // Пропорции картинки сохраняются: 2×1.
+        #expect(abs(item.width / item.height - 2) < 0.01)
+    }
+
+    @Test func textBoxHeightFollowsItsText() {
+        var item = NotebookItem(kind: .text, frame: CGRect(x: 0, y: 0, width: 200, height: 24), text: "Одна строка")
+        let one = TextBoxMetrics.fitted(item).height
+        item.text = String(repeating: "Много слов в тексте. ", count: 20)
+        let many = TextBoxMetrics.fitted(item).height
+        #expect(many > one * 3)
+    }
+}

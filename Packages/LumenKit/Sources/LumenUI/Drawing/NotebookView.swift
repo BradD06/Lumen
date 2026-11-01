@@ -1,7 +1,9 @@
 import LumenCore
 import LumenThemes
 import PencilKit
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Рукописная заметка, как в Goodnotes: листы бумаги друг под другом, на которых пишут от руки.
 /// Название и кнопки сверху, ниже листы. На iPhone и iPad холст PencilKit (палец или Apple Pencil,
@@ -14,9 +16,18 @@ struct NotebookView: View {
     /// Лист посередине экрана: его удаляют и после него добавляют новый.
     @State private var visibleSheet = 0
     @State private var parsed = ParsedDrawing()
+    /// Перо, выделение или текст. В выделении палец листает тетрадь.
+    @State private var tool: NotebookTool = .draw
+    /// Выделенный текст или картинка.
+    @State private var selection: UUID?
+    /// Текст, который сейчас набирают.
+    @State private var editingId: UUID?
+    @State private var isPickingPhoto = false
+    @State private var pickedPhoto: PhotosPickerItem?
+    @State private var isImportingImage = false
     #if os(iOS)
-    /// Пишет ли палец. Выключите, чтобы листать тетрадь одним пальцем.
-    @State private var isDrawing = true
+    /// Где холст на экране: по нему слой правки ставит рамки поверх элементов.
+    @State private var viewport = NotebookViewport()
     #else
     /// Увеличение листов относительно ширины окна.
     @State private var zoom: CGFloat = 1
@@ -35,6 +46,113 @@ struct NotebookView: View {
         }
         .task(id: model.isLoaded) {
             model.ensureNotebookBlock()
+        }
+        .onChange(of: tool) { _, newTool in
+            editingId = nil
+            if newTool == .draw { selection = nil }
+        }
+        .onChange(of: editingId) { old, _ in
+            // Пустой текстовый блок, из которого ушли, не остаётся на листе.
+            if let old {
+                model.removeIfEmpty(old)
+                if model.notebookItem(old) == nil, selection == old { selection = nil }
+            }
+        }
+        .photosPicker(isPresented: $isPickingPhoto, selection: $pickedPhoto, matching: .images)
+        .onChange(of: pickedPhoto) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    insertImage(data, fileExtension: item.supportedContentTypes.first?.preferredFilenameExtension)
+                }
+                pickedPhoto = nil
+            }
+        }
+        .fileImporter(isPresented: $isImportingImage, allowedContentTypes: [.image]) { result in
+            guard case .success(let url) = result else { return }
+            let isScoped = url.startAccessingSecurityScopedResource()
+            defer { if isScoped { url.stopAccessingSecurityScopedResource() } }
+            if let data = try? Data(contentsOf: url) {
+                insertImage(data, fileExtension: url.pathExtension)
+            }
+        }
+    }
+
+    private var items: [NotebookItem] { model.notebookItems }
+
+    private func insertImage(_ data: Data, fileExtension: String?) {
+        guard let item = model.addNotebookImage(data: data, fileExtension: fileExtension, onSheet: visibleSheet) else { return }
+        LumenSounds.play(.create)
+        tool = .select
+        selection = item.id
+    }
+
+    /// Нажатие на пустое место листа в координатах холста.
+    private func tapEmpty(at point: CGPoint) {
+        if editingId != nil {
+            editingId = nil
+            return
+        }
+        switch tool {
+        case .text:
+            let color: HexColor? = {
+                #if os(macOS)
+                MouseInk.shared.color
+                #else
+                nil
+                #endif
+            }()
+            if let item = model.addTextBox(at: point, color: color) {
+                selection = item.id
+                editingId = item.id
+            }
+        case .select:
+            selection = nil
+        case .draw:
+            break
+        }
+    }
+
+    /// Перо, выделение, текст и вставка картинки.
+    private var toolRow: some View {
+        HStack(spacing: 10) {
+            Picker("Инструмент", selection: $tool) {
+                ForEach(NotebookTool.allCases) { tool in
+                    Label(tool.title, systemImage: tool.symbolName).tag(tool)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelStyle(.iconOnly)
+            .fixedSize()
+            .help("Перо, выделение или текст")
+
+            Menu {
+                Button {
+                    isPickingPhoto = true
+                } label: {
+                    Label("Из фото", systemImage: "photo.on.rectangle")
+                }
+                Button {
+                    isImportingImage = true
+                } label: {
+                    Label("Из файла", systemImage: "folder")
+                }
+            } label: {
+                Label("Картинка", systemImage: "photo.badge.plus")
+            }
+            .menuStyle(.button)
+            .fixedSize()
+            .help("Вставить картинку на лист")
+
+            #if os(macOS)
+            if tool == .draw {
+                MouseInkBar()
+            }
+            Spacer(minLength: 0)
+            zoomControls
+            #else
+            Spacer(minLength: 0)
+            #endif
         }
     }
 
@@ -66,13 +184,7 @@ struct NotebookView: View {
 
                 controls
             }
-            #if os(macOS)
-            HStack {
-                MouseInkBar()
-                Spacer(minLength: 0)
-                zoomControls
-            }
-            #endif
+            toolRow
         }
         .padding(.horizontal, isCompact ? 14 : 24)
         .padding(.vertical, 12)
@@ -90,13 +202,6 @@ struct NotebookView: View {
             .disabled(!model.canUndo)
             .labelStyle(.iconOnly)
         }
-        Button {
-            isDrawing.toggle()
-        } label: {
-            Label(isDrawing ? "Листать" : "Писать", systemImage: isDrawing ? "hand.draw" : "pencil.tip")
-        }
-        .labelStyle(.iconOnly)
-        .help(isDrawing ? "Листать тетрадь пальцем" : "Писать пальцем")
         #endif
 
         Menu {
@@ -155,15 +260,36 @@ struct NotebookView: View {
     private var canvas: some View {
         if let block {
             #if os(iOS)
-            PencilCanvas(
-                data: block.drawing,
-                isDrawingEnabled: isDrawing,
-                showsToolPicker: isDrawing,
-                isDark: tone.isDark,
-                notebook: PencilCanvas.Notebook(sheets: sheets, pattern: pattern, tone: tone),
-                onChange: { model.setDrawing(block.id, data: $0) },
-                onVisibleSheet: { visibleSheet = $0 }
-            )
+            ZStack(alignment: .topLeading) {
+                PencilCanvas(
+                    data: block.drawing,
+                    isDrawingEnabled: tool == .draw,
+                    showsToolPicker: tool == .draw,
+                    isDark: tone.isDark,
+                    notebook: PencilCanvas.Notebook(sheets: sheets, pattern: pattern, tone: tone),
+                    onChange: { model.setDrawing(block.id, data: $0) },
+                    onVisibleSheet: { visibleSheet = $0 },
+                    items: PencilCanvas.NotebookItemsContent(
+                        items: items,
+                        hiddenId: editingId,
+                        attachments: model.database.attachments
+                    ),
+                    onTap: tool == .draw ? nil : { tapEmpty(at: $0) },
+                    onViewport: tool == .draw ? nil : { viewport = $0 }
+                )
+                if tool != .draw {
+                    NotebookItemsEditor(
+                        model: model,
+                        items: items,
+                        viewport: viewport,
+                        isDark: tone.isDark,
+                        tool: tool,
+                        selection: $selection,
+                        editingId: $editingId
+                    )
+                }
+            }
+            .clipped()
             .ignoresSafeArea(.container, edges: .bottom)
             #else
             macSheets(block)
@@ -244,21 +370,57 @@ struct NotebookView: View {
 
     private func macSheet(_ index: Int, block: Block, drawing: PKDrawing, scale: CGFloat) -> some View {
         let rect = NotebookLayout.sheetRect(index)
-        return ZStack {
+        let viewport = NotebookViewport(origin: rect.origin, scale: scale)
+        let visible = items.filter { $0.frame.intersects(rect) }
+        // Правят элемент на том листе, где его середина: так рамка не появляется дважды.
+        let owned = items.filter { NotebookLayout.sheetIndex(at: $0.frame.midY, sheets: sheets) == index }
+        return ZStack(alignment: .topLeading) {
             PaperSheet(pattern: pattern, tone: tone)
-            DrawingImageView(data: block.drawing, drawing: drawing, rect: rect, isDark: tone.isDark)
-            MouseDrawingLayer(
-                drawing: drawing,
-                origin: rect.origin,
-                scale: scale,
+            NotebookItemsLayer(
+                items: visible,
+                viewport: viewport,
                 isDark: tone.isDark,
-                onChange: { drawing, isNewStep in
-                    model.setDrawing(block.id, data: DrawingSupport.data(of: drawing), recordsUndo: isNewStep)
-                }
+                attachments: model.database.attachments,
+                hiddenId: editingId
             )
+            DrawingImageView(data: block.drawing, drawing: drawing, rect: rect, isDark: tone.isDark)
+            if tool == .draw {
+                MouseDrawingLayer(
+                    drawing: drawing,
+                    origin: rect.origin,
+                    scale: scale,
+                    isDark: tone.isDark,
+                    onChange: { drawing, isNewStep in
+                        model.setDrawing(block.id, data: DrawingSupport.data(of: drawing), recordsUndo: isNewStep)
+                    }
+                )
+            } else {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { location in
+                        tapEmpty(at: viewport.toCanvas(location))
+                    }
+                    .pointerStyle(tool == .text ? PointerStyle.horizontalText : PointerStyle.default)
+            }
         }
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .shadow(color: .black.opacity(0.22), radius: 10, y: 4)
+        .overlay(alignment: .topLeading) {
+            if tool != .draw {
+                NotebookItemsEditor(
+                    model: model,
+                    items: owned,
+                    viewport: viewport,
+                    isDark: tone.isDark,
+                    tool: tool,
+                    selection: $selection,
+                    editingId: $editingId
+                )
+            }
+        }
+        .dropDestination(for: URL.self) { urls, location in
+            dropImages(urls, at: viewport.toCanvas(location))
+        }
         .contextMenu {
             Button {
                 model.addNotebookSheet(after: index)
@@ -273,7 +435,28 @@ struct NotebookView: View {
                 }
             }
         }
+        .zIndex(owned.contains { $0.id == selection } ? 1 : 0)
         .accessibilityLabel("Лист \(index + 1)")
+    }
+
+    /// Картинки, брошенные на лист из Finder, встают туда, куда их бросили.
+    private func dropImages(_ urls: [URL], at point: CGPoint) -> Bool {
+        var inserted = false
+        for url in urls {
+            guard let type = UTType(filenameExtension: url.pathExtension), type.conforms(to: .image),
+                  let data = try? Data(contentsOf: url),
+                  let item = model.addNotebookImage(data: data, fileExtension: url.pathExtension, onSheet: visibleSheet)
+            else { continue }
+            let frame = CGRect(x: point.x - item.width / 2, y: point.y - item.height / 2, width: item.width, height: item.height)
+            model.updateNotebookItem(item.id, recordsUndo: false) { $0.frame = frame }
+            selection = item.id
+            inserted = true
+        }
+        if inserted {
+            LumenSounds.play(.create)
+            tool = .select
+        }
+        return inserted
     }
     #endif
 }

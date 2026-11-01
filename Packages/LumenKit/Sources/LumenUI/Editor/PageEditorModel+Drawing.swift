@@ -1,6 +1,11 @@
 import Foundation
 import LumenCore
 import PencilKit
+#if canImport(UIKit)
+import UIKit
+#else
+import AppKit
+#endif
 
 /// Рисунки от руки: блок «Рисунок» в заметке и листы рукописной заметки.
 extension PageEditorModel {
@@ -106,5 +111,98 @@ extension PageEditorModel {
         guard let block = notebookBlock, block.content.paperTone != tone else { return }
         recordUndo()
         update(block.id) { $0.content.paperTone = tone }
+    }
+}
+
+// MARK: - Тексты и картинки на листах
+
+extension PageEditorModel {
+    var notebookItems: [NotebookItem] {
+        notebookBlock?.content.items ?? []
+    }
+
+    func notebookItem(_ id: UUID?) -> NotebookItem? {
+        guard let id else { return nil }
+        return notebookItems.first { $0.id == id }
+    }
+
+    /// Добавляет элемент на лист. Возвращает его, чтобы сразу выделить.
+    @discardableResult
+    func addNotebookItem(_ item: NotebookItem) -> NotebookItem? {
+        guard let block = notebookBlock else { return nil }
+        recordUndo()
+        update(block.id) { $0.content.items = ($0.content.items ?? []) + [item] }
+        return item
+    }
+
+    /// Меняет элемент. `recordsUndo: false` продолжает прошлый шаг: так перетаскивание
+    /// или набор текста отменяются целиком, а не по кадру.
+    func updateNotebookItem(_ id: UUID, recordsUndo: Bool = true, _ change: (inout NotebookItem) -> Void) {
+        guard let block = notebookBlock, var items = block.content.items,
+              let index = items.firstIndex(where: { $0.id == id }) else { return }
+        var item = items[index]
+        change(&item)
+        guard item != items[index] else { return }
+        if recordsUndo { recordUndo() }
+        items[index] = item
+        update(block.id) { $0.content.items = items }
+    }
+
+    func removeNotebookItem(_ id: UUID) {
+        guard let block = notebookBlock, let items = block.content.items, items.contains(where: { $0.id == id }) else { return }
+        recordUndo()
+        let rest = items.filter { $0.id != id }
+        update(block.id) { $0.content.items = rest.isEmpty ? nil : rest }
+    }
+
+    /// Копия элемента чуть ниже и правее оригинала.
+    @discardableResult
+    func duplicateNotebookItem(_ id: UUID) -> NotebookItem? {
+        guard var copy = notebookItem(id) else { return nil }
+        copy.id = UUID()
+        copy.frame = copy.frame.offsetBy(dx: 24, dy: 24)
+        return addNotebookItem(copy)
+    }
+
+    /// Пустой текстовый блок, из которого ушли, убирается без следа в истории.
+    func removeIfEmpty(_ id: UUID) {
+        guard let block = notebookBlock, let item = notebookItem(id), item.isEmpty else { return }
+        let rest = (block.content.items ?? []).filter { $0.id != id }
+        update(block.id) { $0.content.items = rest.isEmpty ? nil : rest }
+    }
+
+    /// Новый текстовый блок с левым верхним углом в точке листа.
+    @discardableResult
+    func addTextBox(at point: CGPoint, color: HexColor? = nil) -> NotebookItem? {
+        let sheet = NotebookLayout.sheetRect(NotebookLayout.sheetIndex(at: point.y, sheets: notebookSheetCount))
+        let width = min(360, sheet.maxX - point.x - 16)
+        let frame = CGRect(x: point.x, y: point.y, width: max(width, 120), height: NotebookItem.defaultFontSize * 1.6)
+        return addNotebookItem(NotebookItem(kind: .text, frame: frame, color: color?.hex ?? "#141414"))
+    }
+
+    /// Картинка на лист: сохраняется во вложения и встаёт по центру листа, не шире 60% листа.
+    @discardableResult
+    func addNotebookImage(data: Data, fileExtension: String?, onSheet index: Int) -> NotebookItem? {
+        guard let image = PlatformImage(data: data), image.size.width > 0, image.size.height > 0 else {
+            NoticeCenter.shared.report("Не удалось вставить картинку", CocoaError(.fileReadCorruptFile))
+            return nil
+        }
+        do {
+            let name = try database.attachments.save(data, fileExtension: fileExtension)
+            let sheet = NotebookLayout.sheetRect(min(max(index, 0), notebookSheetCount - 1))
+            var width = min(image.size.width, sheet.width * 0.6)
+            var height = width * image.size.height / image.size.width
+            // Крошечную картинку увеличиваем, чтобы её можно было взять пальцем, без искажения.
+            let shortest = min(width, height)
+            if shortest < NotebookItem.minSize {
+                width *= NotebookItem.minSize / shortest
+                height *= NotebookItem.minSize / shortest
+            }
+            let frame = CGRect(x: sheet.midX - width / 2, y: sheet.minY + min(120, sheet.height / 4), width: width, height: height)
+            return addNotebookItem(NotebookItem(kind: .image, frame: frame, attachment: name))
+        } catch {
+            NoticeCenter.shared.report("Не удалось вставить картинку", error)
+            return nil
+        }
     }
 }

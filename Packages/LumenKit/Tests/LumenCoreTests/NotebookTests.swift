@@ -61,3 +61,47 @@ struct NotebookTests {
         #expect(markdown == "# Схема\n\n_✍️ Рисунок от руки_\n")
     }
 }
+
+struct NotebookItemTests {
+    @Test func itemsRoundTripAndUnknownKindsAreSkipped() throws {
+        let text = NotebookItem(kind: .text, frame: CGRect(x: 10, y: 20, width: 200, height: 40), text: "Тезис", color: "#2A6BE6")
+        let image = NotebookItem(kind: .image, frame: CGRect(x: 0, y: 0, width: 300, height: 200), attachment: "a.png")
+        let content = BlockContent(sheetCount: 1, items: [text, image])
+        let decoded = try JSONDecoder().decode(BlockContent.self, from: JSONEncoder().encode(content))
+        #expect(decoded.items == [text, image])
+
+        // Вид из более новой версии не ломает остальные элементы.
+        var json = try #require(String(data: JSONEncoder().encode(content), encoding: .utf8))
+        json = json.replacingOccurrences(of: #""kind":"image""#, with: #""kind":"sticker""#)
+        let lossy = try JSONDecoder().decode(BlockContent.self, from: Data(json.utf8))
+        #expect(lossy.items == [text])
+    }
+
+    @Test func itemKeepsAMinimumSizeAndFontRange() {
+        var item = NotebookItem(kind: .text, frame: CGRect(x: 0, y: 0, width: 2, height: 2), fontSize: 500)
+        #expect(item.width == NotebookItem.minSize)
+        #expect(item.fontSize == NotebookItem.fontSizeRange.upperBound)
+        item.frame = CGRect(x: 5, y: 6, width: 1, height: 100)
+        #expect(item.frame == CGRect(x: 5, y: 6, width: NotebookItem.minSize, height: 100))
+        #expect(NotebookItem(kind: .text, frame: .zero, text: "  \n").isEmpty)
+        #expect(!NotebookItem(kind: .image, frame: .zero).isEmpty)
+    }
+
+    @Test func hexColorsRoundTrip() throws {
+        let color = try #require(HexColor(hex: "#2A6BE6"))
+        #expect(color.hex == "#2A6BE6")
+        #expect(HexColor(hex: "2a6be6")?.hex == "#2A6BE6")
+        #expect(HexColor(hex: "#12") == nil)
+        #expect(HexColor(hex: "#141414")?.isNearBlack == true)
+        #expect(HexColor(hue: 0, saturation: 1, brightness: 1).hex == "#FF0000")
+        #expect(HexColor(hue: 1.0 / 3, saturation: 1, brightness: 1).hex == "#00FF00")
+    }
+
+    @Test func paletteIsLargeAndDistinct() {
+        let colors = HexColor.palette.flatMap { $0 }
+        #expect(colors.count == 72)
+        #expect(Set(colors.map(\.hex)).count == 72)
+        #expect(HexColor.palette.first?.first?.hex == "#000000")
+        #expect(HexColor.palette.first?.last?.hex == "#FFFFFF")
+    }
+}

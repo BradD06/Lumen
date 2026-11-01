@@ -67,6 +67,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
     public var sheetCount: Int?
     public var paper: PaperPattern?
     public var paperTone: PaperTone?
+    /// Тексты и картинки на листах рукописной заметки.
+    public var items: [NotebookItem]?
 
     public init(
         runs: [TextRun] = [],
@@ -81,7 +83,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
         drawingHeight: Double? = nil,
         sheetCount: Int? = nil,
         paper: PaperPattern? = nil,
-        paperTone: PaperTone? = nil
+        paperTone: PaperTone? = nil,
+        items: [NotebookItem]? = nil
     ) {
         self.runs = runs
         self.isChecked = isChecked
@@ -96,6 +99,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         self.sheetCount = sheetCount
         self.paper = paper
         self.paperTone = paperTone
+        self.items = items
     }
 
     public init(text: String, isChecked: Bool = false) {
@@ -111,7 +115,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case runs, isChecked, pageId, attachment, isCollapsed, textColor, backgroundColor, columnWidth, excerpt
-        case drawingHeight, sheetCount, paper, paperTone
+        case drawingHeight, sheetCount, paper, paperTone, items
     }
 
     public init(from decoder: any Decoder) throws {
@@ -132,6 +136,17 @@ public struct BlockContent: Hashable, Codable, Sendable {
         // Неизвестная линовка или бумага из более новой версии читается как обычная.
         paper = try container.decodeIfPresent(String.self, forKey: .paper).flatMap(PaperPattern.init(rawValue:))
         paperTone = try container.decodeIfPresent(String.self, forKey: .paperTone).flatMap(PaperTone.init(rawValue:))
+        // Элементы по одному: незнакомый вид из более новой версии пропускается, остальные читаются.
+        items = (try? container.decodeIfPresent([LossyItem].self, forKey: .items))?.compactMap(\.item)
+    }
+
+    /// Элемент тетради, который не ломает чтение остальных, если сам не читается.
+    private struct LossyItem: Decodable {
+        var item: NotebookItem?
+
+        init(from decoder: any Decoder) throws {
+            item = try? NotebookItem(from: decoder)
+        }
     }
 }
 
