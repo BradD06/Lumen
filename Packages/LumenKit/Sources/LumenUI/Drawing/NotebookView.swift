@@ -4,6 +4,9 @@ import PencilKit
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(macOS)
+import AppKit
+#endif
 
 /// Рукописная заметка, как в Goodnotes: листы бумаги друг под другом, на которых пишут от руки.
 /// Название и кнопки сверху, ниже листы. На iPhone и iPad холст PencilKit (палец или Apple Pencil,
@@ -31,6 +34,14 @@ struct NotebookView: View {
     #else
     /// Увеличение листов относительно ширины окна.
     @State private var zoom: CGFloat = 1
+    /// Элемент, который сейчас тащат, и лист, на котором его взяли. Пока его тащат, рамкой
+    /// правки владеет этот лист, даже если середина элемента ушла на соседний: иначе рамка
+    /// переехала бы в другой лист посреди движения и жест оборвался бы.
+    @State private var dragged: (id: UUID, sheet: Int)?
+    /// Лист у верхнего края окна: его место сохраняется, когда листы меняют размер.
+    @State private var topSheet: Int?
+    /// Перехват ⌘V: картинка из буфера обмена встаёт на лист.
+    @State private var pasteKey: NotebookPasteKey?
     #endif
     @Environment(\.lumenTheme) private var theme
 
@@ -68,6 +79,14 @@ struct NotebookView: View {
                 pickedPhoto = nil
             }
         }
+        #if os(macOS)
+        .onAppear {
+            let key = pasteKey ?? NotebookPasteKey()
+            pasteKey = key
+            key.start { pasteImage() }
+        }
+        .onDisappear { pasteKey?.stop() }
+        #endif
         .fileImporter(isPresented: $isImportingImage, allowedContentTypes: [.image]) { result in
             guard case .success(let url) = result else { return }
             let isScoped = url.startAccessingSecurityScopedResource()
@@ -85,6 +104,46 @@ struct NotebookView: View {
         LumenSounds.play(.create)
         tool = .select
         selection = item.id
+    }
+
+    /// Картинка или скриншот из буфера обмена. Возвращает `false`, если картинки там нет.
+    @discardableResult
+    private func pasteImage() -> Bool {
+        guard let image = NotebookPasteboard.image() else {
+            NoticeCenter.shared.show("В буфере обмена нет картинки")
+            return false
+        }
+        insertImage(image.data, fileExtension: image.fileExtension)
+        return true
+    }
+
+    /// Картинки, брошенные на лист: файлы из Finder, превью скриншота из угла экрана,
+    /// картинки из браузера и других программ. Встают серединой туда, куда их бросили,
+    /// а если точка неизвестна, на видимый лист.
+    private func dropImages(_ images: [DroppedImage], at point: CGPoint?) -> Bool {
+        var inserted = false
+        for (offset, image) in images.enumerated() {
+            guard let item = model.addNotebookImage(data: image.data, fileExtension: image.fileExtension, onSheet: visibleSheet)
+            else { continue }
+            if let point {
+                // Несколько картинок разом ложатся лесенкой, а не друг на друга.
+                let shift = CGFloat(offset) * 24
+                let frame = CGRect(
+                    x: point.x - item.width / 2 + shift,
+                    y: point.y - item.height / 2 + shift,
+                    width: item.width,
+                    height: item.height
+                )
+                model.updateNotebookItem(item.id, recordsUndo: false) { $0.frame = frame }
+            }
+            selection = item.id
+            inserted = true
+        }
+        if inserted {
+            LumenSounds.play(.create)
+            tool = .select
+        }
+        return inserted
     }
 
     /// Нажатие на пустое место листа в координатах холста.
@@ -136,6 +195,11 @@ struct NotebookView: View {
                     isImportingImage = true
                 } label: {
                     Label("Из файла", systemImage: "folder")
+                }
+                Button {
+                    pasteImage()
+                } label: {
+                    Label("Из буфера обмена", systemImage: "doc.on.clipboard")
                 }
             } label: {
                 Label("Картинка", systemImage: "photo.badge.plus")
@@ -291,6 +355,10 @@ struct NotebookView: View {
             }
             .clipped()
             .ignoresSafeArea(.container, edges: .bottom)
+            .dropDestination(for: DroppedImage.self) { images, location in
+                // Где холст на экране, известно, только пока открыт слой правки.
+                dropImages(images, at: tool == .draw ? nil : viewport.toCanvas(location))
+            }
             #else
             macSheets(block)
             #endif
@@ -336,7 +404,9 @@ struct NotebookView: View {
             let width = fitWidth * zoom
             let scale = width / NotebookLayout.sheetWidth
             let drawing = parsed.drawing(for: block.drawing)
-            ScrollView([.vertical, .horizontal]) {
+            // Вбок листы листаются, только когда они шире окна. Иначе прокрутка в две стороны
+            // при каждом изменении ширины панели сдвигала листы и оставляла над ними пустоту.
+            ScrollView(zoom > 1 ? [.vertical, .horizontal] : .vertical) {
                 LazyVStack(spacing: NotebookLayout.sheetGap * scale) {
                     ForEach(0..<sheets, id: \.self) { index in
                         macSheet(index, block: block, drawing: drawing, scale: scale)
@@ -355,10 +425,18 @@ struct NotebookView: View {
                     .foregroundStyle(theme.textPrimary)
                     .padding(.bottom, 40)
                 }
+                .scrollTargetLayout()
                 .padding(.horizontal, 24)
                 .padding(.top, 8)
                 .frame(minWidth: geometry.size.width)
+                // Ширина листов следует за шириной панели сразу, без анимации: иначе при
+                // перетаскивании разделителя листы догоняют её рывками.
+                .transaction { $0.animation = nil }
             }
+            // Когда меняется ширина панели или масштаб, на месте остаётся тот лист, что был сверху.
+            .scrollPosition(id: $topSheet, anchor: .top)
+            .defaultScrollAnchor(.top)
+            .scrollBounceBehavior(.basedOnSize)
             .onScrollGeometryChange(for: Int.self) { [sheets] scroll in
                 let middle = (scroll.contentOffset.y + scroll.containerSize.height / 2 - 8) / scale
                 return NotebookLayout.sheetIndex(at: middle, sheets: sheets)
@@ -373,7 +451,10 @@ struct NotebookView: View {
         let viewport = NotebookViewport(origin: rect.origin, scale: scale)
         let visible = items.filter { $0.frame.intersects(rect) }
         // Правят элемент на том листе, где его середина: так рамка не появляется дважды.
-        let owned = items.filter { NotebookLayout.sheetIndex(at: $0.frame.midY, sheets: sheets) == index }
+        let owned = items.filter { item in
+            if let dragged, dragged.id == item.id { return dragged.sheet == index }
+            return NotebookLayout.sheetIndex(at: item.frame.midY, sheets: sheets) == index
+        }
         return ZStack(alignment: .topLeading) {
             PaperSheet(pattern: pattern, tone: tone)
             NotebookItemsLayer(
@@ -414,12 +495,13 @@ struct NotebookView: View {
                     isDark: tone.isDark,
                     tool: tool,
                     selection: $selection,
-                    editingId: $editingId
+                    editingId: $editingId,
+                    onDrag: { id in dragged = id.map { ($0, index) } }
                 )
             }
         }
-        .dropDestination(for: URL.self) { urls, location in
-            dropImages(urls, at: viewport.toCanvas(location))
+        .dropDestination(for: DroppedImage.self) { images, location in
+            dropImages(images, at: viewport.toCanvas(location))
         }
         .contextMenu {
             Button {
@@ -439,25 +521,6 @@ struct NotebookView: View {
         .accessibilityLabel("Лист \(index + 1)")
     }
 
-    /// Картинки, брошенные на лист из Finder, встают туда, куда их бросили.
-    private func dropImages(_ urls: [URL], at point: CGPoint) -> Bool {
-        var inserted = false
-        for url in urls {
-            guard let type = UTType(filenameExtension: url.pathExtension), type.conforms(to: .image),
-                  let data = try? Data(contentsOf: url),
-                  let item = model.addNotebookImage(data: data, fileExtension: url.pathExtension, onSheet: visibleSheet)
-            else { continue }
-            let frame = CGRect(x: point.x - item.width / 2, y: point.y - item.height / 2, width: item.width, height: item.height)
-            model.updateNotebookItem(item.id, recordsUndo: false) { $0.frame = frame }
-            selection = item.id
-            inserted = true
-        }
-        if inserted {
-            LumenSounds.play(.create)
-            tool = .select
-        }
-        return inserted
-    }
     #endif
 }
 
@@ -476,3 +539,36 @@ final class ParsedDrawing {
         return drawing
     }
 }
+
+#if os(macOS)
+/// ⌘V вставляет картинку из буфера обмена прямо на лист. Если курсор стоит в тексте
+/// (название, текстовый блок), ⌘V вставляет текст как обычно.
+@MainActor
+final class NotebookPasteKey {
+    private var monitor: Any?
+    private var paste: () -> Bool = { false }
+
+    func start(_ paste: @escaping () -> Bool) {
+        self.paste = paste
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                .subtracting([.capsLock, .numericPad, .function])
+            guard flags == .command, event.charactersIgnoringModifiers?.lowercased() == "v" else { return event }
+            let handled = MainActor.assumeIsolated { () -> Bool in
+                guard let self else { return false }
+                if NSApp.keyWindow?.firstResponder is NSText { return false }
+                guard NotebookPasteboard.hasImage else { return false }
+                return self.paste()
+            }
+            return handled ? nil : event
+        }
+    }
+
+    func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        paste = { false }
+    }
+}
+#endif
