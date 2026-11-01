@@ -3,6 +3,7 @@ import LumenCore
 import LumenStorage
 import LumenThemes
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Пункт сайдбара и одновременно то, что показано в основной области.
 public enum SidebarItem: Hashable, Codable, Sendable {
@@ -30,6 +31,9 @@ public struct RootView: View {
         storageKey: ProcessInfo.processInfo.arguments.contains("-uiTesting") ? nil : "workspace.v1"
     )
     @State private var isSearchPresented = false
+    /// К какому краю сейчас держат вкладку, и ширина области панелей для расчёта краёв.
+    @State private var tabDropSide: TabDropSide?
+    @State private var panesWidth: CGFloat = 0
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -228,6 +232,17 @@ public struct RootView: View {
             panes
                 // Своя вкладка у каждого набора панелей: при переключении экраны создаются заново.
                 .id(workspace.selectedTabId)
+                // Вкладку можно бросить к левому или правому краю: она откроется рядом.
+                // Подсветка только пока вкладку держат: после броска или отмены она гаснет.
+                .overlay { TabDropHighlight(side: workspace.draggingTabId == nil ? nil : tabDropSide) }
+                .onChange(of: workspace.draggingTabId) { _, id in
+                    if id == nil { tabDropSide = nil }
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { panesWidth = $0 }
+                .onDrop(
+                    of: [.lumenTab],
+                    delegate: TabEdgeDropDelegate(workspace: workspace, width: panesWidth, side: $tabDropSide)
+                )
         }
         .background { tabShortcuts }
     }

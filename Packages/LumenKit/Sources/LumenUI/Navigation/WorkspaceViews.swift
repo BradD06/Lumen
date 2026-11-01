@@ -184,12 +184,16 @@ struct WorkspaceTabStrip: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("tab-\(number)")
-        .draggable(tab.id.uuidString) {
-            WorkspaceItemLabel(database: database, item: tab.panes[0].current)
+        .onDrag {
+            workspace.draggingTabId = tab.id
+            return TabDrag.itemProvider(for: tab.id)
+        } preview: {
+            WorkspaceItemLabel(database: database, item: tab.current)
                 .padding(8)
         }
-        .dropDestination(for: String.self) { items, _ in
-            guard let raw = items.first, let id = UUID(uuidString: raw) else { return false }
+        .onDrop(of: [.lumenTab], isTargeted: nil) { _ in
+            guard let id = workspace.draggingTabId else { return false }
+            workspace.draggingTabId = nil
             withAnimation(.snappy) { workspace.moveTab(id, before: tab.id) }
             return true
         }
@@ -322,4 +326,108 @@ struct WorkspaceActions: Sendable {
 
 extension EnvironmentValues {
     @Entry var workspaceActions: WorkspaceActions? = nil
+}
+
+// MARK: - Перетаскивание вкладок
+
+extension UTType {
+    /// Вкладка Lumen: свой тип, чтобы текстовые поля не вставляли её как текст.
+    static let lumenTab = UTType(exportedAs: "app.lumen.tab")
+}
+
+enum TabDrag {
+    static func itemProvider(for id: UUID) -> NSItemProvider {
+        let provider = NSItemProvider()
+        let data = Data(id.uuidString.utf8)
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.lumenTab.identifier, visibility: .ownProcess) { completion in
+            completion(data, nil)
+            return nil
+        }
+        return provider
+    }
+}
+
+/// Края экрана, куда можно бросить вкладку: левая или правая треть открывает её рядом.
+struct TabEdgeDropDelegate: DropDelegate {
+    let workspace: Workspace
+    let width: CGFloat
+    @Binding var side: TabDropSide?
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.lumenTab]) && workspace.draggingTabId != nil
+    }
+
+    func dropEntered(info: DropInfo) {
+        update(info)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        update(info)
+        return DropProposal(operation: side == nil ? .forbidden : .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        side = nil
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        defer { side = nil }
+        guard let target = TabDropSide(x: info.location.x, width: width), let id = workspace.draggingTabId else {
+            return false
+        }
+        workspace.draggingTabId = nil
+        withAnimation(.snappy) { workspace.dropTab(id, toTrailing: target == .trailing) }
+        return true
+    }
+
+    private func update(_ info: DropInfo) {
+        let new = TabDropSide(x: info.location.x, width: width)
+        if new != side {
+            withAnimation(.easeOut(duration: 0.15)) { side = new }
+        }
+    }
+}
+
+enum TabDropSide: Equatable {
+    case leading, trailing
+
+    /// Левая половина ставит вкладку слева, правая справа: так зона броска большая.
+    init?(x: CGFloat, width: CGFloat) {
+        guard width > 0, x >= 0, x <= width else { return nil }
+        self = x < width / 2 ? .leading : .trailing
+    }
+}
+
+/// Подсветка половины экрана, куда встанет вкладка, пока её держат у края.
+struct TabDropHighlight: View {
+    let side: TabDropSide?
+
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        GeometryReader { geometry in
+            if let side {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(theme.accent.opacity(0.16))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14)
+                            .strokeBorder(theme.accent.opacity(0.7), style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+                    }
+                    .overlay {
+                        Label(side == .leading ? "Открыть слева" : "Открыть справа", systemImage: "rectangle.split.2x1")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(theme.textPrimary)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                    }
+                    .frame(width: geometry.size.width / 2 - 12)
+                    .frame(maxHeight: .infinity)
+                    .padding(6)
+                    .frame(maxWidth: .infinity, alignment: side == .leading ? .leading : .trailing)
+                    .transition(.opacity)
+            }
+        }
+        .allowsHitTesting(false)
+    }
 }

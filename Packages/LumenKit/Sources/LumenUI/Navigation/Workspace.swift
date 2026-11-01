@@ -88,6 +88,9 @@ final class Workspace {
     private(set) var tabs: [WorkspaceTab]
     private(set) var selectedTabId: UUID
 
+    /// Какую вкладку сейчас тянут мышью или пальцем: её ловят края экрана и другие вкладки.
+    /// Наблюдаемое: пока вкладку не тянут, подсветка краёв не показывается.
+    var draggingTabId: UUID?
     @ObservationIgnored private let storageKey: String?
     @ObservationIgnored private let defaults: UserDefaults
 
@@ -258,6 +261,53 @@ final class Workspace {
         guard tabs[index].isSplit, tabs[index].panes.indices.contains(pane) else { return }
         tabs[index].panes.remove(at: pane)
         tabs[index].focusedPane = 0
+    }
+
+    /// Вкладку перетащили к краю: она встаёт рядом с открытой вкладкой, слева или справа.
+    /// Перетащенная вкладка при этом исчезает из полоски (если в ней были две панели,
+    /// уходит только активная). Если тянут саму открытую вкладку, она встаёт рядом с соседней.
+    func dropTab(_ id: UUID, toTrailing: Bool) {
+        defer { save() }
+        guard let draggedIndex = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let dragged = tabs[draggedIndex]
+        let moving = dragged.panes[dragged.focusedPane]
+        let side = toTrailing ? 1 : 0
+
+        var targetId = selectedTabId
+        if id == selectedTabId {
+            if dragged.isSplit {
+                // Своя вкладка уже разделена: активная панель просто переезжает на нужную сторону.
+                if dragged.focusedPane != side {
+                    tabs[draggedIndex].panes.swapAt(0, 1)
+                    tabs[draggedIndex].focusedPane = side
+                }
+                return
+            }
+            guard tabs.count > 1 else { return }
+            targetId = tabs[draggedIndex > 0 ? draggedIndex - 1 : draggedIndex + 1].id
+        }
+        guard let targetIndex = tabs.firstIndex(where: { $0.id == targetId }) else { return }
+
+        var target = tabs[targetIndex]
+        // В разделённой вкладке остаётся панель с противоположной стороны, на её место встаёт новая.
+        let kept = target.isSplit ? target.panes[1 - side] : target.panes[target.focusedPane]
+        if kept.current == moving.current && moving.current.isEditable {
+            // Одна и та же страница в двух панелях перетирала бы правки: оставляем одну.
+            target.panes = [kept]
+            target.focusedPane = 0
+        } else {
+            target.panes = toTrailing ? [kept, moving] : [moving, kept]
+            target.focusedPane = side
+        }
+        tabs[targetIndex] = target
+
+        if dragged.isSplit {
+            tabs[draggedIndex].panes.remove(at: dragged.focusedPane)
+            tabs[draggedIndex].focusedPane = 0
+        } else {
+            tabs.removeAll { $0.id == id }
+        }
+        selectedTabId = target.id
     }
 
     /// Меняет панели местами.
