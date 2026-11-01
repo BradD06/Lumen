@@ -48,6 +48,9 @@ final class ReaderModel {
     private(set) var notes: PageEditorModel?
     /// Страница заметок к этой книге: к ней панель возвращается одной кнопкой. `nil`, пока её не завели.
     private(set) var bookNotesPageId: UUID?
+    /// Страница, открытая рядом с книгой во второй половине разделённого экрана (слева или справа).
+    /// Пока она есть, выписки и ссылки на места идут в неё, а не в заметки в панели читалки.
+    var besidePageId: UUID?
     var documentMode: DocumentMode = .text {
         didSet {
             guard documentMode != oldValue else { return }
@@ -476,13 +479,25 @@ final class ReaderModel {
         }
     }
 
+    /// Куда класть выписки: в заметку, открытую рядом с книгой в разделённом экране, а если
+    /// её нет (или там рукописная тетрадь, куда текст не вставить), в заметку в панели читалки.
+    /// Заметка рядом берётся из её же открытого редактора, чтобы выписка сразу появилась на экране.
+    func excerptTarget() async -> PageEditorModel? {
+        if let besidePageId,
+           let beside = OpenPageEditors.shared.model(for: besidePageId),
+           beside.isLoaded, !beside.isNotebook {
+            return beside
+        }
+        return await ensureNotes()
+    }
+
     /// Ссылка на место, где сейчас читают, в заметку рядом. Без выделения текста.
     func addPlaceLink() async {
-        guard let reference = currentPlace, let notes = await ensureNotes() else { return }
+        guard let reference = currentPlace, let notes = await excerptTarget() else { return }
         notes.appendPlaceLink(reference)
         Task { await notes.flush() }
         LumenSounds.play(.create)
-        if showsBookNotes {
+        if notes.pageId == bookNotesPageId {
             showToast("Ссылка на место добавлена в заметки")
         } else {
             let title = notes.title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -765,14 +780,14 @@ final class ReaderModel {
 
     /// Выписка из уже сохранённого выделения. Если заметок к книге ещё нет, они заводятся.
     func addExcerpt(_ highlight: Highlight) async {
-        guard let notes = await ensureNotes() else { return }
+        guard let notes = await excerptTarget() else { return }
         notes.appendExcerpt(
             text: highlight.text,
             reference: ExcerptReference(sourceId: sourceId, highlightId: highlight.id, label: highlight.label)
         )
         Task { await notes.flush() }
         LumenSounds.play(.create)
-        if showsBookNotes {
+        if notes.pageId == bookNotesPageId {
             showToast("Выписка добавлена в заметки")
         } else {
             let title = notes.title.trimmingCharacters(in: .whitespacesAndNewlines)

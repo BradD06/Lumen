@@ -43,6 +43,40 @@ struct SidePageTests {
         #expect(reopened.showsBookNotes)
     }
 
+    @Test func excerptsGoToTheNoteOpenInTheOtherHalfOfTheScreen() async throws {
+        let source = try await db.addSource(
+            title: "Книга", format: .epub, file: "missing.epub", originalName: "Книга.epub"
+        )
+        let beside = try await db.createPage(title: "Рядом")
+        let editor = PageEditorModel(database: db, pageId: beside.id)
+        await editor.load()
+        OpenPageEditors.shared.register(editor)
+        defer { OpenPageEditors.shared.unregister(editor) }
+
+        let model = ReaderModel(database: db, sourceId: source.id, highlightId: nil)
+        await model.load()
+        model.besidePageId = beside.id
+        let highlight = Highlight(
+            sourceId: source.id, locator: SourceLocator(section: 0, progression: 0), text: "Цитата", label: "гл. 1"
+        )
+        await model.addExcerpt(highlight)
+        await editor.flush()
+
+        // Выписка сразу в открытом редакторе и в базе, а заметки к книге не заводятся.
+        #expect(editor.blocks.filter { $0.type == .excerpt }.map(\.text) == ["Цитата"])
+        let saved = try await db.blocks(of: beside.id).filter { $0.type == .excerpt }
+        #expect(saved.map(\.text) == ["Цитата"])
+        #expect(model.notes == nil)
+        #expect(try await db.bookNotesPage(for: source.id) == nil)
+
+        // Рядом закрыли заметку: выписки снова идут в заметки к книге.
+        model.besidePageId = nil
+        await model.addExcerpt(highlight)
+        await model.flush()
+        let notes = try #require(try await db.bookNotesPage(for: source.id))
+        #expect(try await db.blocks(of: notes.id).filter { $0.type == .excerpt }.count == 1)
+    }
+
     @Test func bookNotesAreCreatedOnlyWhenTheEditorOpens() async throws {
         let folder = try await db.createFolder(name: "Курс")
         let source = try await db.addSource(

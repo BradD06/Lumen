@@ -304,12 +304,21 @@ public struct RootView: View {
             detail(tab.panes[index].current, pane: index)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .environment(\.isActivePane, isActive)
+                .environment(\.besidePageId, besidePageId(of: index, in: tab))
                 // Щелчок в панели делает её активной. Без разделения жест выключен.
                 .simultaneousGesture(
                     TapGesture().onEnded { workspace.focus(pane: index) },
                     including: tab.isSplit ? .all : .subviews
                 )
         }
+    }
+
+    /// Страница в соседней панели, слева она или справа.
+    private func besidePageId(of index: Int, in tab: WorkspaceTab) -> UUID? {
+        guard tab.isSplit else { return nil }
+        let other = index == 0 ? 1 : 0
+        guard tab.panes.indices.contains(other), case .page(let id) = tab.panes[other].current else { return nil }
+        return id
     }
 
     /// Закрыть экран: на шаг назад, а если идти некуда, туда, куда вёл старый «закрыть».

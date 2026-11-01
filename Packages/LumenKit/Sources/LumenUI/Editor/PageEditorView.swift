@@ -178,7 +178,11 @@ struct PageEditorView: View {
                 .accessibilityHidden(!showsSubpages)
             }
         }
-        .onAppear { showsSubpages = remembersSubpages && !isEmbedded }
+        .onAppear {
+            showsSubpages = remembersSubpages && !isEmbedded
+            // Встроенный редактор держит читалка, она и так знает про него.
+            if !isEmbedded { OpenPageEditors.shared.register(model) }
+        }
         .task {
             await model.load()
             // В новой рукописной заметке сразу пишут на листе, клавиатура не нужна.
@@ -276,6 +280,7 @@ struct PageEditorView: View {
                 self.keyMonitor = nil
             }
             #endif
+            if !isEmbedded { OpenPageEditors.shared.unregister(model) }
             Task { await model.flush() }
         }
     }

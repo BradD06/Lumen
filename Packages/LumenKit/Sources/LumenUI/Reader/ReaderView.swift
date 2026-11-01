@@ -32,6 +32,7 @@ struct ReaderView: View {
     @AppStorage("reader.tocOpen") var showsToc = false
     @State private var isTocSheetPresented = false
     @Environment(\.isActivePane) private var isActivePane
+    @Environment(\.besidePageId) private var besidePageId
     @State var dragStartFraction: Double?
     /// Доля заметок, пока тянут ручку. В настройки она уходит, когда ручку отпустили:
     /// запись в UserDefaults на каждый сдвиг мыши заставляла перестраиваться весь экран.
@@ -138,6 +139,7 @@ struct ReaderView: View {
             await model.load()
         }
         .task { await model.observeHighlights() }
+        .onChange(of: besidePageId, initial: true) { _, id in model.besidePageId = id }
         .onChange(of: appearance) { _, appearance in
             model.web.setAppearance(appearance)
             model.pdf.setPageStyle(appearance.palette.pdfStyle)
