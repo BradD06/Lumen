@@ -20,6 +20,12 @@ extension PageEditorModel {
             return
         }
         if openPlaceInReader?(reference) == true { return }
+        // Книга уже открыта (например, во второй половине экрана): она просто прокручивается к месту.
+        if let reader = OpenReaders.shared.model(for: reference.sourceId) {
+            reader.go(to: locator)
+            openSourceRequest = SourceRequest(sourceId: reference.sourceId, highlightId: nil)
+            return
+        }
         // Другая книга откроется там, где остановились, поэтому место из ссылки сначала становится местом чтения.
         Task {
             await flush()

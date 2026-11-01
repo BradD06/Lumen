@@ -181,7 +181,7 @@ struct PageEditorView: View {
         .onAppear {
             showsSubpages = remembersSubpages && !isEmbedded
             // Встроенный редактор держит читалка, она и так знает про него.
-            if !isEmbedded { OpenPageEditors.shared.register(model) }
+            if !isEmbedded { OpenPageEditors.shared.register(model, id: model.pageId) }
         }
         .task {
             await model.load()
@@ -280,7 +280,7 @@ struct PageEditorView: View {
                 self.keyMonitor = nil
             }
             #endif
-            if !isEmbedded { OpenPageEditors.shared.unregister(model) }
+            if !isEmbedded { OpenPageEditors.shared.unregister(model, id: model.pageId) }
             Task { await model.flush() }
         }
     }

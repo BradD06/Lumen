@@ -147,6 +147,25 @@ final class Workspace {
         tabs[index].focusedPane = pane
     }
 
+    /// Ссылка из экрана в панели `pane`. В разделённом экране она открывается во второй
+    /// половине, а экран со ссылкой остаётся на месте. Если там уже открыта та же книга,
+    /// панель только становится активной и ответ `true`: книгу прокручивают, а не открывают заново.
+    @discardableResult
+    func openLink(_ item: SidebarItem, from pane: Int) -> Bool {
+        let tab = tabs[selectedIndex]
+        guard tab.isSplit, tab.panes.indices.contains(pane) else {
+            open(item, inPane: pane)
+            return false
+        }
+        let target = pane == 0 ? 1 : 0
+        if case .source(let id, _) = item, case .source(let openId, _) = tab.panes[target].current, openId == id {
+            focus(pane: target)
+            return true
+        }
+        open(item, inPane: target)
+        return false
+    }
+
     func goBack() {
         defer { save() }
         let index = selectedIndex

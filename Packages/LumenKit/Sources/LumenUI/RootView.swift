@@ -189,9 +189,9 @@ public struct RootView: View {
             PageScreen(
                 database: database,
                 pageId: id,
-                onOpenPage: { open(.page($0)) },
+                onOpenPage: { openLink(.page($0), from: pane) },
                 onClose: { workspace.remove { $0 == .page(id) } },
-                onOpenSource: { open(.source($0, highlight: $1)) }
+                onOpenSource: { openLink(.source($0, highlight: $1), from: pane) }
             )
             .id(id)
         case .source(let id, let highlight):
@@ -310,6 +310,16 @@ public struct RootView: View {
                     TapGesture().onEnded { workspace.focus(pane: index) },
                     including: tab.isSplit ? .all : .subviews
                 )
+        }
+    }
+
+    /// Ссылка из заметки. В разделённом экране она открывается во второй половине,
+    /// а заметка остаётся на месте, чтобы писать дальше. Без разделения в той же панели.
+    private func openLink(_ item: SidebarItem, from pane: Int) {
+        let alreadyOpen = workspace.openLink(item, from: pane)
+        // Эта книга уже открыта рядом: она прокручивается к выписке, а не открывается заново.
+        if alreadyOpen, case .source(let id, let highlight?) = item {
+            OpenReaders.shared.model(for: id)?.reveal(id: highlight)
         }
     }
 

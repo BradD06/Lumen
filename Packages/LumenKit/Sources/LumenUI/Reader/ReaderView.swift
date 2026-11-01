@@ -139,6 +139,7 @@ struct ReaderView: View {
             await model.load()
         }
         .task { await model.observeHighlights() }
+        .onAppear { OpenReaders.shared.register(model, id: model.sourceId) }
         .onChange(of: besidePageId, initial: true) { _, id in model.besidePageId = id }
         .onChange(of: appearance) { _, appearance in
             model.web.setAppearance(appearance)
@@ -148,6 +149,7 @@ struct ReaderView: View {
             if let id { model.reveal(id: id) }
         }
         .onDisappear {
+            OpenReaders.shared.unregister(model, id: model.sourceId)
             Task { await model.flush() }
         }
         .onChange(of: scenePhase) { _, phase in

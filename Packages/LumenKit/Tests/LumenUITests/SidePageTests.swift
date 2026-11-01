@@ -50,8 +50,8 @@ struct SidePageTests {
         let beside = try await db.createPage(title: "Рядом")
         let editor = PageEditorModel(database: db, pageId: beside.id)
         await editor.load()
-        OpenPageEditors.shared.register(editor)
-        defer { OpenPageEditors.shared.unregister(editor) }
+        OpenPageEditors.shared.register(editor, id: editor.pageId)
+        defer { OpenPageEditors.shared.unregister(editor, id: editor.pageId) }
 
         let model = ReaderModel(database: db, sourceId: source.id, highlightId: nil)
         await model.load()
