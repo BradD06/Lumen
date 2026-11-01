@@ -129,7 +129,7 @@ enum PagePDFRenderer {
                 }
                 text.append(newline(paragraph(indent: indent, hanging: 14, after: 8)))
             case .drawing:
-                for attachment in drawingAttachments(block) {
+                for attachment in drawingAttachments(block, attachments: attachments) {
                     text.append(NSAttributedString(attachment: attachment))
                     let style = paragraph(indent: indent, before: 4, after: 10)
                     style.alignment = .center
@@ -225,25 +225,75 @@ enum PagePDFRenderer {
 
     /// Рисунок от руки на белом листе: чернила в светлой теме. Область рисунка в заметке
     /// это одна картинка, рукописная заметка даёт по картинке на каждый лист.
-    private static func drawingAttachments(_ block: Block) -> [NSTextAttachment] {
-        guard block.drawing != nil else { return [] }
+    private static func drawingAttachments(_ block: Block, attachments: AttachmentStore) -> [NSTextAttachment] {
         let drawing = DrawingSupport.drawing(from: block.drawing)
-        guard !drawing.strokes.isEmpty else { return [] }
-        let rects: [CGRect]
         if block.content.sheetCount != nil {
-            rects = (0..<NotebookLayout.sheetCount(of: block.content)).map(NotebookLayout.sheetRect)
-        } else {
-            // Область шире листа PDF: рисунок берётся по его штрихам, а не по ширине окна.
-            let bounds = drawing.bounds
-            rects = [CGRect(x: 0, y: 0, width: max(bounds.maxX, 1), height: max(bounds.maxY, 1)).insetBy(dx: -8, dy: -8)]
+            // Лист тетради попадает в PDF, если на нём пишут или под ним страница PDF. Пустые нет.
+            return (0..<NotebookLayout.sheetCount(of: block.content)).compactMap { index in
+                let rect = NotebookLayout.sheetRect(index)
+                let background = NotebookSheets.background(of: block.content, sheet: index)
+                let hasInk = drawing.strokes.contains { $0.renderBounds.intersects(rect) }
+                guard hasInk || background != nil else { return nil }
+                guard let image = sheetImage(drawing: drawing, rect: rect, background: background, attachments: attachments) else {
+                    return nil
+                }
+                return sheetAttachment(image, rect: rect)
+            }
         }
-        // Пустые листы тетради в PDF не попадают.
-        return rects.filter { rect in drawing.strokes.contains { $0.renderBounds.intersects(rect) } }.compactMap { rect in
-            guard let image = DrawingSupport.image(of: drawing, in: rect, scale: 2, isDark: false) else { return nil }
-            let scale = min(1, contentSize.width / rect.width, contentSize.height * 0.92 / rect.height)
-            let size = CGSize(width: (rect.width * scale).rounded(), height: (rect.height * scale).rounded())
-            return attachment(image, size: size)
+        guard !drawing.strokes.isEmpty else { return [] }
+        // Область шире листа PDF: рисунок берётся по его штрихам, а не по ширине окна.
+        let bounds = drawing.bounds
+        let rect = CGRect(x: 0, y: 0, width: max(bounds.maxX, 1), height: max(bounds.maxY, 1)).insetBy(dx: -8, dy: -8)
+        guard let image = DrawingSupport.image(of: drawing, in: rect, scale: 2, isDark: false) else { return [] }
+        return [sheetAttachment(image, rect: rect)]
+    }
+
+    private static func sheetAttachment(_ image: PlatformImage, rect: CGRect) -> NSTextAttachment {
+        let scale = min(1, contentSize.width / rect.width, contentSize.height * 0.92 / rect.height)
+        let size = CGSize(width: (rect.width * scale).rounded(), height: (rect.height * scale).rounded())
+        return attachment(image, size: size)
+    }
+
+    /// Лист тетради одной картинкой: страница PDF (если есть) и чернила поверх неё.
+    private static func sheetImage(
+        drawing: PKDrawing,
+        rect: CGRect,
+        background: SheetBackground?,
+        attachments: AttachmentStore
+    ) -> PlatformImage? {
+        let ink = drawing.strokes.isEmpty ? nil : DrawingSupport.image(of: drawing, in: rect, scale: 2, isDark: false)
+        guard let background else { return ink }
+        let pageSize = SheetPDFImages.pageSize(background, attachments: attachments)
+        let bounds = CGRect(origin: .zero, size: rect.size)
+        let frame = pageSize.map { NotebookSheets.fit(pageSize: $0, in: bounds) } ?? bounds
+        guard let page = SheetPDFImages.image(background, attachments: attachments, pixelWidth: frame.width * 2, dark: false) else {
+            return ink
         }
+        #if canImport(UIKit)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 2
+        return UIGraphicsImageRenderer(size: rect.size, format: format).image { _ in
+            UIColor.white.setFill()
+            UIRectFill(bounds)
+            UIImage(cgImage: page).draw(in: frame)
+            ink?.draw(in: bounds)
+        }
+        #else
+        return NSImage(size: rect.size, flipped: true) { _ in
+            NSColor.white.setFill()
+            bounds.fill()
+            // Картинка страницы рисуется в перевёрнутых координатах: иначе встала бы вверх ногами.
+            if let context = NSGraphicsContext.current?.cgContext {
+                context.saveGState()
+                context.translateBy(x: frame.minX, y: frame.maxY)
+                context.scaleBy(x: 1, y: -1)
+                context.draw(page, in: CGRect(origin: .zero, size: frame.size))
+                context.restoreGState()
+            }
+            ink?.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            return true
+        }
+        #endif
     }
 
     /// Тонкая линия разделителя во всю ширину текста.

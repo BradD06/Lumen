@@ -15,6 +15,10 @@ struct PencilCanvas: UIViewRepresentable {
         var sheets: Int
         var pattern: PaperPattern
         var tone: PaperTone
+        /// Страницы PDF под листами, по номеру листа.
+        var backgrounds: [SheetBackground?] = []
+        /// Папка вложений, где лежат эти PDF.
+        var attachments: URL?
     }
 
     var data: Data?
@@ -228,6 +232,8 @@ final class NotebookCanvasView: PKCanvasView {
         var lines = CAShapeLayer()
         var margin = CAShapeLayer()
         var dots = CAShapeLayer()
+        /// Страница PDF под листом.
+        var pdf = CALayer()
     }
 
     private let paperView = UIView()
@@ -343,6 +349,9 @@ final class NotebookCanvasView: PKCanvasView {
         }
         while sheets.count < paper.sheets {
             let layers = SheetLayers()
+            layers.pdf.contentsGravity = .resize
+            layers.pdf.masksToBounds = true
+            layers.sheet.addSublayer(layers.pdf)
             for shape in [layers.lines, layers.margin, layers.dots] {
                 shape.lineWidth = PaperGeometry.lineWidth
                 layers.sheet.addSublayer(shape)
@@ -366,13 +375,32 @@ final class NotebookCanvasView: PKCanvasView {
         let shadow = UIBezierPath(roundedRect: bounds, cornerRadius: 6).cgPath
         let displayScale = max(traitCollection.displayScale, 1)
 
+        let store = paper.attachments.map(AttachmentStore.init(folder:))
         for (index, layers) in sheets.enumerated() {
             layers.sheet.frame = NotebookLayout.sheetRect(index).applying(transform)
             layers.sheet.backgroundColor = colors.paper
             layers.sheet.shadowPath = shadow
+            // Лист со страницей PDF: страница целиком по центру, линовки нет.
+            let background = paper.backgrounds.indices.contains(index) ? paper.backgrounds[index] : nil
+            if let background, let store {
+                let pageSize = SheetPDFImages.pageSize(background, attachments: store)
+                let frame = pageSize.map { NotebookSheets.fit(pageSize: $0, in: bounds) } ?? bounds
+                layers.pdf.frame = frame
+                layers.pdf.contents = SheetPDFImages.image(
+                    background,
+                    attachments: store,
+                    pixelWidth: frame.width * displayScale,
+                    dark: paper.tone.isDark
+                )
+                layers.pdf.isHidden = false
+            } else {
+                layers.pdf.contents = nil
+                layers.pdf.isHidden = true
+            }
             for shape in [layers.lines, layers.margin, layers.dots] {
                 shape.frame = bounds
                 shape.contentsScale = displayScale
+                shape.isHidden = background != nil
             }
             layers.lines.path = lines
             layers.lines.strokeColor = colors.line

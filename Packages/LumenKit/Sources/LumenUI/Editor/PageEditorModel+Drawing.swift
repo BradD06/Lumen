@@ -1,5 +1,6 @@
 import Foundation
 import LumenCore
+import PDFKit
 import PencilKit
 #if canImport(UIKit)
 import UIKit
@@ -86,17 +87,34 @@ extension PageEditorModel {
 
     /// Чистый лист в конец тетради или после листа `index`.
     func addNotebookSheet(after index: Int? = nil) {
-        guard let block = notebookBlock else { return }
+        insertNotebookSheets([nil], after: index)
+    }
+
+    /// Листы после листа `index` (или в конец): чистые (`nil`) или со страницами PDF.
+    /// Всё, что ниже, опускается вместе со своими листами. Возвращает номер первого нового листа.
+    @discardableResult
+    func insertNotebookSheets(_ backgrounds: [SheetBackground?], after index: Int?) -> Int? {
+        guard let block = notebookBlock, !backgrounds.isEmpty else { return nil }
         let count = NotebookLayout.sheetCount(of: block.content)
-        guard count < NotebookLayout.maxSheets else { return }
+        let added = min(backgrounds.count, NotebookLayout.maxSheets - count)
+        guard added > 0 else { return nil }
+        let pages = Array(backgrounds.prefix(added))
+        let after = index.flatMap { $0 < count - 1 ? max($0, -1) : nil }
         recordUndo()
         update(block.id) {
-            $0.content.sheetCount = count + 1
-            if let index, index < count - 1 {
-                let drawing = NotebookEditing.insertingSheet(after: index, in: DrawingSupport.drawing(from: $0.drawing))
+            $0.content.sheetCount = count + added
+            $0.content.sheetBackgrounds = NotebookSheets.inserting(
+                pages, after: after, into: $0.content.sheetBackgrounds, sheetCount: count
+            )
+            if let after {
+                let drawing = NotebookEditing.insertingSheet(after: after, count: added, in: DrawingSupport.drawing(from: $0.drawing))
                 $0.drawing = DrawingSupport.data(of: drawing)
+                if let items = $0.content.items {
+                    $0.content.items = NotebookEditing.insertingSheet(after: after, count: added, in: items)
+                }
             }
         }
+        return (after ?? count - 1) + 1
     }
 
     /// Убирает лист вместе с тем, что на нём написано. Последний лист не удаляется.
@@ -109,7 +127,56 @@ extension PageEditorModel {
             $0.content.sheetCount = count - 1
             let drawing = NotebookEditing.removingSheet(index, from: DrawingSupport.drawing(from: $0.drawing))
             $0.drawing = DrawingSupport.data(of: drawing)
+            if let items = $0.content.items {
+                let rest = NotebookEditing.removingSheet(index, from: items)
+                $0.content.items = rest.isEmpty ? nil : rest
+            }
+            $0.content.sheetBackgrounds = NotebookSheets.removing(index, from: $0.content.sheetBackgrounds)
         }
+    }
+
+    /// Страницы PDF листами тетради после листа `index` (или в конец). Выбранные страницы
+    /// сохраняются во вложения отдельным PDF: тетрадь не зависит от исходного файла или книги.
+    /// Пустая тетрадь (один чистый лист) просто заменяется страницами. Возвращает первый новый лист.
+    @discardableResult
+    func insertPDFSheets(from document: PDFDocument, pages: ClosedRange<Int>, after index: Int?) -> Int? {
+        guard let block = notebookBlock else { return nil }
+        let count = NotebookLayout.sheetCount(of: block.content)
+        let isBlank = NotebookSheets.isBlank(block.content, hasInk: block.drawing != nil)
+        let room = NotebookLayout.maxSheets - (isBlank ? 0 : count)
+        let wanted = pages.clamped(to: 0...max(document.pageCount - 1, 0))
+        guard document.pageCount > 0, room > 0 else { return nil }
+        let chosen = Array(wanted.prefix(room))
+        if chosen.count < wanted.count {
+            NoticeCenter.shared.show("Вставлено \(chosen.count) страниц: в тетради не больше \(NotebookLayout.maxSheets) листов")
+        }
+        let copy = PDFDocument()
+        for pageIndex in chosen {
+            if let page = document.page(at: pageIndex)?.copy() as? PDFPage {
+                copy.insert(page, at: copy.pageCount)
+            }
+        }
+        guard copy.pageCount > 0, let data = copy.dataRepresentation() else {
+            NoticeCenter.shared.report("Не удалось вставить PDF", CocoaError(.fileReadCorruptFile))
+            return nil
+        }
+        let name: String
+        do {
+            name = try database.attachments.save(data, fileExtension: "pdf")
+        } catch {
+            NoticeCenter.shared.report("Не удалось вставить PDF", error)
+            return nil
+        }
+        let backgrounds: [SheetBackground?] = (0..<copy.pageCount).map { SheetBackground(attachment: name, page: $0) }
+        if isBlank {
+            recordUndo()
+            update(block.id) {
+                $0.content.sheetCount = backgrounds.count
+                $0.content.sheetBackgrounds = backgrounds
+            }
+            return 0
+        }
+        return insertNotebookSheets(backgrounds, after: index)
     }
 
     /// Рисунок и элементы тетради одной правкой: так правка лассо отменяется целиком.

@@ -55,6 +55,35 @@ struct NotebookTests {
         #expect(DrawingArea.updatedWidth(stored: 700, inkWidth: nil, visibleWidth: 800) == nil)
     }
 
+    @Test func sheetBackgroundsFollowTheirSheets() throws {
+        let page = SheetBackground(attachment: "a.pdf", page: 0)
+        let other = SheetBackground(attachment: "a.pdf", page: 1)
+        // Две страницы после первого из трёх листов: третий лист с PDF уезжает на пятое место.
+        let list = NotebookSheets.inserting([page, other], after: 0, into: [nil, nil, page], sheetCount: 3)
+        #expect(list == [nil, page, other, nil, page])
+        // В конец, когда список короче листов.
+        #expect(NotebookSheets.inserting([page], after: nil, into: nil, sheetCount: 2) == [nil, nil, page])
+        // Чистый лист без PDF в конец ничего не хранит.
+        #expect(NotebookSheets.inserting([nil], after: nil, into: nil, sheetCount: 2) == nil)
+        #expect(NotebookSheets.removing(1, from: [nil, page, other]) == [nil, other])
+        #expect(NotebookSheets.removing(1, from: [nil, page]) == nil)
+
+        let content = BlockContent(sheetCount: 2, sheetBackgrounds: [nil, other])
+        let decoded = try JSONDecoder().decode(BlockContent.self, from: JSONEncoder().encode(content))
+        #expect(decoded.sheetBackgrounds == [nil, other])
+        #expect(NotebookSheets.background(of: decoded, sheet: 1) == other)
+        #expect(NotebookSheets.background(of: decoded, sheet: 5) == nil)
+    }
+
+    @Test func pdfPageFitsTheSheetWithoutStretching() {
+        let sheet = CGRect(x: 0, y: 0, width: 768, height: 1086)
+        // Альбомная страница: во всю ширину, по центру по высоте.
+        let landscape = NotebookSheets.fit(pageSize: CGSize(width: 842, height: 595), in: sheet)
+        #expect(abs(landscape.width - 768) < 0.01)
+        #expect(abs(landscape.midY - sheet.midY) < 0.01)
+        #expect(abs(landscape.width / landscape.height - 842.0 / 595.0) < 0.001)
+    }
+
     @Test func sheetsAreStackedWithGaps() {
         let stride = NotebookLayout.sheetHeight + NotebookLayout.sheetGap
         #expect(NotebookLayout.sheetRect(0).minY == 0)

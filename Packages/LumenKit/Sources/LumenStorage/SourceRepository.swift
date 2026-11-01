@@ -48,6 +48,16 @@ extension AppDatabase {
         }
     }
 
+    /// Книги одного формата из библиотеки (не из корзины), по названию.
+    public func sources(format: SourceFormat) async throws -> [Source] {
+        try await reader.read { db in
+            try Source
+                .filter(Column("format") == format.rawValue && Column("deletedAt") == nil)
+                .order(Column("title"))
+                .fetchAll(db)
+        }
+    }
+
     public func renameSource(_ id: UUID, title: String) async throws {
         try await writer.write { db in
             try Self.updateSource(db, id) { $0.title = title }

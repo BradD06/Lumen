@@ -241,7 +241,8 @@ struct NotebookItemsModelTests {
         model.removeNotebookItem(item.id)
         #expect(model.notebookItems.map(\.id) == [copy.id])
 
-        try await Task.sleep(for: .milliseconds(900))
+        // Сохранение дожидаемся явно: на загруженной машине CI таймер автосохранения не успевал.
+        await model.flush()
         let saved = try #require(try await db.blocks(of: page.id).first)
         #expect(saved.content.items?.map(\.text) == ["Вопрос"])
     }

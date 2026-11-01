@@ -1,5 +1,6 @@
 import LumenCore
 import LumenThemes
+import PDFKit
 import PencilKit
 import PhotosUI
 import SwiftUI
@@ -28,6 +29,11 @@ struct NotebookView: View {
     @State private var isPickingPhoto = false
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var isImportingImage = false
+    @State private var isImportingPDF = false
+    /// PDF, из которого сейчас выбирают страницы для листов.
+    @State private var pdfImport: PDFImportRequest?
+    /// PDF-книги из библиотеки: их страницы тоже можно положить на листы.
+    @State private var libraryPDFs: [Source] = []
     #if os(iOS)
     /// Где холст на экране: по нему слой правки ставит рамки поверх элементов.
     @State private var viewport = NotebookViewport()
@@ -248,6 +254,8 @@ struct NotebookView: View {
             } label: {
                 Label("Из буфера обмена", systemImage: "doc.on.clipboard")
             }
+            Divider()
+            pdfMenuItems
         } label: {
             Label("Картинка", systemImage: "photo.badge.plus")
         }
@@ -288,6 +296,85 @@ struct NotebookView: View {
         }
         .padding(.horizontal, isCompact ? 14 : 24)
         .padding(.vertical, 12)
+        // Свой выбор файла у PDF: два выбора файла на одном экране SwiftUI не различает.
+        .fileImporter(isPresented: $isImportingPDF, allowedContentTypes: [.pdf]) { result in
+            guard case .success(let url) = result else { return }
+            let isScoped = url.startAccessingSecurityScopedResource()
+            defer { if isScoped { url.stopAccessingSecurityScopedResource() } }
+            // Файл читается сразу: после выбора доступ к нему может закрыться.
+            if let data = try? Data(contentsOf: url), let document = PDFDocument(data: data) {
+                openPDF(document, title: url.deletingPathExtension().lastPathComponent)
+            } else {
+                NoticeCenter.shared.show("Не удалось открыть PDF")
+            }
+        }
+        .sheet(item: $pdfImport) { request in
+            PDFImportSheet(request: request, room: pdfRoom) { pages in
+                pdfImport = nil
+                insertPDF(request.document, pages: pages)
+            } onCancel: {
+                pdfImport = nil
+            }
+        }
+        .task(id: model.isLoaded) {
+            libraryPDFs = (try? await model.database.sources(format: .pdf)) ?? []
+        }
+    }
+
+    // MARK: Страницы PDF
+
+    /// Вставить страницы PDF с диска или из PDF-книги библиотеки.
+    @ViewBuilder
+    private var pdfMenuItems: some View {
+        Button {
+            isImportingPDF = true
+        } label: {
+            Label("Страницы из PDF…", systemImage: "doc.richtext")
+        }
+        if !libraryPDFs.isEmpty {
+            Menu {
+                ForEach(libraryPDFs) { source in
+                    Button(source.displayTitle) {
+                        if let document = PDFDocument(url: model.database.attachments.url(for: source.file)) {
+                            openPDF(document, title: source.displayTitle)
+                        } else {
+                            NoticeCenter.shared.show("Не удалось открыть книгу")
+                        }
+                    }
+                }
+            } label: {
+                Label("Страницы из книги", systemImage: "books.vertical")
+            }
+        }
+    }
+
+    /// Сколько листов ещё влезает в тетрадь. Пустая тетрадь целиком отдаётся под PDF.
+    private var pdfRoom: Int {
+        guard let block else { return NotebookLayout.maxSheets }
+        let isBlank = NotebookSheets.isBlank(block.content, hasInk: block.drawing != nil)
+        return NotebookLayout.maxSheets - (isBlank ? 0 : sheets)
+    }
+
+    private func openPDF(_ document: PDFDocument, title: String) {
+        guard document.pageCount > 0 else {
+            NoticeCenter.shared.show("В этом PDF нет страниц")
+            return
+        }
+        if document.isLocked {
+            NoticeCenter.shared.show("PDF защищён паролем, его страницы не вставить")
+            return
+        }
+        pdfImport = PDFImportRequest(document: document, title: title)
+    }
+
+    private func insertPDF(_ document: PDFDocument, pages: ClosedRange<Int>) {
+        guard let first = model.insertPDFSheets(from: document, pages: pages, after: visibleSheet) else { return }
+        LumenSounds.play(.create)
+        tool = .draw
+        #if os(macOS)
+        topSheet = first
+        #endif
+        _ = first
     }
 
     @ViewBuilder
@@ -326,6 +413,8 @@ struct NotebookView: View {
                     Label("Удалить лист \(min(visibleSheet, sheets - 1) + 1)", systemImage: "trash")
                 }
             }
+            Divider()
+            pdfMenuItems
             Divider()
             Picker("Линовка", selection: Binding(get: { pattern }, set: { model.setPaper($0) })) {
                 ForEach(PaperPattern.allCases) { pattern in
@@ -366,7 +455,13 @@ struct NotebookView: View {
                     isDrawingEnabled: tool == .draw,
                     showsToolPicker: tool == .draw,
                     isDark: tone.isDark,
-                    notebook: PencilCanvas.Notebook(sheets: sheets, pattern: pattern, tone: tone),
+                    notebook: PencilCanvas.Notebook(
+                        sheets: sheets,
+                        pattern: pattern,
+                        tone: tone,
+                        backgrounds: block.content.sheetBackgrounds ?? [],
+                        attachments: model.database.attachments.folder
+                    ),
                     onChange: { model.setDrawing(block.id, data: $0) },
                     onVisibleSheet: { visibleSheet = $0 },
                     items: PencilCanvas.NotebookItemsContent(
@@ -491,8 +586,13 @@ struct NotebookView: View {
             if let dragged, dragged.id == item.id { return dragged.sheet == index }
             return NotebookLayout.sheetIndex(at: item.frame.midY, sheets: sheets) == index
         }
+        let background = NotebookSheets.background(of: block.content, sheet: index)
         return ZStack(alignment: .topLeading) {
-            PaperSheet(pattern: pattern, tone: tone)
+            // Под страницей PDF бумага чистая: линовка не лезет на поля страницы.
+            PaperSheet(pattern: background == nil ? pattern : .blank, tone: tone)
+            if let background {
+                SheetPDFPage(background: background, attachments: model.database.attachments, dark: tone.isDark)
+            }
             NotebookItemsLayer(
                 items: visible,
                 viewport: viewport,

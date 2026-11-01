@@ -106,10 +106,10 @@ enum NotebookEditing {
         return PKDrawing(strokes: strokes)
     }
 
-    /// Рисунок с чистым листом после листа `index`: штрихи ниже опускаются на один лист.
-    static func insertingSheet(after index: Int, in drawing: PKDrawing) -> PKDrawing {
+    /// Рисунок с чистыми листами (`count`) после листа `index`: штрихи ниже опускаются на столько же листов.
+    static func insertingSheet(after index: Int, count: Int = 1, in drawing: PKDrawing) -> PKDrawing {
         let boundary = NotebookLayout.sheetRect(index).maxY + NotebookLayout.sheetGap / 2
-        let drop = CGAffineTransform(translationX: 0, y: NotebookLayout.sheetStride)
+        let drop = CGAffineTransform(translationX: 0, y: NotebookLayout.sheetStride * CGFloat(count))
         return PKDrawing(strokes: drawing.strokes.map { stroke in
             var stroke = stroke
             if stroke.renderBounds.midY >= boundary {
@@ -117,6 +117,34 @@ enum NotebookEditing {
             }
             return stroke
         })
+    }
+
+    /// Тексты и картинки после вставки листов (`count`) после листа `index`: те, что ниже, опускаются.
+    static func insertingSheet(after index: Int, count: Int = 1, in items: [NotebookItem]) -> [NotebookItem] {
+        let boundary = NotebookLayout.sheetRect(index).maxY + NotebookLayout.sheetGap / 2
+        return items.map { item in
+            var item = item
+            if item.frame.midY >= boundary {
+                item.frame = item.frame.offsetBy(dx: 0, dy: NotebookLayout.sheetStride * CGFloat(count))
+            }
+            return item
+        }
+    }
+
+    /// Тексты и картинки без листа `index`: с него убираются, те, что ниже, поднимаются.
+    static func removingSheet(_ index: Int, from items: [NotebookItem]) -> [NotebookItem] {
+        let rect = NotebookLayout.sheetRect(index)
+        let top = rect.minY - NotebookLayout.sheetGap / 2
+        let bottom = rect.maxY + NotebookLayout.sheetGap / 2
+        return items.compactMap { item in
+            let middle = item.frame.midY
+            if middle >= top && middle < bottom { return nil }
+            var item = item
+            if middle >= bottom {
+                item.frame = item.frame.offsetBy(dx: 0, dy: -NotebookLayout.sheetStride)
+            }
+            return item
+        }
     }
 }
 
