@@ -30,6 +30,21 @@ struct AttachmentImage: View {
     @State private var image: PlatformImage?
     @State private var isMissing = false
 
+    /// Уже прочитанные картинки. Когда вид пересоздаётся (прокрутка, смена панели), картинка
+    /// показывается сразу, без мигания пустого места и индикатора загрузки.
+    private static let cache: NSCache<NSURL, PlatformImage> = {
+        let cache = NSCache<NSURL, PlatformImage>()
+        cache.totalCostLimit = 200 * 1024 * 1024
+        return cache
+    }()
+
+    init(name: String, attachments: AttachmentStore, contentMode: ContentMode = .fit) {
+        self.name = name
+        self.attachments = attachments
+        self.contentMode = contentMode
+        _image = State(initialValue: Self.cache.object(forKey: attachments.url(for: name) as NSURL))
+    }
+
     var body: some View {
         Group {
             if let image {
@@ -47,9 +62,17 @@ struct AttachmentImage: View {
         }
         .task(id: name) {
             let url = attachments.url(for: name)
+            if let cached = Self.cache.object(forKey: url as NSURL) {
+                image = cached
+                isMissing = false
+                return
+            }
             let data = await Task.detached { try? Data(contentsOf: url) }.value
             image = data.flatMap(PlatformImage.init(data:))
             isMissing = image == nil
+            if let image, let data {
+                Self.cache.setObject(image, forKey: url as NSURL, cost: data.count)
+            }
         }
     }
 }

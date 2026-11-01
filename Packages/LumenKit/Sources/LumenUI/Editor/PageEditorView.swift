@@ -721,15 +721,18 @@ private struct EditorNavigationTitle: ViewModifier {
     let title: String
     let isEnabled: Bool
 
+    /// Заголовок ставит невидимый вид позади экрана, а не сам экран. Если бы экран попадал
+    /// в одну из двух веток `if`, то при переходе в другую половину разделённого окна SwiftUI
+    /// создавал бы его заново: сбрасывались бы инструмент тетради, выделение и прокрутка.
     func body(content: Content) -> some View {
-        if isEnabled {
-            content
-                .navigationTitle(title)
-                #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
-                #endif
-        } else {
-            content
+        content.background {
+            if isEnabled {
+                Color.clear
+                    .navigationTitle(title)
+                    #if os(iOS)
+                    .navigationBarTitleDisplayMode(.inline)
+                    #endif
+            }
         }
     }
 }

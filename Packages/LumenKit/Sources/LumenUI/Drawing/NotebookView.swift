@@ -38,6 +38,8 @@ struct NotebookView: View {
     /// правки владеет этот лист, даже если середина элемента ушла на соседний: иначе рамка
     /// переехала бы в другой лист посреди движения и жест оборвался бы.
     @State private var dragged: (id: UUID, sheet: Int)?
+    /// Лист у верхнего края окна: его место сохраняется, когда листы меняют размер.
+    @State private var topSheet: Int?
     /// Перехват ⌘V: картинка из буфера обмена встаёт на лист.
     @State private var pasteKey: NotebookPasteKey?
     #endif
@@ -402,7 +404,9 @@ struct NotebookView: View {
             let width = fitWidth * zoom
             let scale = width / NotebookLayout.sheetWidth
             let drawing = parsed.drawing(for: block.drawing)
-            ScrollView([.vertical, .horizontal]) {
+            // Вбок листы листаются, только когда они шире окна. Иначе прокрутка в две стороны
+            // при каждом изменении ширины панели сдвигала листы и оставляла над ними пустоту.
+            ScrollView(zoom > 1 ? [.vertical, .horizontal] : .vertical) {
                 LazyVStack(spacing: NotebookLayout.sheetGap * scale) {
                     ForEach(0..<sheets, id: \.self) { index in
                         macSheet(index, block: block, drawing: drawing, scale: scale)
@@ -421,10 +425,18 @@ struct NotebookView: View {
                     .foregroundStyle(theme.textPrimary)
                     .padding(.bottom, 40)
                 }
+                .scrollTargetLayout()
                 .padding(.horizontal, 24)
                 .padding(.top, 8)
                 .frame(minWidth: geometry.size.width)
+                // Ширина листов следует за шириной панели сразу, без анимации: иначе при
+                // перетаскивании разделителя листы догоняют её рывками.
+                .transaction { $0.animation = nil }
             }
+            // Когда меняется ширина панели или масштаб, на месте остаётся тот лист, что был сверху.
+            .scrollPosition(id: $topSheet, anchor: .top)
+            .defaultScrollAnchor(.top)
+            .scrollBounceBehavior(.basedOnSize)
             .onScrollGeometryChange(for: Int.self) { [sheets] scroll in
                 let middle = (scroll.contentOffset.y + scroll.containerSize.height / 2 - 8) / scale
                 return NotebookLayout.sheetIndex(at: middle, sheets: sheets)
