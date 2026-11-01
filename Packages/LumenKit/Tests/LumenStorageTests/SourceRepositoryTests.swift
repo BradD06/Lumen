@@ -37,15 +37,93 @@ struct SourceRepositoryTests {
         #expect(try await db.source(book.id)?.position == LibraryPoint(x: 10, y: 20))
     }
 
-    @Test func notesPageIsCreatedOnceAndHiddenFromLibrary() async throws {
-        let book = try await addBook()
+    @Test func notesPageIsCreatedOnceBesideTheBook() async throws {
+        let folder = try await db.createFolder(name: "Чтение")
+        let book = try await addBook(folderId: folder.id)
+        try await db.setPosition(.source(book.id), LibraryPoint(x: 200, y: 100))
+        #expect(try await db.bookNotesPage(for: book.id) == nil, "Пока заметку не открыли, её нет")
+
         let notes = try await db.notesPage(for: book.id)
         let again = try await db.notesPage(for: book.id)
-
         #expect(notes.id == again.id)
         #expect(notes.sourceId == book.id)
         #expect(notes.title == book.title)
-        #expect(try await library().pages.isEmpty, "Заметки к книге живут рядом с книгой, а не отдельной плиткой")
+        #expect(notes.folderId == folder.id, "Заметка лежит в той же папке, что и книга")
+        #expect(notes.position == LibraryPoint(x: 200 + LibraryLayout.cellWidth, y: 100), "и прямо рядом с ней")
+        #expect(try await db.bookNotesPage(for: book.id)?.id == notes.id)
+        #expect(try await library(folder.id).pages.map(\.id) == [notes.id])
+        #expect(try await library().folders.first?.itemCount == 2)
+    }
+
+    @Test func bookNotesWithoutFolderLieInTheLibraryRoot() async throws {
+        let book = try await addBook()
+        let notes = try await db.notesPage(for: book.id)
+        #expect(notes.folderId == nil)
+        #expect(try await library().pages.map(\.id) == [notes.id])
+    }
+
+    @Test func newPageBesideBookTakesTheNextFreeSpot() async throws {
+        let folder = try await db.createFolder(name: "Чтение")
+        let book = try await addBook(folderId: folder.id)
+        try await db.setPosition(.source(book.id), LibraryPoint(x: 200, y: 100))
+        let notes = try await db.notesPage(for: book.id)
+        let page = try await db.createPage(besideSource: book.id)
+
+        #expect(page.folderId == folder.id)
+        #expect(page.sourceId == nil)
+        #expect(page.position == LibraryPoint(x: 200, y: 100 + LibraryLayout.cellHeight), "Справа уже заметки, значит снизу")
+        #expect(page.position != notes.position)
+    }
+
+    @Test func restoredBookBringsItsNotesOutOfATrashedFolder() async throws {
+        let folder = try await db.createFolder(name: "Чтение")
+        let book = try await addBook(folderId: folder.id)
+        let notes = try await db.notesPage(for: book.id)
+
+        try await db.trashFolder(folder.id)
+        try await db.restoreSource(book.id)
+        #expect(try await db.source(book.id)?.folderId == nil)
+        let restored = try #require(try await db.page(notes.id))
+        #expect(!restored.isTrashed)
+        #expect(restored.folderId == nil, "Заметки поднимаются в корень вместе с книгой")
+    }
+
+    @Test func migrationMovesOldBookNotesBesideBooksAndDropsEmptyOnes() throws {
+        let queue = try DatabaseQueue(configuration: AppDatabase.configuration)
+        try AppDatabase.migrator.migrate(queue, upTo: "v8: databases")
+        let folder = UUID(), written = UUID(), untouched = UUID(), writtenNotes = UUID(), emptyNotes = UUID()
+        try queue.write { db in
+            let now = Date()
+            try db.execute(
+                sql: "INSERT INTO folder (id, name, createdAt, updatedAt) VALUES (?, 'Чтение', ?, ?)",
+                arguments: [folder, now, now]
+            )
+            for (id, x) in [(written, 200.0), (untouched, 600.0)] {
+                try db.execute(sql: """
+                    INSERT INTO source (id, title, format, file, originalName, folderId, canvasX, canvasY, createdAt, updatedAt)
+                    VALUES (?, 'Книга', 'epub', 'f.epub', 'f.epub', ?, ?, 100, ?, ?)
+                    """, arguments: [id, folder, x, now, now])
+            }
+            for (page, source, text) in [(writtenNotes, written, "Мысли о книге"), (emptyNotes, untouched, "")] {
+                try db.execute(sql: """
+                    INSERT INTO page (id, title, icon, sourceId, sortKey, createdAt, updatedAt)
+                    VALUES (?, 'Книга', '📖', ?, 'a', ?, ?)
+                    """, arguments: [page, source, now, now])
+                let content = String(decoding: try JSONEncoder().encode(BlockContent(text: text)), as: UTF8.self)
+                try db.execute(sql: """
+                    INSERT INTO block (id, pageId, type, content, sortKey, createdAt, updatedAt)
+                    VALUES (?, ?, 'paragraph', ?, 'a', ?, ?)
+                    """, arguments: [UUID(), page, content, now, now])
+            }
+        }
+
+        _ = try AppDatabase(queue)
+        try queue.read { db in
+            let moved = try #require(try Page.fetchOne(db, key: writtenNotes))
+            #expect(moved.folderId == folder)
+            #expect(moved.position == LibraryPoint(x: 200 + LibraryLayout.cellWidth, y: 100))
+            #expect(try Page.fetchOne(db, key: emptyNotes) == nil, "Пустая заметка, заведённая сама, удаляется")
+        }
     }
 
     @Test func placeLinkMovesReadingPositionButKeepsProgress() async throws {

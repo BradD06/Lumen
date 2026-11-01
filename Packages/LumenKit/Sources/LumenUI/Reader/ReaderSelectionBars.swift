@@ -148,7 +148,7 @@ struct HighlightBar: View {
             isCompact: isCompact,
             onColor: { color in model.setColor(color, of: highlight.id) },
             onExcerpt: {
-                model.addExcerpt(highlight)
+                Task { await model.addExcerpt(highlight) }
                 model.activeHighlightId = nil
             },
             onClose: { model.activeHighlightId = nil }

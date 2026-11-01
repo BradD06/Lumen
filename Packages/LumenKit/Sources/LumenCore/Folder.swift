@@ -128,6 +128,42 @@ public enum LibraryLayout {
         return result
     }
 
+    /// Свободное место рядом с предметом: сначала справа, потом снизу, слева и сверху,
+    /// потом всё дальше по кругу. Так заметка к книге ложится прямо возле книги.
+    /// `nil`, если в пределах `rings` шагов всё занято: тогда пусть место найдёт раскладка.
+    public static func spot(beside anchor: LibraryPoint, avoiding placed: [LibraryPoint], rings: Int = 4) -> LibraryPoint? {
+        let taken = placed + [anchor]
+        for ring in 1...max(rings, 1) {
+            var offsets: [(dx: Int, dy: Int)] = []
+            for dy in -ring...ring {
+                for dx in -ring...ring where max(abs(dx), abs(dy)) == ring {
+                    offsets.append((dx, dy))
+                }
+            }
+            // Ближние первыми, при равенстве справа, снизу, слева, сверху.
+            func side(_ offset: (dx: Int, dy: Int)) -> Int {
+                if offset.dx > 0 { return 0 }
+                if offset.dy > 0 { return 1 }
+                if offset.dx < 0 { return 2 }
+                return 3
+            }
+            offsets.sort { a, b in
+                let da = a.dx * a.dx + a.dy * a.dy
+                let db = b.dx * b.dx + b.dy * b.dy
+                return da != db ? da < db : side(a) < side(b)
+            }
+            for offset in offsets {
+                let candidate = LibraryPoint(
+                    x: anchor.x + Double(offset.dx) * cellWidth,
+                    y: anchor.y + Double(offset.dy) * cellHeight
+                )
+                guard candidate.x >= 0, candidate.y >= 0 else { continue }
+                if !taken.contains(where: { overlaps($0, candidate) }) { return candidate }
+            }
+        }
+        return nil
+    }
+
     /// Пересекаются ли плитки с такими левыми верхними углами.
     public static func overlaps(_ a: LibraryPoint, _ b: LibraryPoint) -> Bool {
         abs(a.x - b.x) < tileWidth && abs(a.y - b.y) < tileHeight

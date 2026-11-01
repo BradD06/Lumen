@@ -29,7 +29,7 @@ struct SidePageTests {
         let highlight = Highlight(
             sourceId: source.id, locator: SourceLocator(section: 0, progression: 0), text: "Цитата", label: "гл. 1"
         )
-        model.addExcerpt(highlight)
+        await model.addExcerpt(highlight)
         await model.flush()
         let excerpts = try await db.blocks(of: other.id).filter { $0.type == .excerpt }
         #expect(excerpts.map(\.text) == ["Цитата"])
@@ -41,6 +41,49 @@ struct SidePageTests {
 
         await reopened.openBookNotes()
         #expect(reopened.showsBookNotes)
+    }
+
+    @Test func bookNotesAreCreatedOnlyWhenTheEditorOpens() async throws {
+        let folder = try await db.createFolder(name: "Курс")
+        let source = try await db.addSource(
+            title: "Книга", format: .epub, file: "missing.epub", originalName: "Книга.epub",
+            folderId: folder.id, position: LibraryPoint(x: 200, y: 100)
+        )
+        let model = ReaderModel(database: db, sourceId: source.id, highlightId: nil)
+        await model.load()
+        #expect(model.notes == nil)
+        #expect(try await db.bookNotesPage(for: source.id) == nil, "Книгу открыли, но заметку ещё не начинали")
+
+        let notes = try #require(await model.ensureNotes())
+        let page = try #require(try await db.page(notes.pageId))
+        #expect(page.sourceId == source.id)
+        #expect(page.folderId == folder.id)
+        #expect(page.position == LibraryPoint(x: 200 + LibraryLayout.cellWidth, y: 100))
+        #expect(model.showsBookNotes)
+        #expect(await model.ensureNotes()?.pageId == notes.pageId, "Вторая заметка не заводится")
+
+        // В следующий раз книга сразу открывает уже заведённую заметку.
+        let reopened = ReaderModel(database: db, sourceId: source.id, highlightId: nil)
+        await reopened.load()
+        #expect(reopened.notes?.pageId == notes.pageId)
+    }
+
+    @Test func firstExcerptStartsTheBookNotes() async throws {
+        let source = try await db.addSource(
+            title: "Книга", format: .epub, file: "missing.epub", originalName: "Книга.epub"
+        )
+        let model = ReaderModel(database: db, sourceId: source.id, highlightId: nil)
+        await model.load()
+        let highlight = Highlight(
+            sourceId: source.id, locator: SourceLocator(section: 0, progression: 0), text: "Цитата", label: "гл. 1"
+        )
+        await model.addExcerpt(highlight)
+        await model.flush()
+
+        let page = try #require(try await db.bookNotesPage(for: source.id))
+        #expect(page.folderId == nil, "Книга лежит в корне, и заметка тоже")
+        let excerpts = try await db.blocks(of: page.id).filter { $0.type == .excerpt }
+        #expect(excerpts.map(\.text) == ["Цитата"])
     }
 
     @Test func newSidePageGoesIntoTheBooksFolder() async throws {

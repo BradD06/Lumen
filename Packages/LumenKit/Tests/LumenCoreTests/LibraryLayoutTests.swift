@@ -29,4 +29,26 @@ struct LibraryLayoutTests {
             }
         }
     }
+
+    @Test func spotBesideGoesRightThenBelow() {
+        let book = LibraryPoint(x: 200, y: 100)
+        let right = LibraryPoint(x: book.x + LibraryLayout.cellWidth, y: book.y)
+        #expect(LibraryLayout.spot(beside: book, avoiding: []) == right)
+
+        let below = LibraryPoint(x: book.x, y: book.y + LibraryLayout.cellHeight)
+        #expect(LibraryLayout.spot(beside: book, avoiding: [right]) == below)
+    }
+
+    @Test func spotBesideNeverLeavesTheCanvasOrOverlaps() throws {
+        let book = LibraryLayout.origin
+        let placed = [
+            LibraryPoint(x: book.x + LibraryLayout.cellWidth, y: book.y),
+            LibraryPoint(x: book.x, y: book.y + LibraryLayout.cellHeight),
+        ]
+        let spot = try #require(LibraryLayout.spot(beside: book, avoiding: placed))
+        #expect(spot.x >= 0 && spot.y >= 0)
+        for other in placed + [book] {
+            #expect(!LibraryLayout.overlaps(spot, other))
+        }
+    }
 }

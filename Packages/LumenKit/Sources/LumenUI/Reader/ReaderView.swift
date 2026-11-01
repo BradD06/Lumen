@@ -70,7 +70,8 @@ struct ReaderView: View {
         GeometryReader { geometry in
             let isWide = isWide(geometry.size.width)
             let notesWidth: CGFloat = geometry.size.width * CGFloat(notesFraction)
-            let showsNotesPane: Bool = isWide && showsNotes && model.notes != nil
+            // Панель видна и до первой заметки: в ней кнопка начать заметку.
+            let showsNotesPane: Bool = isWide && showsNotes && model.source != nil
             // Содержание встаёт отдельной колонкой, только если книге останется достаточно места.
             let tocAsColumn: Bool = showsToc && !isCompact && !model.toc.isEmpty
                 && geometry.size.width - (showsNotesPane ? notesWidth : 0) - 300 > 460
@@ -82,9 +83,9 @@ struct ReaderView: View {
                         .transition(.move(edge: .leading).combined(with: .opacity))
                 }
                 readerPane(tocOverlay: !tocAsColumn)
-                if showsNotesPane, let notes = model.notes {
+                if showsNotesPane {
                     splitHandle(totalWidth: geometry.size.width)
-                    notesPane(notes)
+                    notesPane(model.notes)
                         .frame(width: notesWidth)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
@@ -113,23 +114,20 @@ struct ReaderView: View {
                 .presentationCornerRadius(34)
         }
         .sheet(isPresented: $isNotesSheetPresented) {
-            if let notes = model.notes {
-                NavigationStack {
-                    VStack(spacing: 0) {
-                        notesHeader(notes, closes: false)
-                        PageEditorView(model: notes, onOpenPage: openSidePage, onOpenSource: openSource)
-                            .id(notes.pageId)
-                    }
-                    .padding(.top, 6)
-                    #if os(iOS)
-                    .toolbar(.hidden, for: .navigationBar)
-                    #endif
+            NavigationStack {
+                VStack(spacing: 0) {
+                    notesHeader(model.notes, closes: false)
+                    notesBody(model.notes)
                 }
-                .fontDesign(.rounded)
-                .presentationDetents([.medium, .large])
-                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-                .presentationCornerRadius(34)
+                .padding(.top, 6)
+                #if os(iOS)
+                .toolbar(.hidden, for: .navigationBar)
+                #endif
             }
+            .fontDesign(.rounded)
+            .presentationDetents([.medium, .large])
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            .presentationCornerRadius(34)
         }
         .task {
             model.web.setAppearance(appearance)
@@ -270,10 +268,13 @@ struct ReaderView: View {
     func toggleNotes() {
         #if os(iOS)
         if horizontalSizeClass == .compact {
+            // Открыли редактор заметок: тут заметки к книге и заводятся, если их ещё не было.
+            if !isNotesSheetPresented { Task { await model.ensureNotes() } }
             isNotesSheetPresented.toggle()
             return
         }
         #endif
+        if !showsNotes { Task { await model.ensureNotes() } }
         setNotes(!showsNotes)
     }
 }

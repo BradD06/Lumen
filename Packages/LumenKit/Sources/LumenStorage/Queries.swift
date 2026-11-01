@@ -139,7 +139,6 @@ public struct LibrarySnapshot: Equatable, Sendable {
             FROM page
             LEFT JOIN pageSearch ON pageSearch.pageId = \(uuidText("page.id"))
             WHERE page.folderId IS ? AND page.parentId IS NULL AND page.inInbox = 0 AND page.deletedAt IS NULL
-                AND page.sourceId IS NULL
             ORDER BY page.sortKey
             """, arguments: [folderId])
             .map { preview in
@@ -176,7 +175,7 @@ public struct LibrarySnapshot: Equatable, Sendable {
             .fetchCount(db)
         let pages = try Page
             .filter(Column("folderId") == folderId && Column("parentId") == nil)
-            .filter(Column("inInbox") == false && Column("deletedAt") == nil && Column("sourceId") == nil)
+            .filter(Column("inInbox") == false && Column("deletedAt") == nil)
             .fetchCount(db)
         let sources = try Source
             .filter(Column("folderId") == folderId && Column("deletedAt") == nil)

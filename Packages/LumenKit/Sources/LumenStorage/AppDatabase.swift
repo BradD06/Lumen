@@ -231,6 +231,11 @@ extension AppDatabase {
             try Self.createSyncTriggers(db, table: "dataTable")
         }
 
+        // Заметки к книгам раньше прятались от библиотеки. Теперь они лежат там же, где книга.
+        migrator.registerMigration("book notes beside books") { db in
+            try Self.moveBookNotesBesideBooks(db)
+        }
+
         return migrator
     }
 }
@@ -263,4 +268,60 @@ extension DataTable: FetchableRecord, PersistableRecord {
 
 extension ReadingSession: FetchableRecord, PersistableRecord {
     public static let databaseTableName = "readingSession"
+}
+
+// MARK: - Заметки к книгам рядом с книгами
+
+extension AppDatabase {
+    /// Кладёт заметки к книгам в папку книги, рядом с ней на холсте. Пустые заметки, которые
+    /// раньше заводились сами при открытии книги, удаляются: теперь заметка появляется,
+    /// только когда её открывают.
+    /// Только простой SQL: записи GRDB описывают схему последней версии, а миграция видит старую.
+    static func moveBookNotesBesideBooks(_ db: Database) throws {
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT page.id AS pageId, source.id AS sourceId, source.folderId AS folderId,
+                source.canvasX AS x, source.canvasY AS y
+            FROM page
+            JOIN source ON source.id = page.sourceId
+            WHERE page.parentId IS NULL
+            ORDER BY page.createdAt
+            """)
+        for row in rows {
+            let pageId: UUID = row["pageId"]
+            let sourceId: UUID = row["sourceId"]
+            let folderId: UUID? = row["folderId"]
+            if try isUntouchedBookNotes(db, pageId: pageId) {
+                try db.execute(sql: "DELETE FROM pageSearch WHERE pageId = ?", arguments: [pageId.uuidString])
+                try db.execute(sql: "DELETE FROM page WHERE id = ?", arguments: [pageId])
+                continue
+            }
+            let spot = try spotBeside(
+                db, sourceId: sourceId, folderId: folderId,
+                anchor: LibraryPoint(x: row["x"] as Double?, y: row["y"] as Double?)
+            )
+            try db.execute(
+                sql: "UPDATE page SET folderId = ?, canvasX = ?, canvasY = ? WHERE id = ?",
+                arguments: [folderId, spot?.x, spot?.y, pageId]
+            )
+        }
+    }
+
+    /// Заметка, в которую так ничего и не написали: один пустой абзац, без подстраниц,
+    /// без ссылок на неё, не в избранном и без обложки.
+    private static func isUntouchedBookNotes(_ db: Database, pageId: UUID) throws -> Bool {
+        let flags = try Row.fetchOne(db, sql: "SELECT isFavorite, cover FROM page WHERE id = ?", arguments: [pageId])
+        guard let flags, flags["isFavorite"] as Bool? != true, flags["cover"] as String? == nil else { return false }
+        let hasChildren = try Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM page WHERE parentId = ?)", arguments: [pageId]) ?? true
+        let hasBacklinks = try Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM link WHERE targetPageId = ?)", arguments: [pageId]) ?? true
+        guard !hasChildren, !hasBacklinks else { return false }
+        let blocks = try Row.fetchAll(db, sql: "SELECT type, content FROM block WHERE pageId = ?", arguments: [pageId])
+        guard blocks.count <= 1 else { return false }
+        guard let block = blocks.first else { return true }
+        guard block["type"] as String? == BlockType.paragraph.rawValue,
+              let json = block["content"] as Data?,
+              let content = try? JSONDecoder().decode(BlockContent.self, from: json)
+        else { return false }
+        return content.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && content.attachment == nil && content.pageId == nil && content.excerpt == nil
+    }
 }
