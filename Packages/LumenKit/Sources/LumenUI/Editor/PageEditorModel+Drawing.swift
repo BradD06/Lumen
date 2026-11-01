@@ -101,6 +101,17 @@ extension PageEditorModel {
         }
     }
 
+    /// Рисунок и элементы тетради одной правкой: так правка лассо отменяется целиком.
+    /// `nil` значит, что это не менялось.
+    func setNotebookContent(drawing: PKDrawing?, items: [NotebookItem]?, recordsUndo: Bool) {
+        guard let block = notebookBlock else { return }
+        if recordsUndo { recordUndo() }
+        update(block.id) {
+            if let drawing { $0.drawing = DrawingSupport.data(of: drawing) }
+            if let items { $0.content.items = items.isEmpty ? nil : items }
+        }
+    }
+
     func setPaper(_ pattern: PaperPattern) {
         guard let block = notebookBlock, block.content.paper != pattern else { return }
         recordUndo()

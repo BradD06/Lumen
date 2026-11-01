@@ -471,8 +471,12 @@ struct NotebookView: View {
                     origin: rect.origin,
                     scale: scale,
                     isDark: tone.isDark,
+                    items: items,
                     onChange: { drawing, isNewStep in
                         model.setDrawing(block.id, data: DrawingSupport.data(of: drawing), recordsUndo: isNewStep)
+                    },
+                    onLasso: { drawing, items, isNewStep in
+                        model.setNotebookContent(drawing: drawing, items: items, recordsUndo: isNewStep)
                     }
                 )
             } else {
