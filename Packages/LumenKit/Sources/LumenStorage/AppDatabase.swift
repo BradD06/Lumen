@@ -291,7 +291,12 @@ extension AppDatabase {
             let sourceId: UUID = row["sourceId"]
             let folderId: UUID? = row["folderId"]
             if try isUntouchedBookNotes(db, pageId: pageId) {
+                // Внешние ключи в миграции выключены (GRDB проверяет их в конце), каскада нет:
+                // всё, что ссылается на страницу, удаляется руками.
                 try db.execute(sql: "DELETE FROM pageSearch WHERE pageId = ?", arguments: [pageId.uuidString])
+                try db.execute(sql: "DELETE FROM link WHERE sourcePageId = ?", arguments: [pageId])
+                try db.execute(sql: "DELETE FROM block WHERE pageId = ?", arguments: [pageId])
+                try db.execute(sql: "DELETE FROM dataTable WHERE pageId = ?", arguments: [pageId])
                 try db.execute(sql: "DELETE FROM page WHERE id = ?", arguments: [pageId])
                 continue
             }
