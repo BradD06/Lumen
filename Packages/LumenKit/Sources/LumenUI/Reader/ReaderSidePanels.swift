@@ -154,7 +154,7 @@ struct HighlightsList: View {
                         .buttonStyle(.plain)
                         .contextMenu {
                             Button {
-                                model.addExcerpt(highlight)
+                                Task { await model.addExcerpt(highlight) }
                             } label: {
                                 Label("В заметки", systemImage: "quote.opening")
                             }

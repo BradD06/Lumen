@@ -12,6 +12,8 @@ struct SidePagePicker: View {
     let currentPageId: UUID?
     let bookNotesPageId: UUID?
     var onOpen: (UUID) -> Void
+    /// Заметки к книге: открывает их, а если их ещё нет, заводит рядом с книгой.
+    var onOpenBookNotes: () -> Void
     var onCreate: () -> Void
 
     @State private var pages: [Page] = []
@@ -22,9 +24,9 @@ struct SidePagePicker: View {
 
     private var isSearching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
-    /// Страницы из той же папки, что и книга. Заметки к книгам в библиотеке не лежат, их здесь нет.
+    /// Страницы из той же папки, что и книга, в том числе заметки к другим книгам оттуда.
     private var folderPages: [Page] {
-        pages.filter { $0.folderId == source?.folderId && $0.sourceId == nil && $0.id != bookNotesPageId }
+        pages.filter { $0.folderId == source?.folderId && $0.parentId == nil && !$0.inInbox && $0.id != bookNotesPageId }
     }
 
     private var recentPages: [Page] {
@@ -56,18 +58,14 @@ struct SidePagePicker: View {
                         }
                         ForEach(found) { row($0) }
                     } else {
-                        if let bookNotesPageId {
-                            Button {
-                                onOpen(bookNotesPageId)
-                            } label: {
-                                rowLabel(
-                                    icon: "📖",
-                                    title: "Заметки к книге",
-                                    isCurrent: currentPageId == bookNotesPageId
-                                )
-                            }
-                            .buttonStyle(.plain)
+                        Button(action: onOpenBookNotes) {
+                            rowLabel(
+                                icon: "📖",
+                                title: "Заметки к книге",
+                                isCurrent: currentPageId == bookNotesPageId
+                            )
                         }
+                        .buttonStyle(.plain)
                         Button(action: onCreate) {
                             HStack(spacing: 10) {
                                 Image(systemName: "plus")

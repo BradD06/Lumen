@@ -87,23 +87,69 @@ extension AppDatabase {
         }
     }
 
-    /// Страница заметок к источнику. Если её ещё нет, создаётся: в библиотеке её не видно,
-    /// она открывается рядом с книгой.
+    /// Страница заметок к источнику, если её уже завели. Сама ничего не создаёт:
+    /// книгу можно открыть и читать, не оставляя в библиотеке пустых заметок.
+    public func bookNotesPage(for sourceId: UUID) async throws -> Page? {
+        try await reader.read { db in try Self.bookNotesPage(db, sourceId: sourceId) }
+    }
+
+    /// Страница заметок к источнику. Если её ещё нет, создаётся там же, где лежит книга:
+    /// в её папке (или в корне библиотеки), на холсте рядом с книгой.
     public func notesPage(for sourceId: UUID) async throws -> Page {
         try await writer.write { db in
-            if let page = try Page
-                .filter(Column("sourceId") == sourceId && Column("parentId") == nil && Column("deletedAt") == nil)
-                .order(Column("createdAt"))
-                .fetchOne(db) {
-                return page
-            }
+            if let page = try Self.bookNotesPage(db, sourceId: sourceId) { return page }
             guard let source = try Source.fetchOne(db, key: sourceId) else { throw StorageError.sourceNotFound }
-            var page = try Self.insertPage(db, title: source.displayTitle, parentId: nil, inInbox: false, bodyLines: [])
+            var page = try Self.insertPage(
+                db, title: source.displayTitle, parentId: nil, inInbox: false,
+                folderId: source.folderId, position: try Self.spotBeside(db, source: source), bodyLines: []
+            )
             page.sourceId = sourceId
             page.icon = "📖"
             try page.update(db)
             return page
         }
+    }
+
+    /// Новая пустая заметка, открытая из книги: в папке книги, на холсте рядом с ней.
+    @discardableResult
+    public func createPage(besideSource sourceId: UUID) async throws -> Page {
+        try await writer.write { db in
+            guard let source = try Source.fetchOne(db, key: sourceId) else { throw StorageError.sourceNotFound }
+            return try Self.insertPage(
+                db, title: "", parentId: nil, inInbox: false,
+                folderId: source.folderId, position: try Self.spotBeside(db, source: source), bodyLines: []
+            )
+        }
+    }
+
+    static func bookNotesPage(_ db: Database, sourceId: UUID) throws -> Page? {
+        try Page
+            .filter(Column("sourceId") == sourceId && Column("parentId") == nil && Column("deletedAt") == nil)
+            .order(Column("createdAt"))
+            .fetchOne(db)
+    }
+
+    static func spotBeside(_ db: Database, source: Source) throws -> LibraryPoint? {
+        try spotBeside(db, sourceId: source.id, folderId: source.folderId, anchor: source.position)
+    }
+
+    /// Свободное место на холсте рядом с книгой. Если у книги своего места нет (её раскладывает
+    /// библиотека), `nil`: заметка тоже встанет в свободную ячейку той же папки.
+    /// Читает координаты простым SQL: этим пользуется и миграция, которой записи GRDB не подходят.
+    static func spotBeside(_ db: Database, sourceId: UUID, folderId: UUID?, anchor: LibraryPoint?) throws -> LibraryPoint? {
+        guard let anchor else { return nil }
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT canvasX, canvasY FROM folder WHERE parentId IS ? AND deletedAt IS NULL
+            UNION ALL
+            SELECT canvasX, canvasY FROM page
+                WHERE folderId IS ? AND parentId IS NULL AND inInbox = 0 AND deletedAt IS NULL
+            UNION ALL
+            SELECT canvasX, canvasY FROM source WHERE folderId IS ? AND deletedAt IS NULL AND id != ?
+            """, arguments: [folderId, folderId, folderId, sourceId])
+        let placed = rows.compactMap { row in
+            LibraryPoint(x: row["canvasX"] as Double?, y: row["canvasY"] as Double?)
+        }
+        return LibraryLayout.spot(beside: anchor, avoiding: placed)
     }
 
     // MARK: Выделения
@@ -161,6 +207,10 @@ extension AppDatabase {
                     source.folderId = nil
                     source.position = nil
                 }
+                // Заметки к книге лежали в той же папке: поднимаются в корень вместе с книгой.
+                try Page
+                    .filter(Column("sourceId") == id && Column("parentId") == nil && Column("folderId") == folderId)
+                    .updateAll(db, [Column("folderId").set(to: nil), Column("canvasX").set(to: nil), Column("canvasY").set(to: nil)])
             }
             try Self.restoreSources(db, [id])
         }

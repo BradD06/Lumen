@@ -43,9 +43,10 @@ final class ReaderModel {
     private(set) var content: Content = .loading
     private(set) var highlights: [Highlight] = []
     /// Заметка в правой панели: по умолчанию заметки к книге, но можно открыть любую страницу.
-    /// В неё же идут выписки.
+    /// В неё же идут выписки. `nil`, пока к книге не завели ни одной заметки: заметка
+    /// создаётся, только когда её впервые открывают (или делают первую выписку), а не при открытии книги.
     private(set) var notes: PageEditorModel?
-    /// Страница заметок к этой книге: к ней панель возвращается одной кнопкой.
+    /// Страница заметок к этой книге: к ней панель возвращается одной кнопкой. `nil`, пока её не завели.
     private(set) var bookNotesPageId: UUID?
     var documentMode: DocumentMode = .text {
         didSet {
@@ -76,6 +77,8 @@ final class ReaderModel {
     @ObservationIgnored let web = WebReaderController()
     @ObservationIgnored let pdf = PDFReaderController()
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    /// Заметки к книге, которые сейчас создаются: два быстрых нажатия не заведут две заметки.
+    @ObservationIgnored private var creatingNotes: Task<PageEditorModel?, Never>?
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private var pendingReveal: UUID?
     @ObservationIgnored private var hasRestoredPosition = false
@@ -116,19 +119,21 @@ final class ReaderModel {
                     .order(Column("createdAt"))
                     .fetchAll(db)
             }
-            let page = try await database.notesPage(for: sourceId)
-            bookNotesPageId = page.id
+            // Заметки к книге только ищутся: если их ещё нет, они появятся при первом открытии.
+            bookNotesPageId = try await database.bookNotesPage(for: sourceId)?.id
             // Последняя открытая рядом страница, если её не удалили. Иначе заметки к книге.
-            var sidePageId = page.id
+            var sidePageId = bookNotesPageId
             if let saved = UserDefaults.standard.string(forKey: sidePageKey).flatMap(UUID.init(uuidString:)),
                let savedPage = try await database.page(saved), !savedPage.isTrashed {
                 sidePageId = saved
             }
-            let notes = PageEditorModel(database: database, pageId: sidePageId)
-            attach(notes)
-            // Заметки загружаются сразу: выписку можно сделать, даже пока панель заметок закрыта.
-            await notes.load()
-            self.notes = notes
+            if let sidePageId {
+                let notes = PageEditorModel(database: database, pageId: sidePageId)
+                attach(notes)
+                // Заметки загружаются сразу: выписку можно сделать, даже пока панель заметок закрыта.
+                await notes.load()
+                self.notes = notes
+            }
             await openContent()
             noteActivity()
         } catch {
@@ -140,8 +145,35 @@ final class ReaderModel {
 
     private var sidePageKey: String { "reader.sidePage.\(sourceId.uuidString)" }
 
-    /// Открыта ли в панели страница заметок к этой книге.
+    /// Открыта ли в панели страница заметок к этой книге. Пока заметок нет, панель ждёт именно их.
     var showsBookNotes: Bool { notes?.pageId == bookNotesPageId }
+
+    /// Открывает редактор заметок: если рядом ещё ничего не открыто, заводит заметки к книге.
+    /// Они ложатся туда же, где книга: в её папку или в корень библиотеки, рядом с ней на холсте.
+    @discardableResult
+    func ensureNotes() async -> PageEditorModel? {
+        if let notes { return notes }
+        guard source != nil else { return nil }
+        if let creatingNotes { return await creatingNotes.value }
+        let task = Task { () -> PageEditorModel? in
+            do {
+                let page = try await database.notesPage(for: sourceId)
+                bookNotesPageId = page.id
+                let model = PageEditorModel(database: database, pageId: page.id)
+                attach(model)
+                await model.load()
+                notes = model
+                return model
+            } catch {
+                NoticeCenter.shared.report("Не удалось создать заметки к книге", error)
+                return nil
+            }
+        }
+        creatingNotes = task
+        let model = await task.value
+        creatingNotes = nil
+        return model
+    }
 
     /// Открывает страницу в правой панели. Выбор запоминается для этой книги.
     func openSidePage(_ pageId: UUID) async {
@@ -168,14 +200,25 @@ final class ReaderModel {
         }
     }
 
+    /// Возвращает панель к заметкам к книге. Если их ещё нет, заводит.
     func openBookNotes() async {
-        if let bookNotesPageId { await openSidePage(bookNotesPageId) }
+        if let bookNotesPageId {
+            await openSidePage(bookNotesPageId)
+            return
+        }
+        do {
+            let page = try await database.notesPage(for: sourceId)
+            bookNotesPageId = page.id
+            await openSidePage(page.id)
+        } catch {
+            NoticeCenter.shared.report("Не удалось создать заметки к книге", error)
+        }
     }
 
-    /// Новая пустая заметка в папке книги, сразу открытая рядом.
+    /// Новая пустая заметка в папке книги, рядом с книгой на холсте, сразу открытая в панели.
     func createSidePage() async {
         do {
-            let page = try await database.createPage(folderId: source?.folderId)
+            let page = try await database.createPage(besideSource: sourceId)
             LumenSounds.play(.create)
             await openSidePage(page.id)
         } catch {
@@ -434,8 +477,8 @@ final class ReaderModel {
     }
 
     /// Ссылка на место, где сейчас читают, в заметку рядом. Без выделения текста.
-    func addPlaceLink() {
-        guard let notes, let reference = currentPlace else { return }
+    func addPlaceLink() async {
+        guard let reference = currentPlace, let notes = await ensureNotes() else { return }
         notes.appendPlaceLink(reference)
         Task { await notes.flush() }
         LumenSounds.play(.create)
@@ -472,7 +515,7 @@ final class ReaderModel {
     /// Можно ли сослаться на место: у системного просмотра места нет.
     var canLinkPlace: Bool {
         switch content {
-        case .web, .pdf: notes != nil
+        case .web, .pdf: true
         default: false
         }
     }
@@ -717,12 +760,12 @@ final class ReaderModel {
     /// Выделение плюс выписка в заметки рядом.
     func excerptSelection(_ color: HighlightColor = .yellow) async {
         guard let highlight = await highlightSelection(color) else { return }
-        addExcerpt(highlight)
+        await addExcerpt(highlight)
     }
 
-    /// Выписка из уже сохранённого выделения.
-    func addExcerpt(_ highlight: Highlight) {
-        guard let notes else { return }
+    /// Выписка из уже сохранённого выделения. Если заметок к книге ещё нет, они заводятся.
+    func addExcerpt(_ highlight: Highlight) async {
+        guard let notes = await ensureNotes() else { return }
         notes.appendExcerpt(
             text: highlight.text,
             reference: ExcerptReference(sourceId: sourceId, highlightId: highlight.id, label: highlight.label)
