@@ -55,6 +55,9 @@ struct NotebookView: View {
             header
             canvas
         }
+        // Тетрадь никогда не шире своей панели, что бы ни лежало в шапке.
+        .frame(minWidth: 0, maxWidth: .infinity)
+        .clipped()
         .task(id: model.isLoaded) {
             model.ensureNotebookBlock()
         }
@@ -172,41 +175,37 @@ struct NotebookView: View {
         }
     }
 
+    /// Панель инструментов под ширину экрана. В узкой половине разделённого экрана
+    /// панель пера уходит второй строкой и листается вбок: иначе вся панель шире экрана
+    /// и растягивала тетрадь за его края, обрезая её с обеих сторон.
+    @ViewBuilder
+    private var adaptiveToolRow: some View {
+        #if os(macOS)
+        ViewThatFits(in: .horizontal) {
+            toolRow
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    toolButtons
+                    Spacer(minLength: 0)
+                    zoomControls
+                }
+                if tool == .draw {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        MouseInkBar().padding(.vertical, 1)
+                    }
+                    .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                }
+            }
+        }
+        #else
+        toolRow
+        #endif
+    }
+
     /// Перо, выделение, текст и вставка картинки.
     private var toolRow: some View {
         HStack(spacing: 10) {
-            Picker("Инструмент", selection: $tool) {
-                ForEach(NotebookTool.allCases) { tool in
-                    Label(tool.title, systemImage: tool.symbolName).tag(tool)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelStyle(.iconOnly)
-            .fixedSize()
-            .help("Перо, выделение или текст")
-
-            Menu {
-                Button {
-                    isPickingPhoto = true
-                } label: {
-                    Label("Из фото", systemImage: "photo.on.rectangle")
-                }
-                Button {
-                    isImportingImage = true
-                } label: {
-                    Label("Из файла", systemImage: "folder")
-                }
-                Button {
-                    pasteImage()
-                } label: {
-                    Label("Из буфера обмена", systemImage: "doc.on.clipboard")
-                }
-            } label: {
-                Label("Картинка", systemImage: "photo.badge.plus")
-            }
-            .menuStyle(.button)
-            .fixedSize()
-            .help("Вставить картинку на лист")
+            toolButtons
 
             #if os(macOS)
             if tool == .draw {
@@ -218,6 +217,43 @@ struct NotebookView: View {
             Spacer(minLength: 0)
             #endif
         }
+    }
+
+    /// Выбор инструмента и вставка картинки.
+    @ViewBuilder
+    private var toolButtons: some View {
+        Picker("Инструмент", selection: $tool) {
+            ForEach(NotebookTool.allCases) { tool in
+                Label(tool.title, systemImage: tool.symbolName).tag(tool)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelStyle(.iconOnly)
+        .fixedSize()
+        .help("Перо, выделение или текст")
+
+        Menu {
+            Button {
+                isPickingPhoto = true
+            } label: {
+                Label("Из фото", systemImage: "photo.on.rectangle")
+            }
+            Button {
+                isImportingImage = true
+            } label: {
+                Label("Из файла", systemImage: "folder")
+            }
+            Button {
+                pasteImage()
+            } label: {
+                Label("Из буфера обмена", systemImage: "doc.on.clipboard")
+            }
+        } label: {
+            Label("Картинка", systemImage: "photo.badge.plus")
+        }
+        .menuStyle(.button)
+        .fixedSize()
+        .help("Вставить картинку на лист")
     }
 
     // MARK: Шапка
@@ -248,7 +284,7 @@ struct NotebookView: View {
 
                 controls
             }
-            toolRow
+            adaptiveToolRow
         }
         .padding(.horizontal, isCompact ? 14 : 24)
         .padding(.vertical, 12)
