@@ -233,7 +233,11 @@ public struct RootView: View {
                 // Своя вкладка у каждого набора панелей: при переключении экраны создаются заново.
                 .id(workspace.selectedTabId)
                 // Вкладку можно бросить к левому или правому краю: она откроется рядом.
-                .overlay { TabDropHighlight(side: tabDropSide) }
+                // Подсветка только пока вкладку держат: после броска или отмены она гаснет.
+                .overlay { TabDropHighlight(side: workspace.draggingTabId == nil ? nil : tabDropSide) }
+                .onChange(of: workspace.draggingTabId) { _, id in
+                    if id == nil { tabDropSide = nil }
+                }
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { panesWidth = $0 }
                 .onDrop(
                     of: [.lumenTab],

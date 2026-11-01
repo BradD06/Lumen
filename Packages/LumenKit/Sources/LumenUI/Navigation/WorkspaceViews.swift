@@ -391,16 +391,10 @@ struct TabEdgeDropDelegate: DropDelegate {
 enum TabDropSide: Equatable {
     case leading, trailing
 
-    /// Края по трети ширины: середину оставляем пустой, чтобы не разделить экран случайно.
+    /// Левая половина ставит вкладку слева, правая справа: так зона броска большая.
     init?(x: CGFloat, width: CGFloat) {
-        guard width > 0 else { return nil }
-        if x < width / 3 {
-            self = .leading
-        } else if x > width * 2 / 3 {
-            self = .trailing
-        } else {
-            return nil
-        }
+        guard width > 0, x >= 0, x <= width else { return nil }
+        self = x < width / 2 ? .leading : .trailing
     }
 }
 
