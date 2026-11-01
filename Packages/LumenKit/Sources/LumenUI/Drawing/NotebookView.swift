@@ -4,6 +4,9 @@ import PencilKit
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(macOS)
+import AppKit
+#endif
 
 /// Рукописная заметка, как в Goodnotes: листы бумаги друг под другом, на которых пишут от руки.
 /// Название и кнопки сверху, ниже листы. На iPhone и iPad холст PencilKit (палец или Apple Pencil,
@@ -31,6 +34,12 @@ struct NotebookView: View {
     #else
     /// Увеличение листов относительно ширины окна.
     @State private var zoom: CGFloat = 1
+    /// Элемент, который сейчас тащат, и лист, на котором его взяли. Пока его тащат, рамкой
+    /// правки владеет этот лист, даже если середина элемента ушла на соседний: иначе рамка
+    /// переехала бы в другой лист посреди движения и жест оборвался бы.
+    @State private var dragged: (id: UUID, sheet: Int)?
+    /// Перехват ⌘V: картинка из буфера обмена встаёт на лист.
+    @State private var pasteKey: NotebookPasteKey?
     #endif
     @Environment(\.lumenTheme) private var theme
 
@@ -68,6 +77,14 @@ struct NotebookView: View {
                 pickedPhoto = nil
             }
         }
+        #if os(macOS)
+        .onAppear {
+            let key = pasteKey ?? NotebookPasteKey()
+            pasteKey = key
+            key.start { pasteImage() }
+        }
+        .onDisappear { pasteKey?.stop() }
+        #endif
         .fileImporter(isPresented: $isImportingImage, allowedContentTypes: [.image]) { result in
             guard case .success(let url) = result else { return }
             let isScoped = url.startAccessingSecurityScopedResource()
@@ -85,6 +102,17 @@ struct NotebookView: View {
         LumenSounds.play(.create)
         tool = .select
         selection = item.id
+    }
+
+    /// Картинка или скриншот из буфера обмена. Возвращает `false`, если картинки там нет.
+    @discardableResult
+    private func pasteImage() -> Bool {
+        guard let image = NotebookPasteboard.image() else {
+            NoticeCenter.shared.show("В буфере обмена нет картинки")
+            return false
+        }
+        insertImage(image.data, fileExtension: image.fileExtension)
+        return true
     }
 
     /// Нажатие на пустое место листа в координатах холста.
@@ -136,6 +164,11 @@ struct NotebookView: View {
                     isImportingImage = true
                 } label: {
                     Label("Из файла", systemImage: "folder")
+                }
+                Button {
+                    pasteImage()
+                } label: {
+                    Label("Из буфера обмена", systemImage: "doc.on.clipboard")
                 }
             } label: {
                 Label("Картинка", systemImage: "photo.badge.plus")
@@ -373,7 +406,10 @@ struct NotebookView: View {
         let viewport = NotebookViewport(origin: rect.origin, scale: scale)
         let visible = items.filter { $0.frame.intersects(rect) }
         // Правят элемент на том листе, где его середина: так рамка не появляется дважды.
-        let owned = items.filter { NotebookLayout.sheetIndex(at: $0.frame.midY, sheets: sheets) == index }
+        let owned = items.filter { item in
+            if let dragged, dragged.id == item.id { return dragged.sheet == index }
+            return NotebookLayout.sheetIndex(at: item.frame.midY, sheets: sheets) == index
+        }
         return ZStack(alignment: .topLeading) {
             PaperSheet(pattern: pattern, tone: tone)
             NotebookItemsLayer(
@@ -414,7 +450,8 @@ struct NotebookView: View {
                     isDark: tone.isDark,
                     tool: tool,
                     selection: $selection,
-                    editingId: $editingId
+                    editingId: $editingId,
+                    onDrag: { id in dragged = id.map { ($0, index) } }
                 )
             }
         }
@@ -476,3 +513,36 @@ final class ParsedDrawing {
         return drawing
     }
 }
+
+#if os(macOS)
+/// ⌘V вставляет картинку из буфера обмена прямо на лист. Если курсор стоит в тексте
+/// (название, текстовый блок), ⌘V вставляет текст как обычно.
+@MainActor
+final class NotebookPasteKey {
+    private var monitor: Any?
+    private var paste: () -> Bool = { false }
+
+    func start(_ paste: @escaping () -> Bool) {
+        self.paste = paste
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                .subtracting([.capsLock, .numericPad, .function])
+            guard flags == .command, event.charactersIgnoringModifiers?.lowercased() == "v" else { return event }
+            let handled = MainActor.assumeIsolated { () -> Bool in
+                guard let self else { return false }
+                if NSApp.keyWindow?.firstResponder is NSText { return false }
+                guard NotebookPasteboard.hasImage else { return false }
+                return self.paste()
+            }
+            return handled ? nil : event
+        }
+    }
+
+    func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        paste = { false }
+    }
+}
+#endif

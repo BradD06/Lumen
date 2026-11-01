@@ -111,6 +111,13 @@ struct NotebookItemsEditor: View {
     let tool: NotebookTool
     @Binding var selection: UUID?
     @Binding var editingId: UUID?
+    /// Элемент, который сейчас тащат, или `nil`, когда отпустили.
+    var onDrag: (UUID?) -> Void = { _ in }
+
+    /// Неподвижная система координат для жестов. Если мерить перетаскивание в координатах
+    /// самого элемента, он сдвигается вместе с пальцем, сдвиг пересчитывается от нового места,
+    /// и элемент дёргается туда-сюда.
+    static let space = "notebookItems"
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -123,10 +130,12 @@ struct NotebookItemsEditor: View {
                     isDark: isDark,
                     tool: tool,
                     selection: $selection,
-                    editingId: $editingId
+                    editingId: $editingId,
+                    onDrag: onDrag
                 )
             }
         }
+        .coordinateSpace(.named(Self.space))
     }
 }
 
@@ -139,6 +148,7 @@ private struct NotebookItemHandle: View {
     let tool: NotebookTool
     @Binding var selection: UUID?
     @Binding var editingId: UUID?
+    var onDrag: (UUID?) -> Void
 
     @State private var dragStart: CGRect?
     @State private var isPaletteShown = false
@@ -242,16 +252,20 @@ private struct NotebookItemHandle: View {
     }
 
     private var moveGesture: some Gesture {
-        DragGesture(minimumDistance: 3)
+        DragGesture(minimumDistance: 3, coordinateSpace: .named(NotebookItemsEditor.space))
             .onChanged { value in
                 let start = dragStart ?? item.frame
                 let isFirst = dragStart == nil
                 dragStart = start
+                if isFirst { onDrag(item.id) }
                 selection = item.id
                 let moved = start.offsetBy(dx: value.translation.width / viewport.scale, dy: value.translation.height / viewport.scale)
                 model.updateNotebookItem(item.id, recordsUndo: isFirst) { $0.frame = moved }
             }
-            .onEnded { _ in dragStart = nil }
+            .onEnded { _ in
+                dragStart = nil
+                onDrag(nil)
+            }
     }
 
     private var resizeHandle: some View {
@@ -261,11 +275,12 @@ private struct NotebookItemHandle: View {
             .frame(width: 22, height: 22)
             .contentShape(Rectangle().inset(by: -8))
             .gesture(
-                DragGesture(minimumDistance: 1)
+                DragGesture(minimumDistance: 1, coordinateSpace: .named(NotebookItemsEditor.space))
                     .onChanged { value in
                         let start = dragStart ?? item.frame
                         let isFirst = dragStart == nil
                         dragStart = start
+                        if isFirst { onDrag(item.id) }
                         var width = max(start.width + value.translation.width / viewport.scale, NotebookItem.minSize)
                         var height = max(start.height + value.translation.height / viewport.scale, NotebookItem.minSize)
                         if item.kind == .image, start.width > 0 {
@@ -278,7 +293,10 @@ private struct NotebookItemHandle: View {
                             item = TextBoxMetrics.fitted(item)
                         }
                     }
-                    .onEnded { _ in dragStart = nil }
+                    .onEnded { _ in
+                        dragStart = nil
+                        onDrag(nil)
+                    }
             )
             #if os(macOS)
             .pointerStyle(.frameResize(position: .bottomTrailing))
