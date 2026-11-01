@@ -103,7 +103,7 @@ struct NotebookPDFTests {
         let background = try #require(NotebookSheets.background(of: content, sheet: 0))
         let size = try #require(SheetPDFImages.pageSize(background, attachments: db.attachments))
         #expect(abs(size.width - 595) < 1)
-        let image = try #require(SheetPDFImages.image(background, attachments: db.attachments, pixelWidth: 300, dark: true))
+        let image = try #require(SheetPDFImages.image(background, attachments: db.attachments, pixelWidth: 300, dark: false))
         #expect(image.width == 512)
     }
 }
