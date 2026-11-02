@@ -244,6 +244,12 @@ public struct RootView: View {
                     delegate: TabEdgeDropDelegate(workspace: workspace, width: panesWidth, side: $tabDropSide)
                 )
         }
+        .background {
+            // Под вкладками и в просвете между панелями виден фон темы.
+            // При разделении он приглушён, чтобы карточки панелей читались отдельно.
+            ThemedBackground()
+                .overlay(Color.black.opacity(workspace.isSplit ? 0.28 : 0).ignoresSafeArea())
+        }
         .background { tabShortcuts }
     }
 
@@ -251,18 +257,13 @@ public struct RootView: View {
     private var panes: some View {
         let tab = workspace.selectedTab
         if tab.isSplit {
-            #if os(macOS)
-            HSplitView {
-                pane(0, of: tab).frame(minWidth: 320, maxWidth: .infinity)
-                pane(1, of: tab).frame(minWidth: 320, maxWidth: .infinity)
+            // Две скруглённые карточки с просветом, сквозь который виден приглушённый фон темы.
+            PaneSplit {
+                pane(0, of: tab).paneCard(isFocused: tab.focusedPane == 0)
+            } trailing: {
+                pane(1, of: tab).paneCard(isFocused: tab.focusedPane == 1)
             }
-            #else
-            HStack(spacing: 0) {
-                pane(0, of: tab)
-                Divider()
-                pane(1, of: tab)
-            }
-            #endif
+            .padding(PaneStyle.inset)
         } else {
             pane(0, of: tab)
         }
