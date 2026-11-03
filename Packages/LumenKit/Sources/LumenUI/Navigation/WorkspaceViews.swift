@@ -108,8 +108,8 @@ struct WorkspaceTabStrip: View {
                                 .id(tab.id)
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 5)
                 }
                 .onChange(of: workspace.selectedTabId) { _, id in
                     withAnimation(.snappy) { proxy.scrollTo(id) }
@@ -122,18 +122,22 @@ struct WorkspaceTabStrip: View {
                 Image(systemName: "plus")
                     .font(.callout.weight(.semibold))
                     .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PaneHeaderButtonStyle())
             .foregroundStyle(theme.textSecondary)
             .help("Новая вкладка (⌘T)")
             .accessibilityLabel("Новая вкладка")
-            .padding(.trailing, 10)
+            .padding(.trailing, 8)
         }
-        .background(.ultraThinMaterial.opacity(0.6))
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(theme.cardStroke).frame(height: 0.5)
+        // Полоска вкладок тоже скруглённая плашка, а не плоская полоса во всю ширину.
+        .background {
+            let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+            shape.fill(.ultraThinMaterial.opacity(0.6))
+                .overlay(shape.strokeBorder(theme.cardStroke, lineWidth: 1))
         }
+        .padding(.horizontal, PaneStyle.inset)
+        .padding(.top, 8)
+        .padding(.bottom, workspace.isSplit ? 0 : 8)
     }
 
     private func tabButton(_ tab: WorkspaceTab, number: Int) -> some View {
@@ -171,7 +175,7 @@ struct WorkspaceTabStrip: View {
         }
         .padding(.leading, 12)
         .padding(.trailing, workspace.tabs.count > 1 ? 8 : 12)
-        .frame(height: 30)
+        .frame(height: 32)
         .background {
             Capsule()
                 .fill(isSelected ? theme.cardFill : Color.clear)
@@ -231,7 +235,7 @@ struct PaneHeader: View {
                 workspace.focus(pane: pane)
                 workspace.goBack()
             } label: {
-                Image(systemName: "chevron.left").frame(width: 24, height: 22).contentShape(Rectangle())
+                Image(systemName: "chevron.left").frame(width: 26, height: 26)
             }
             .disabled(!history.canGoBack)
             .help("Назад")
@@ -240,7 +244,7 @@ struct PaneHeader: View {
                 workspace.focus(pane: pane)
                 workspace.goForward()
             } label: {
-                Image(systemName: "chevron.right").frame(width: 24, height: 22).contentShape(Rectangle())
+                Image(systemName: "chevron.right").frame(width: 26, height: 26)
             }
             .disabled(!history.canGoForward)
             .help("Вперёд")
@@ -254,31 +258,62 @@ struct PaneHeader: View {
             Button {
                 workspace.swapPanes()
             } label: {
-                Image(systemName: "arrow.left.arrow.right").frame(width: 24, height: 22).contentShape(Rectangle())
+                Image(systemName: "arrow.left.arrow.right").frame(width: 26, height: 26)
             }
             .help("Поменять панели местами")
             .accessibilityLabel("Поменять панели местами")
             Button {
                 withAnimation(.snappy) { workspace.closePane(pane) }
             } label: {
-                Image(systemName: "xmark").frame(width: 24, height: 22).contentShape(Rectangle())
+                Image(systemName: "xmark").frame(width: 26, height: 26)
             }
             .help("Закрыть панель")
             .accessibilityLabel("Закрыть панель")
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PaneHeaderButtonStyle())
         .font(.callout)
         .foregroundStyle(theme.textSecondary)
-        .padding(.horizontal, 8)
-        .frame(height: 32)
-        .background(isFocused ? theme.accent.opacity(0.14) : Color.clear)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(isFocused ? theme.accent : theme.cardStroke)
-                .frame(height: isFocused ? 2 : 0.5)
+        .padding(.horizontal, 6)
+        .frame(height: 36)
+        // Шапка не плоская полоса, а скруглённая плашка внутри карточки панели.
+        .background {
+            Capsule(style: .continuous)
+                .fill(isFocused ? theme.accent.opacity(0.16) : Color.white.opacity(0.05))
+                .overlay {
+                    Capsule(style: .continuous)
+                        .strokeBorder(isFocused ? theme.accent.opacity(0.5) : theme.cardStroke, lineWidth: 1)
+                }
         }
-        .contentShape(Rectangle())
+        .contentShape(Capsule(style: .continuous))
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
         .onTapGesture { workspace.focus(pane: pane) }
+    }
+}
+
+/// Круглые кнопки шапки панели: при наведении под значком появляется мягкий кружок.
+private struct PaneHeaderButtonStyle: ButtonStyle {
+    func makeBody(configuration: ButtonStyleConfiguration) -> some View {
+        PaneHeaderButton(configuration: configuration)
+    }
+}
+
+private struct PaneHeaderButton: View {
+    let configuration: ButtonStyleConfiguration
+
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovered = false
+
+    var body: some View {
+        configuration.label
+            .background {
+                Circle().fill(Color.white.opacity(configuration.isPressed ? 0.16 : (isHovered && isEnabled ? 0.09 : 0)))
+            }
+            .contentShape(Circle())
+            .opacity(isEnabled ? 1 : 0.4)
+            .onHover { isHovered = $0 }
+            .animation(.easeOut(duration: 0.12), value: isHovered)
     }
 }
 
