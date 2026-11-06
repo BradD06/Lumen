@@ -11,7 +11,10 @@ import UIKit
 /// ссылка, цвет и тип блока. На Mac висит над блоком, на iPhone и iPad стоит над клавиатурой.
 struct FormatBar: View {
     let model: PageEditorModel
-    let selection: TextSelectionInfo
+    let blockId: UUID
+    /// Выделение, по которому подсвечены кнопки. На iPhone и iPad его нет: кнопки берут
+    /// выделение из поля в момент нажатия.
+    var selection: TextSelectionInfo?
     /// Палитру цвета блока открывает сам блок.
     var onColor: (() -> Void)?
 
@@ -23,19 +26,19 @@ struct FormatBar: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        let active = model.marks(in: selection)
-        let link = model.link(in: selection)
+        let active = selection.map(model.marks(in:)) ?? []
+        let link = selection.flatMap(model.link(in:))
         HStack(spacing: 2) {
             ForEach([FormatAction.bold, .italic, .underline, .strikethrough, .code]) { action in
                 button(action.systemImage, title: action.title, shortcut: action.shortcut, isOn: action.mark.map(active.contains) ?? false) {
-                    model.apply(action, to: selection)
+                    TextFormatting.perform(action, model: model, blockId: blockId)
                 }
             }
             separator
             button("link", title: link == nil ? "Ссылка" : "Изменить ссылку", shortcut: nil, isOn: link != nil) {
-                linkTarget = selection
-                linkDraft = link ?? ""
-                isLinkEditorShown = true
+                linkTarget = TextFormatting.currentSelection(blockId: blockId) ?? model.wholeText(of: blockId)
+                linkDraft = linkTarget.flatMap(model.link(in:)) ?? ""
+                isLinkEditorShown = linkTarget != nil
             }
             if let link, let url = URL(string: link) {
                 button("arrow.up.forward.square", title: "Открыть ссылку", shortcut: nil, isOn: false) {
@@ -48,9 +51,8 @@ struct FormatBar: View {
             turnIntoMenu
             separator
             button(FormatAction.clear.systemImage, title: FormatAction.clear.title, shortcut: nil, isOn: false) {
-                model.apply(.clear, to: selection)
+                TextFormatting.perform(.clear, model: model, blockId: blockId)
             }
-            .disabled(active.isEmpty && link == nil)
         }
         .padding(4)
         .background(theme.cardFill.opacity(0.55), in: Capsule())
@@ -71,7 +73,7 @@ struct FormatBar: View {
             Button("Готово") {
                 if let linkTarget { model.setLink(linkDraft, in: linkTarget) }
             }
-            if link != nil {
+            if !linkDraft.isEmpty {
                 Button("Убрать ссылку", role: .destructive) {
                     if let linkTarget { model.setLink(nil, in: linkTarget) }
                 }
@@ -84,10 +86,10 @@ struct FormatBar: View {
 
     private var turnIntoMenu: some View {
         Menu {
-            if let block = model.findBlock(selection.blockId) {
+            if let block = model.findBlock(blockId) {
                 ForEach(BlockType.allCases.filter { $0.isConvertible && $0 != .divider }) { type in
                     Button {
-                        model.setType(selection.blockId, type)
+                        model.setType(blockId, type)
                     } label: {
                         Label(type.title, systemImage: type.symbolName)
                     }
@@ -166,6 +168,139 @@ enum RichTextRendering {
     }
 }
 
+// MARK: - Действия оформления
+
+/// Оформление по кнопке, сочетанию клавиш или пункту меню. Выделение берётся прямо из поля:
+/// с ним оформляется выделенное, без него у курсора ставится пара значков (**|**), и дальше
+/// текст печатается уже жирным. Если поля с курсором нет, оформляется весь блок.
+@MainActor
+enum TextFormatting {
+    /// Выделение в поле с курсором, в символах текста без разметки. Пустое выделение не в счёт.
+    static func currentSelection(blockId: UUID) -> TextSelectionInfo? {
+        guard let live = ActiveTextField.selection() else { return nil }
+        let parsed = InlineMarkup.parse(live.text)
+        let start = parsed.plainOffset(forSource: live.range.lowerBound)
+        let end = parsed.plainOffset(forSource: live.range.upperBound)
+        guard end > start else { return nil }
+        return TextSelectionInfo(blockId: blockId, range: start..<end)
+    }
+
+    static func perform(_ action: FormatAction, model: PageEditorModel, blockId: UUID) {
+        guard model.wholeText(of: blockId) != nil else { return }
+        let isFocusedBlock = model.focusedBlockId == blockId
+        if isFocusedBlock, let live = ActiveTextField.selection() {
+            let parsed = InlineMarkup.parse(live.text)
+            let start = parsed.plainOffset(forSource: live.range.lowerBound)
+            let end = parsed.plainOffset(forSource: live.range.upperBound)
+            if end > start {
+                model.apply(action, to: TextSelectionInfo(blockId: blockId, range: start..<end))
+                return
+            }
+            guard let mark = action.mark, live.range.lowerBound <= live.text.count else { return }
+            let marker = InlineMarkup.delimiter(for: mark)
+            var text = live.text
+            text.insert(contentsOf: marker + marker, at: text.index(text.startIndex, offsetBy: live.range.lowerBound))
+            model.updateMarkup(blockId, to: text)
+            let caret = live.range.lowerBound + marker.count
+            ActiveTextField.select(caret..<caret, whenTextIs: text)
+            return
+        }
+        if let whole = model.wholeText(of: blockId) {
+            model.apply(action, to: whole)
+        }
+    }
+}
+
+/// Поле ввода, в котором сейчас курсор: его текст и выделение. Привязка `TextSelection`
+/// у SwiftUI-поля на Mac останавливала набор текста (UI-тесты), поэтому выделение
+/// читается у самого поля AppKit или UIKit.
+@MainActor
+enum ActiveTextField {
+    /// Текст поля и выделение в символах (не в UTF-16).
+    static func selection() -> (text: String, range: Range<Int>)? {
+        #if os(macOS)
+        guard let textView = NSApp.keyWindow?.firstResponder as? NSTextView, textView.isFieldEditor else { return nil }
+        return characters(textView.string, textView.selectedRange())
+        #else
+        switch firstResponder() {
+        case let textView as UITextView:
+            return characters(textView.text ?? "", textView.selectedRange)
+        case let textField as UITextField:
+            guard let range = textField.selectedTextRange else { return nil }
+            let start = textField.offset(from: textField.beginningOfDocument, to: range.start)
+            let end = textField.offset(from: textField.beginningOfDocument, to: range.end)
+            return characters(textField.text ?? "", NSRange(location: start, length: end - start))
+        default:
+            return nil
+        }
+        #endif
+    }
+
+    /// Ставит выделение, когда в поле уже появилась новая разметка.
+    static func select(_ range: Range<Int>, whenTextIs expected: String) {
+        Task { @MainActor in
+            for delay in [16, 60, 150] {
+                try? await Task.sleep(for: .milliseconds(delay))
+                if apply(range, expected: expected) { return }
+            }
+        }
+    }
+
+    private static func apply(_ range: Range<Int>, expected: String) -> Bool {
+        guard range.upperBound <= expected.count else { return true }
+        let lower = expected.index(expected.startIndex, offsetBy: range.lowerBound)
+        let upper = expected.index(expected.startIndex, offsetBy: range.upperBound)
+        let nsRange = NSRange(lower..<upper, in: expected)
+        #if os(macOS)
+        guard let textView = NSApp.keyWindow?.firstResponder as? NSTextView, textView.isFieldEditor,
+              textView.string == expected else { return false }
+        textView.setSelectedRange(nsRange)
+        return true
+        #else
+        switch firstResponder() {
+        case let textView as UITextView:
+            guard textView.text == expected else { return false }
+            textView.selectedRange = nsRange
+            return true
+        case let textField as UITextField:
+            guard textField.text == expected,
+                  let start = textField.position(from: textField.beginningOfDocument, offset: nsRange.location),
+                  let end = textField.position(from: start, offset: nsRange.length) else { return false }
+            textField.selectedTextRange = textField.textRange(from: start, to: end)
+            return true
+        default:
+            return false
+        }
+        #endif
+    }
+
+    private static func characters(_ text: String, _ nsRange: NSRange) -> (text: String, range: Range<Int>)? {
+        guard let range = Range(nsRange, in: text) else { return nil }
+        let start = text.distance(from: text.startIndex, to: range.lowerBound)
+        let end = text.distance(from: text.startIndex, to: range.upperBound)
+        return (text, start..<end)
+    }
+
+    #if os(iOS)
+    fileprivate static weak var found: UIResponder?
+
+    /// Первый ответчик: действие без адресата доходит до него первым.
+    private static func firstResponder() -> UIResponder? {
+        found = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.lumen_reportFirstResponder), to: nil, from: nil, for: nil)
+        return found
+    }
+    #endif
+}
+
+#if os(iOS)
+extension UIResponder {
+    @objc fileprivate func lumen_reportFirstResponder() {
+        ActiveTextField.found = self
+    }
+}
+#endif
+
 // MARK: - Меню по правой кнопке внутри текста
 
 /// Пункты оформления в системном меню текста (правая кнопка, нажатие двумя пальцами).
@@ -198,16 +333,15 @@ enum TextFormatMenu {
         }
     }
 
-    /// Что оформлять: выделение, а без него весь блок с курсором.
-    static var target: TextSelectionInfo? {
-        guard let editor else { return nil }
-        if let selection = editor.textSelection { return selection }
-        return editor.focusedBlockId.flatMap(editor.wholeText(of:))
+    /// Есть ли блок с курсором, текст которого можно оформить.
+    static var hasTarget: Bool {
+        guard let editor, let id = editor.focusedBlockId else { return false }
+        return editor.wholeText(of: id) != nil
     }
 
     static func perform(_ action: FormatAction) {
-        guard let editor, let target else { return }
-        editor.apply(action, to: target)
+        guard let editor, let id = editor.focusedBlockId else { return }
+        TextFormatting.perform(action, model: editor, blockId: id)
     }
 
     static let actions: [FormatAction] = [.bold, .italic, .underline, .strikethrough, .code, .clear]
@@ -229,7 +363,7 @@ extension NSTextView {
     @objc fileprivate func lumen_menu(for event: NSEvent) -> NSMenu? {
         // После подмены это вызов настоящего метода.
         let menu = lumen_menu(for: event)
-        guard isFieldEditor, let menu, TextFormatMenu.target != nil else { return menu }
+        guard isFieldEditor, let menu, TextFormatMenu.hasTarget else { return menu }
         let format = NSMenu(title: "Формат")
         for action in TextFormatMenu.actions {
             let item = NSMenuItem(title: action.title, action: #selector(TextFormatMenuTarget.perform(_:)), keyEquivalent: "")
@@ -250,7 +384,7 @@ extension NSTextView {
 extension UITextView {
     @objc fileprivate func lumen_buildMenu(with builder: any UIMenuBuilder) {
         lumen_buildMenu(with: builder)
-        guard builder.system == .context, isFirstResponder, TextFormatMenu.target != nil,
+        guard builder.system == .context, isFirstResponder, TextFormatMenu.hasTarget,
               builder.menu(for: .standardEdit) != nil else { return }
         let actions = TextFormatMenu.actions.map { action in
             UIAction(title: action.title, image: UIImage(systemName: action.systemImage)) { _ in

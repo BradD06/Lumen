@@ -4,6 +4,9 @@ import LumenThemes
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(macOS)
+import AppKit
+#endif
 
 /// Один блок страницы: ручка для перетаскивания, маркер (точка, номер, чекбокс) и содержимое.
 struct BlockRow: View {
@@ -24,7 +27,6 @@ struct BlockRow: View {
     /// Разметка, которую человек сейчас набирает. Держится, пока блок в фокусе, чтобы курсор
     /// не прыгал, если та же разметка собирается из фрагментов чуть иначе.
     @State private var editingSource: String?
-    @State private var selection: TextSelection?
     @Environment(\.lumenTheme) private var theme
     private let focusMode = FocusModeState.shared
 
@@ -431,7 +433,7 @@ struct BlockRow: View {
     }
 
     private var field: some View {
-        TextField(placeholder, text: fieldText, selection: $selection, axis: .vertical)
+        TextField(placeholder, text: fieldText, axis: .vertical)
         .textFieldStyle(.plain)
         .font(font)
         .foregroundStyle(fieldColor)
@@ -476,7 +478,7 @@ struct BlockRow: View {
                 action = .strikethrough
             default: return .ignored
             }
-            applyShortcut(action)
+            TextFormatting.perform(action, model: model, blockId: block.id)
             return .handled
         }
         .overlay(alignment: .topLeading) {
@@ -489,13 +491,20 @@ struct BlockRow: View {
                     .accessibilityHidden(true)
             }
         }
-        .onChange(of: selection) { _, _ in publishSelection() }
+        #if os(macOS)
+        // Выделение на Mac: над ним всплывает панель оформления.
+        .onReceive(NotificationCenter.default.publisher(for: NSTextView.didChangeSelectionNotification)) { notification in
+            guard isFocused, isRichText, let textView = notification.object as? NSTextView,
+                  textView === NSApp.keyWindow?.firstResponder else { return }
+            let info = TextFormatting.currentSelection(blockId: block.id)
+            if model.textSelection != info { model.textSelection = info }
+        }
+        #endif
         .onChange(of: isFocused) { _, focused in
             if focused {
                 TextFormatMenu.editor = model
             } else {
                 editingSource = nil
-                selection = nil
                 if model.textSelection?.blockId == block.id { model.textSelection = nil }
             }
         }
@@ -541,53 +550,12 @@ struct BlockRow: View {
         isRichText && !isFocused && InlineMarkup.hasFormatting(block.content.runs)
     }
 
-    /// Выделение в поле → выделение в тексте без разметки.
-    private var selectedRange: Range<Int>? {
-        guard isRichText, isFocused, let selection, case .selection(let range) = selection.indices else { return nil }
-        let source = markupSource
-        guard range.upperBound <= source.endIndex,
-              let lower = String.Index(range.lowerBound, within: source),
-              let upper = String.Index(range.upperBound, within: source) else { return nil }
-        let parsed = InlineMarkup.parse(source)
-        let start = parsed.plainOffset(forSource: source.distance(from: source.startIndex, to: lower))
-        let end = parsed.plainOffset(forSource: source.distance(from: source.startIndex, to: upper))
-        return start..<max(start, end)
-    }
-
-    private func publishSelection() {
-        let info = selectedRange.flatMap { $0.isEmpty ? nil : TextSelectionInfo(blockId: block.id, range: $0) }
-        guard info != nil || model.textSelection?.blockId == block.id else { return }
-        if model.textSelection != info { model.textSelection = info }
-    }
-
-    /// Сочетание клавиш: с выделением оформляет его, без выделения ставит пару значков
-    /// и курсор между ними, чтобы дальше печатать уже жирным.
-    private func applyShortcut(_ action: FormatAction) {
-        if let range = selectedRange, !range.isEmpty {
-            model.apply(action, to: TextSelectionInfo(blockId: block.id, range: range))
-            return
-        }
-        guard let mark = action.mark, let selection, case .selection(let caret) = selection.indices else { return }
-        var source = markupSource
-        guard caret.lowerBound <= source.endIndex, let index = String.Index(caret.lowerBound, within: source) else { return }
-        let marker = InlineMarkup.delimiter(for: mark)
-        let offset = source.distance(from: source.startIndex, to: index)
-        source.insert(contentsOf: marker + marker, at: index)
-        editingSource = source
-        model.updateMarkup(block.id, to: source)
-        let caretIndex = source.index(source.startIndex, offsetBy: offset + marker.count)
-        self.selection = TextSelection(insertionPoint: caretIndex)
-    }
-
     /// После смены оформления разметка в поле другая: выделение ставится на тот же текст.
     private func restoreSelection(_ range: Range<Int>) {
         let source = InlineMarkup.source(block.content.runs)
         editingSource = source
         let target = InlineMarkup.parse(source).sourceRange(forPlain: range)
-        guard target.upperBound <= source.count else { return }
-        let lower = source.index(source.startIndex, offsetBy: target.lowerBound)
-        let upper = source.index(source.startIndex, offsetBy: target.upperBound)
-        selection = TextSelection(range: lower..<upper)
+        ActiveTextField.select(target, whenTextIs: source)
     }
 
     /// Панель над выделенным текстом на Mac. На iPhone и iPad она над клавиатурой (PageEditorView).
@@ -595,7 +563,7 @@ struct BlockRow: View {
     private var floatingFormatBar: some View {
         #if os(macOS)
         if isFocused, let info = model.textSelection, info.blockId == block.id {
-            FormatBar(model: model, selection: info) {
+            FormatBar(model: model, blockId: block.id, selection: info) {
                 DispatchQueue.main.async { isColorPickerShown = true }
             }
             .offset(x: Self.handleInset, y: -44)
