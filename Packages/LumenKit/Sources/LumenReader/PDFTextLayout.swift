@@ -2,13 +2,16 @@ import Foundation
 import LumenCore
 
 /// Строка текста со страницы PDF и размер её шрифта (0, если он неизвестен).
+/// Картинка со страницы тоже строка: без текста, с путём к файлу картинки.
 struct PDFLine: Hashable, Sendable {
     var text: String
     var size: Double
+    var image: String?
 
-    init(_ text: String, size: Double = 0) {
+    init(_ text: String, size: Double = 0, image: String? = nil) {
         self.text = text
         self.size = size
+        self.image = image
     }
 }
 
@@ -142,7 +145,7 @@ enum PDFTextLayout {
     static let chunkPages = 20
 
     static func build(pages raw: [[PDFLine]], outline: [PDFOutlineItem], frontTitle: String = "Начало") -> Book {
-        let cleaned = raw.map { $0.map { PDFLine(clean($0.text), size: $0.size) } }
+        let cleaned = raw.map { $0.map { PDFLine(clean($0.text), size: $0.size, image: $0.image) } }
         let body = bodySize(cleaned)
         let pages = stripRunningLines(cleaned, bodySize: body)
         var breaks = outline.isEmpty ? headingBreaks(pages, bodySize: body) : outlineBreaks(outline, pages: pages)
@@ -180,7 +183,11 @@ enum PDFTextLayout {
                 }
                 let line = lines[index]
                 if line.text.isEmpty {
-                    writer.flushParagraph()
+                    if let image = line.image {
+                        writer.image(image)
+                    } else {
+                        writer.flushParagraph()
+                    }
                     index += 1
                     continue
                 }
@@ -502,6 +509,13 @@ enum PDFTextLayout {
             resolvePages()
             paragraph = paragraph.isEmpty ? line : PDFTextLayout.join(paragraph, line)
             if breakAfter { flushParagraph() }
+        }
+
+        /// Картинка со страницы. Текста в ней нет, поэтому места в тексте она не сдвигает.
+        mutating func image(_ path: String) {
+            flushParagraph()
+            resolvePages()
+            html += "<p class=\"image\"><img src=\"\(HTML.escape(path))\" alt=\"\"></p>"
         }
 
         mutating func heading(_ text: String, level: Int) {

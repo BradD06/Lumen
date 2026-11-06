@@ -213,6 +213,44 @@ struct PDFTextConverterTests {
         #expect(index.local(index.global(page: 4)).section == 2)
     }
 
+    @Test func keepsPicturesWhereTheyStoodOnThePage() throws {
+        let url = folder.appendingPathComponent("pictures.pdf")
+        var mediaBox = CGRect(x: 0, y: 0, width: 640, height: 600)
+        let context = try #require(CGContext(url as CFURL, mediaBox: &mediaBox, nil))
+        let bitmap = try #require(CGContext(
+            data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 32,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        bitmap.setFillColor(CGColor(srgbRed: 1, green: 0.4, blue: 0.2, alpha: 1))
+        bitmap.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        let picture = try #require(bitmap.makeImage())
+        context.beginPDFPage(nil)
+        func draw(_ text: String, y: CGFloat) {
+            let font = CTFontCreateWithName("Helvetica" as CFString, 11, nil)
+            let line = CTLineCreateWithAttributedString(NSAttributedString(
+                string: text, attributes: [NSAttributedString.Key(kCTFontAttributeName as String): font]
+            ))
+            context.textPosition = CGPoint(x: 30, y: y)
+            CTLineDraw(line, context)
+        }
+        draw("Text above the picture is a whole sentence that ends here.", y: 560)
+        context.draw(picture, in: CGRect(x: 100, y: 300, width: 300, height: 200))
+        draw("Label", y: 400)
+        draw("Text below the picture is another sentence that ends here.", y: 260)
+        context.endPDFPage()
+        context.closePDF()
+
+        let document = try PDFTextConverter.convert(file: url, into: folder)
+        let html = try String(contentsOf: folder.appendingPathComponent(document.sections[0].path), encoding: .utf8)
+        let above = try #require(html.range(of: "Text above"))
+        let picture = try #require(html.range(of: "<img src=\"images/p1-1.jpg\""))
+        let below = try #require(html.range(of: "Text below"))
+        #expect(above.lowerBound < picture.lowerBound && picture.lowerBound < below.lowerBound)
+        // Подпись внутри картинки уже есть на самой картинке.
+        #expect(!html.contains("Label"))
+        #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("images/p1-1.jpg").path))
+    }
+
     @Test func scanWithoutTextIsRefused() throws {
         let file = try makePDF(pages: [[], [], []])
         #expect(throws: ReaderError.noText) {
