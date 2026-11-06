@@ -57,22 +57,19 @@ enum PDFTextConverter {
     /// Строки страницы. С размерами шрифта, если нужно искать заголовки.
     static func lines(of page: PDFPage?, withSizes: Bool) -> [PDFLine] {
         guard let page else { return [] }
-        if withSizes, let attributed = page.attributedString, attributed.length > 0 {
-            return lines(from: attributed)
+        guard withSizes else { return PDFTextLayout.split(page.string ?? "").map { PDFLine($0) } }
+        if let attributed = page.attributedString, attributed.length > 0 {
+            let lines = lines(from: attributed)
+            if lines.contains(where: { $0.size > 0 }) { return lines }
         }
-        return PDFTextLayout.split(page.string ?? "").map { PDFLine($0) }
+        // Шрифта в тексте страницы нет: размер узнаём по высоте строки на странице.
+        return measuredLines(of: page)
     }
 
     /// Строки текста с размером шрифта, которым набрана большая часть строки.
     static func lines(from attributed: NSAttributedString) -> [PDFLine] {
         let string = attributed.string as NSString
-        let length = string.length
-        var result: [PDFLine] = []
-        var start = 0
-        while start <= length {
-            let found = string.rangeOfCharacter(from: .newlines, options: [], range: NSRange(location: start, length: length - start))
-            let end = found.location == NSNotFound ? length : found.location
-            let range = NSRange(location: start, length: end - start)
+        return lineRanges(in: string).map { range in
             var sizes: [Double: Int] = [:]
             if range.length > 0 {
                 attributed.enumerateAttribute(.font, in: range) { value, run, _ in
@@ -81,14 +78,38 @@ enum PDFTextConverter {
                 }
             }
             let size = sizes.max { $0.value < $1.value }?.key ?? 0
-            result.append(PDFLine(string.substring(with: range), size: size))
+            return PDFLine(string.substring(with: range), size: size)
+        }
+    }
+
+    /// Строки с высотой каждой строки на странице вместо размера шрифта: соотношение то же.
+    static func measuredLines(of page: PDFPage) -> [PDFLine] {
+        let string = (page.string ?? "") as NSString
+        return lineRanges(in: string).map { range in
+            var size = 0.0
+            if range.length > 0, let selection = page.selection(for: range) {
+                let height = Double(selection.bounds(for: page).height)
+                if height.isFinite, height > 0 { size = (height * 2).rounded() / 2 }
+            }
+            return PDFLine(string.substring(with: range), size: size)
+        }
+    }
+
+    /// Диапазоны строк текста. «\r\n» это один перенос, а не пустая строка между абзацами.
+    static func lineRanges(in string: NSString) -> [NSRange] {
+        let length = string.length
+        var ranges: [NSRange] = []
+        var start = 0
+        while start <= length {
+            let found = string.rangeOfCharacter(from: .newlines, options: [], range: NSRange(location: start, length: length - start))
+            let end = found.location == NSNotFound ? length : found.location
+            ranges.append(NSRange(location: start, length: end - start))
             guard found.location != NSNotFound else { break }
             var next = found.location + found.length
-            // «\r\n» это один перенос, а не пустая строка между абзацами.
             if string.character(at: found.location) == 13, next < length, string.character(at: next) == 10 { next += 1 }
             start = next
         }
-        return result
+        return ranges
     }
 
     private static func pointSize(_ value: Any?) -> Double? {

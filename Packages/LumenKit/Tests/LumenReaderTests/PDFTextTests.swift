@@ -198,7 +198,12 @@ struct PDFTextConverterTests {
         let document = try PDFTextConverter.convert(file: file, into: folder)
         let index = try #require(document.pdfText)
         #expect(index.pageCount == 6)
-        #expect(document.sections.map(\.title) == ["Начало", "Chapter 1", "Chapter 2"])
+        let pdf = try #require(PDFDocument(url: file))
+        let extracted = PDFTextConverter.lines(of: pdf.page(at: 1), withSizes: true)
+        try #require(
+            document.sections.map(\.title) == ["Начало", "Chapter 1", "Chapter 2"],
+            "Строки второй страницы: \(extracted.map { "\($0.size) \($0.text)" })"
+        )
         let html = try String(contentsOf: folder.appendingPathComponent(document.sections[1].path), encoding: .utf8)
         #expect(html.contains("Ending \(sentence(200, latin: true))"))
         #expect(!html.contains("Sample Book Title"))
