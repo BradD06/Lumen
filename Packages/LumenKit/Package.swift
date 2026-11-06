@@ -68,6 +68,6 @@ let package = Package(
             name: "LumenReaderTests",
             dependencies: ["LumenReader", "LumenCore", .product(name: "ZIPFoundation", package: "ZIPFoundation")]
         ),
-        .testTarget(name: "LumenUITests", dependencies: ["LumenUI", "LumenReader", "LumenStorage", "LumenCore"]),
+        .testTarget(name: "LumenUITests", dependencies: ["LumenUI", "LumenReader", "LumenStorage", "LumenThemes", "LumenCore"]),
     ]
 )

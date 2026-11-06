@@ -17,6 +17,7 @@ struct LumenApp: App {
         WindowGroup {
             if let database {
                 RootView(database: database)
+                    .lumenThemed()
                     .environment(syncStatus)
                     .task { await AppEnvironment.startSync(database: database, status: syncStatus) }
             } else {

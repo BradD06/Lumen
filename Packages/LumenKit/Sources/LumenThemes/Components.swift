@@ -10,13 +10,13 @@ public struct ThemedBackground: View {
         ZStack {
             theme.backgroundGradient
             RadialGradient(
-                colors: [theme.glow.opacity(0.45), theme.glow.opacity(0)],
+                colors: [theme.glow.opacity(theme.glowStrength), theme.glow.opacity(0)],
                 center: UnitPoint(x: 0.85, y: 0.0),
                 startRadius: 0,
                 endRadius: 520
             )
             RadialGradient(
-                colors: [theme.accent.opacity(0.18), theme.accent.opacity(0)],
+                colors: [theme.accent.opacity(theme.glowStrength * 0.4), theme.accent.opacity(0)],
                 center: UnitPoint(x: 0.05, y: 1.0),
                 startRadius: 0,
                 endRadius: 480
@@ -61,7 +61,7 @@ private struct LumenCardModifier: ViewModifier {
             }
             .overlay(shape.strokeBorder(theme.cardStroke, lineWidth: 1))
             .clipShape(shape)
-            .shadow(color: .black.opacity(0.25), radius: 16, y: 8)
+            .shadow(color: .black.opacity(theme.shadowOpacity), radius: 16, y: 8)
     }
 
     private var foreground: Color {

@@ -74,12 +74,12 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - On iPhone: Today, Inbox, Library and Search tabs at the bottom of the screen.
 
 ### 🌅 Design
-- A dark "Sunset" theme with warm gradients.
+- Five themes to pick in Settings: dark "Sunset" with warm gradients, light "Paper" with serif type and red ink, near-black "Monochrome" with a monospaced font, dark green and brass "Study", and quiet light "Zen". A theme changes colors, the font and light or dark mode across the whole app.
 - A **Today** screen: a capture field (tick "This is a task" to add it to today's tasks), Continue reading, today's tasks you can check off, the Inbox, and recent pages.
 
 ## Roadmap
 
-Coming next, in order: reminders for tasks, more themes and page styles, built-in widgets for the home screen, sync across devices with Supabase (including a future Windows app), Sign in with Apple, and a store for widgets and themes. The full plan, in Russian, is in [docs/ROADMAP.md](docs/ROADMAP.md), with one issue per step.
+Coming next, in order: reminders for tasks, more page styles, built-in widgets for the home screen, sync across devices with Supabase (including a future Windows app), Sign in with Apple, and a store for widgets and themes. The full plan, in Russian, is in [docs/ROADMAP.md](docs/ROADMAP.md), with one issue per step.
 
 ## Getting started
 
@@ -110,7 +110,7 @@ Packages/LumenKit/
   Sources/
     LumenCore/          models: pages, blocks, databases, notebooks, sources, links
     LumenStorage/       SQLite via GRDB: schema, migrations, repositories, FTS5 search, backups
-    LumenThemes/        design tokens, the Sunset theme, backgrounds, widget cards
+    LumenThemes/        design tokens, the five themes, backgrounds, widget cards
     LumenReader/        reader: EPUB, FB2, PDF, Word, PowerPoint and text converters
     LumenSync/          iCloud sync with CKSyncEngine (off for now, see below)
     LumenUI/            screens: home, inbox, sidebar, library, editor, reader,

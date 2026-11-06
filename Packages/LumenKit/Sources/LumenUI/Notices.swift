@@ -180,7 +180,7 @@ private struct NoticeBanner: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
         .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 0.5))
+        .overlay(Capsule().strokeBorder(theme.contrast.opacity(0.14), lineWidth: 0.5))
         .shadow(color: .black.opacity(0.3), radius: 14, y: 6)
         .frame(maxWidth: 520)
     }

@@ -76,7 +76,6 @@ public struct RootView: View {
             #endif
         }
         .tint(theme.accent)
-        .preferredColorScheme(.dark)
         .task { await purgeOldTrash() }
     }
 

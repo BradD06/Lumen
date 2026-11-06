@@ -461,7 +461,7 @@ struct CreateSheet: View {
 
 // MARK: - Настройки
 
-/// «Настройки»: звуки, данные и копии, синхронизация. Одно окно вместо разбросанных пунктов.
+/// «Настройки»: тема оформления, звуки, данные и копии, синхронизация. Одно окно вместо разбросанных пунктов.
 struct SettingsSheet: View {
     let database: AppDatabase
     var onDone: () -> Void
@@ -471,7 +471,14 @@ struct SettingsSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Оформление и звук") {
+                Section {
+                    ThemePicker()
+                } header: {
+                    Text("Тема оформления")
+                } footer: {
+                    Text("Меняет цвета, шрифт и светлый или тёмный режим во всём приложении. Вид книги в читалке настраивается отдельно, кнопкой «Аа».")
+                }
+                Section("Звук") {
                     Toggle("Звуки при действиях", isOn: $soundsEnabled)
                 }
                 Section {
