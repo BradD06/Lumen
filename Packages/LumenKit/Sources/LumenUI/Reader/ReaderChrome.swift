@@ -158,6 +158,9 @@ struct ReaderAppearancePanel: View {
     @Binding var typefaceRaw: String
     /// Размер и шрифт есть только у книг в HTML: текст PDF не перестраивается.
     var showsTextOptions = true
+    /// Страницы PDF: без полей и по колонкам. `nil` у книг, где это не нужно.
+    var cropsMargins: Binding<Bool>?
+    var splitsColumns: Binding<Bool>?
     @Environment(\.lumenTheme) private var theme
 
     private let palettes: [ReaderAppearance.Palette] = [.night, .paper, .dawn, .original]
@@ -172,6 +175,13 @@ struct ReaderAppearancePanel: View {
             }
             if showsTextOptions {
                 textOptions
+            }
+            if let cropsMargins, let splitsColumns {
+                caption("Страницы")
+                HStack(spacing: 8) {
+                    pageOption("Без полей", systemImage: "crop", isOn: cropsMargins)
+                    pageOption("По колонкам", systemImage: "rectangle.split.2x1", isOn: splitsColumns)
+                }
             }
         }
         .padding(20)
@@ -218,6 +228,27 @@ struct ReaderAppearancePanel: View {
                 .accessibilityAddTraits(isOn ? .isSelected : [])
             }
         }
+    }
+
+    /// Переключатель вида страниц PDF в том же виде, что кнопки шрифта.
+    private func pageOption(_ title: String, systemImage: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .foregroundStyle(isOn.wrappedValue ? ReaderStyle.peach : theme.textSecondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background(
+                    (isOn.wrappedValue ? ReaderStyle.peach.opacity(0.2) : Color.white.opacity(0.07)),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn.wrappedValue ? .isSelected : [])
     }
 
     private func caption(_ text: String) -> some View {

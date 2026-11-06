@@ -26,13 +26,17 @@ public enum PDFReaderEvent: Sendable {
     case moved
     /// Новый масштаб, 1 это настоящий размер страницы.
     case scaleChanged(Double)
+    /// Масштаб поменяли руками (щипком или жестом трекпада): его стоит запомнить для книги.
+    case zoomedByHand
     case highlightTapped(UUID)
 }
 
 /// Управляет видом PDF: открывает файл, переходит к странице или выделению, рисует выделения.
+/// Умеет показывать страницы без белых полей и по колонкам: тогда на экране не сами страницы файла,
+/// а их куски, но места, выделения и события всегда считаются в страницах файла.
 @MainActor
 public final class PDFReaderController: NSObject {
-    public let pdfView = PDFView()
+    public let pdfView: PDFView
     public var onEvent: (@MainActor (PDFReaderEvent) -> Void)?
 
     private var annotations: [UUID: [PDFAnnotation]] = [:]
@@ -42,7 +46,29 @@ public final class PDFReaderController: NSObject {
     private static let highlightKey = PDFAnnotationKey(rawValue: "LumenHighlight")
     /// Зафиксированный масштаб: пока он есть, страницы не подгоняются под окно и щипок не меняет размер.
     public private(set) var lockedScale: Double?
+    /// Свободный масштаб относительно «по ширине»: 1.3 значит на 30% крупнее. `nil` это ровно по ширине.
+    /// Держится при повороте телефона и смене размера окна.
+    public private(set) var zoomFactor: Double?
     public static let scaleRange: ClosedRange<Double> = 0.25...8
+
+    private var fileURL: URL?
+    /// Документы, из которых взяты страницы на экране: пока страницы показываются, документы нужны.
+    private var documents: [PDFDocument] = []
+    private var bookLayout: PDFBookLayout?
+    public private(set) var layoutOptions = PDFLayoutOptions.original
+    /// Для каждой страницы на экране: какая это страница файла и какой её кусок показан.
+    private var displayPages: [Int] = []
+    private var displayRects: [CGRect] = []
+    /// Для каждой страницы файла: какие страницы на экране её показывают.
+    private var displayRanges: [Range<Int>] = []
+    private var originalCount = 0
+    private var tocEntries: [TocEntry] = []
+    /// Ширина обычной страницы на экране, если страницы обрезаны или разбиты на колонки.
+    /// «По ширине» тогда считается по ней, а не так, как считает PDFKit.
+    private var referenceWidth: CGFloat?
+    /// Пока страницы перекладываются, события места чтения молчат: иначе запомнится промежуточное место.
+    private var isQuiet = false
+    private var relayoutTask: Task<Void, Never>?
     #if os(macOS)
     private weak var observedClipView: NSClipView?
     #else
@@ -51,7 +77,10 @@ public final class PDFReaderController: NSObject {
     #endif
 
     public override init() {
+        let view = LumenPDFView()
+        pdfView = view
         super.init()
+        view.onResize = { [weak self] in self?.viewResized() }
         pdfView.autoScales = true
         pdfView.minScaleFactor = CGFloat(Self.scaleRange.lowerBound)
         pdfView.maxScaleFactor = CGFloat(Self.scaleRange.upperBound)
@@ -80,6 +109,15 @@ public final class PDFReaderController: NSObject {
             }
             return swallowed ? nil : event
         }
+        magnifyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.magnify, .smartMagnify]) { [weak self] event in
+            let ended = event.type == .smartMagnify || (event.type == .magnify && event.phase == .ended)
+            let windowNumber = event.windowNumber
+            let location = event.locationInWindow
+            if ended {
+                MainActor.assumeIsolated { self?.magnifyEnded(windowNumber: windowNumber, location: location) }
+            }
+            return event
+        }
         #else
         for direction in [UISwipeGestureRecognizer.Direction.left, .right] {
             let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swiped(_:)))
@@ -103,11 +141,12 @@ public final class PDFReaderController: NSObject {
 
     /// Свайп листает, только пока страница целиком входит по ширине: в увеличенной им двигают страницу.
     var canSwipe: Bool {
-        pdfView.scaleFactor <= pdfView.scaleFactorForSizeToFit * 1.02
+        Double(pdfView.scaleFactor) <= fitScale * 1.02
     }
 
     #if os(macOS)
     nonisolated(unsafe) private var scrollMonitor: Any?
+    nonisolated(unsafe) private var magnifyMonitor: Any?
     private var swipeX: CGFloat = 0
     private var swipeY: CGFloat = 0
     /// Страницу уже перелистнули этим жестом: остаток жеста и инерция больше ничего не делают.
@@ -115,6 +154,7 @@ public final class PDFReaderController: NSObject {
 
     deinit {
         if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
+        if let magnifyMonitor { NSEvent.removeMonitor(magnifyMonitor) }
     }
 
     /// Горизонтальный свайп двумя пальцами по трекпаду над PDF: одна страница на жест.
@@ -139,6 +179,15 @@ public final class PDFReaderController: NSObject {
         let sideways = abs(swipeX) > 6 && abs(swipeX) > swipeY * 2
         return swipeTurned || (sideways && event.momentumPhase == [])
     }
+    private func magnifyEnded(windowNumber: Int, location: CGPoint) {
+        guard let window = pdfView.window, window.windowNumber == windowNumber,
+              pdfView.bounds.contains(pdfView.convert(location, from: nil)) else { return }
+        // Масштаб PDFView поменяет уже после этого события.
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(80))
+            self?.zoomEndedByHand()
+        }
+    }
     #else
     @objc private func swiped(_ recognizer: UISwipeGestureRecognizer) {
         guard canSwipe else { return }
@@ -146,12 +195,105 @@ public final class PDFReaderController: NSObject {
     }
     #endif
 
-    public var pageCount: Int { pdfView.document?.pageCount ?? 0 }
+    /// Сколько страниц в файле (кусков на экране может быть больше).
+    public var pageCount: Int { pdfView.document == nil ? 0 : originalCount }
 
+    /// Открывает файл. `layout` это разметка полей и колонок, если она уже известна.
     @discardableResult
-    public func load(_ url: URL) -> Bool {
+    public func load(_ url: URL, layout: PDFBookLayout? = nil, options: PDFLayoutOptions = .original) -> Bool {
         guard let document = PDFDocument(url: url) else { return false }
+        relayoutTask?.cancel()
+        isQuiet = false
+        fileURL = url
         document.delegate = pageFactory
+        tocEntries = Self.outline(of: document)
+        bookLayout = layout?.pages.count == document.pageCount ? layout : nil
+        layoutOptions = options
+        show(build(from: document))
+        return true
+    }
+
+    /// Новая разметка или новые настройки полей и колонок. Место чтения остаётся тем же.
+    public func setLayout(_ layout: PDFBookLayout?, options: PDFLayoutOptions) {
+        let layout = layout?.pages.count == originalCount ? layout : nil
+        let wasChanged = referenceWidth != nil
+        bookLayout = layout
+        layoutOptions = options
+        let willChange = layout != nil && options.changesPages
+        guard let url = fileURL, pdfView.document != nil, wasChanged || willChange,
+              let document = PDFDocument(url: url) else { return }
+        let place = readingLocator
+        relayoutTask?.cancel()
+        isQuiet = true
+        document.delegate = pageFactory
+        show(build(from: document))
+        go(to: place)
+        // Точно перейти к месту PDFView может только после раскладки новых страниц.
+        relayoutTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard let self, !Task.isCancelled else { return }
+            self.applyZoom()
+            self.go(to: place)
+            self.isQuiet = false
+            self.emit(.pageChanged(index: self.currentPageIndex, count: self.pageCount))
+            self.emit(.scaleChanged(self.scale))
+        }
+    }
+
+    /// Раскладывает страницы файла по настройкам: обрезает поля, режет на колонки.
+    private func build(from first: PDFDocument) -> PDFDocument {
+        originalCount = first.pageCount
+        documents = [first]
+        let pages = (0..<originalCount).compactMap { first.page(at: $0) }
+        let plan = bookLayout.flatMap { layout in
+            layoutOptions.changesPages ? PDFLayoutPlan.pieces(for: layout, options: layoutOptions) : nil
+        }
+        guard let plan, pages.count == originalCount, plan.count == originalCount else {
+            displayPages = Array(0..<originalCount)
+            displayRects = pages.map { $0.bounds(for: .cropBox) }
+            displayRanges = (0..<originalCount).map { $0..<($0 + 1) }
+            referenceWidth = nil
+            return first
+        }
+        var display = first
+        var copies: [PDFPage] = []
+        if plan.contains(where: { $0.count > 1 }), let url = fileURL, let second = PDFDocument(url: url) {
+            // Вторая колонка это та же страница файла, а одна страница PDFKit не может стоять дважды:
+            // берём её из второго экземпляра того же файла.
+            second.delegate = pageFactory
+            copies = (0..<originalCount).compactMap { second.page(at: $0) }
+            if copies.count == originalCount {
+                display = PDFDocument()
+                documents.append(second)
+            } else {
+                copies = []
+            }
+        }
+        displayPages = []
+        displayRects = []
+        displayRanges = []
+        for index in 0..<originalCount {
+            let pieces = copies.isEmpty ? Array(plan[index].prefix(1)) : plan[index]
+            let start = displayPages.count
+            for (number, rect) in pieces.enumerated() {
+                let page = number == 0 ? pages[index] : copies[index]
+                page.setBounds(rect, for: .cropBox)
+                if display !== first { display.insert(page, at: display.pageCount) }
+                displayPages.append(index)
+                displayRects.append(rect)
+            }
+            displayRanges.append(start..<displayPages.count)
+        }
+        if display !== first { documents.append(display) }
+        // Обычная ширина: по середине списка, чтобы редкие широкие страницы её не раздували.
+        let widths = zip(displayPages, displayRects).map { index, rect in
+            pages[index].rotation % 180 == 0 ? rect.width : rect.height
+        }.sorted()
+        referenceWidth = widths.isEmpty ? nil : widths[widths.count / 2]
+        return display
+    }
+
+    private func show(_ document: PDFDocument) {
         applyStyle(to: document)
         pdfView.document = document
         annotations = [:]
@@ -160,37 +302,62 @@ public final class PDFReaderController: NSObject {
         setHighlights(current)
         applyZoom()
         observeScrolling()
-        return true
+    }
+
+    /// Страница файла, которую показывает страница экрана.
+    private func originalIndex(of page: PDFPage) -> Int? {
+        guard let document = pdfView.document else { return nil }
+        let index = document.index(for: page)
+        return displayPages.indices.contains(index) ? displayPages[index] : nil
+    }
+
+    /// Страница экрана, которая показывает страницу файла `original` в точке `x` (колонку, где эта точка).
+    private func displayPage(_ original: Int, x: CGFloat? = nil) -> PDFPage? {
+        guard let document = pdfView.document, displayRanges.indices.contains(original) else { return nil }
+        let range = displayRanges[original]
+        guard let first = range.first else { return nil }
+        var chosen = first
+        if let x, range.count > 1 {
+            chosen = range.min { distance(x, displayRects[$0]) < distance(x, displayRects[$1]) } ?? first
+        }
+        return document.page(at: chosen)
+    }
+
+    private func distance(_ x: CGFloat, _ rect: CGRect) -> CGFloat {
+        x < rect.minX ? rect.minX - x : (x >= rect.maxX ? x - rect.maxX + 0.01 : 0)
     }
 
     /// Переходит к месту: к прямоугольнику выделения, к точке, где остановились, или к началу страницы.
     public func go(to locator: SourceLocator) {
         observeScrolling()
-        guard let document = pdfView.document, let page = document.page(at: min(locator.section, max(document.pageCount - 1, 0))) else { return }
+        let section = min(locator.section, max(originalCount - 1, 0))
         if let rect = locator.rects?.first(where: { $0.page == nil || $0.page == locator.section }) {
             let bounds = CGRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height)
+            guard let page = displayPage(section, x: bounds.midX) else { return }
             pdfView.go(to: bounds.insetBy(dx: 0, dy: -80), on: page)
         } else if let point = locator.point, point.x.isFinite, point.y.isFinite {
+            // Точка это левый верхний угол экрана: колонку ищем чуть правее неё.
+            guard let page = displayPage(section, x: CGFloat(point.x + 8)) else { return }
             pdfView.go(to: PDFDestination(page: page, at: CGPoint(x: point.x, y: point.y)))
-        } else {
+        } else if let page = displayPage(section) {
             pdfView.go(to: page)
         }
     }
 
     /// Где сейчас читают: страница и её точка в левом верхнем углу экрана.
     public var readingLocator: SourceLocator {
-        guard let document = pdfView.document else { return SourceLocator(section: 0) }
+        guard pdfView.document != nil else { return SourceLocator(section: 0) }
         var index = currentPageIndex
         var point: LocatorPoint?
-        if let destination = pdfView.currentDestination, let page = destination.page {
-            index = document.index(for: page)
+        if let destination = pdfView.currentDestination, let page = destination.page, let original = originalIndex(of: page) {
+            index = original
             let at = destination.point
             // Пока вид не разложен, PDFKit отдаёт вместо точки огромные числа.
             if at.x.isFinite, at.y.isFinite, abs(at.x) < 100_000, abs(at.y) < 100_000 {
                 point = LocatorPoint(x: at.x, y: at.y)
             }
         }
-        let progression = document.pageCount > 1 ? Double(index) / Double(document.pageCount - 1) : 0
+        let progression = originalCount > 1 ? Double(index) / Double(originalCount - 1) : 0
         return SourceLocator(section: index, progression: progression, point: point)
     }
 
@@ -199,23 +366,58 @@ public final class PDFReaderController: NSObject {
     /// Масштаб страниц, 1 это настоящий размер.
     public var scale: Double { Double(pdfView.scaleFactor) }
 
-    /// Масштаб, при котором страница целиком входит по ширине.
-    public var fitScale: Double { Double(pdfView.scaleFactorForSizeToFit) }
+    /// Масштаб, при котором обычная страница (или колонка) целиком входит по ширине.
+    public var fitScale: Double {
+        guard let referenceWidth, referenceWidth > 1, pdfView.bounds.width > 1 else {
+            return Double(pdfView.scaleFactorForSizeToFit)
+        }
+        let margins = pdfView.pageBreakMargins.left + pdfView.pageBreakMargins.right
+        var width = pdfView.bounds.width
+        #if os(iOS)
+        width -= pdfView.safeAreaInsets.left + pdfView.safeAreaInsets.right
+        #endif
+        // PDFKit где-то масштабирует отступы между страницами, а где-то нет: берём меньший масштаб,
+        // чтобы страница точно не вылезала вбок.
+        let fit = min((width - margins) / referenceWidth, width / (referenceWidth + margins)) * 0.995
+        return Self.clamp(Double(fit))
+    }
+
+    /// Свободный масштаб сейчас, относительно «по ширине». `nil`, если это и есть «по ширине».
+    public var currentZoomFactor: Double? {
+        let fit = fitScale
+        guard fit > 0 else { return nil }
+        let factor = scale / fit
+        return abs(factor - 1) < 0.02 ? nil : factor
+    }
+
+    /// Масштаб при открытии книги: зафиксированный или свободный, относительно «по ширине».
+    public func setZoom(locked: Double?, factor: Double?) {
+        lockedScale = locked.map(Self.clamp)
+        zoomFactor = factor
+        applyZoom()
+    }
 
     /// Фиксирует масштаб (`nil` отпускает). Отпущенный масштаб остаётся каким был, щипок снова работает.
     public func lockZoom(at scale: Double?) {
-        lockedScale = scale.map { min(max($0, Self.scaleRange.lowerBound), Self.scaleRange.upperBound) }
+        if scale == nil, lockedScale != nil { zoomFactor = currentZoomFactor }
+        lockedScale = scale.map(Self.clamp)
+        applyZoom()
+    }
+
+    /// Ставит масштаб заново: после раскладки страниц или смены размера.
+    public func refreshZoom() {
         applyZoom()
     }
 
     /// Крупнее или мельче в `factor` раз. Зафиксированный масштаб остаётся зафиксированным, только новым.
     public func zoom(by factor: Double) {
-        let target = min(max(scale * factor, Self.scaleRange.lowerBound), Self.scaleRange.upperBound)
+        let target = Self.clamp(scale * factor)
         if lockedScale != nil {
             lockZoom(at: target)
         } else {
-            pdfView.autoScales = false
-            pdfView.scaleFactor = CGFloat(target)
+            let fit = fitScale
+            zoomFactor = fit > 0 && abs(target / fit - 1) >= 0.02 ? target / fit : nil
+            applyZoom()
         }
     }
 
@@ -224,8 +426,31 @@ public final class PDFReaderController: NSObject {
         if lockedScale != nil {
             lockZoom(at: fitScale)
         } else {
-            pdfView.autoScales = true
+            zoomFactor = nil
+            applyZoom()
         }
+    }
+
+    /// Щипок или жест трекпада закончился: новый масштаб становится масштабом книги.
+    private func zoomEndedByHand() {
+        guard lockedScale == nil, pdfView.document != nil else { return }
+        zoomFactor = currentZoomFactor
+        emit(.zoomedByHand)
+    }
+
+    private func viewResized() {
+        // Свободный масштаб держится относительно ширины: при повороте телефона текст остаётся по ширине.
+        guard lockedScale == nil, referenceWidth != nil || zoomFactor != nil else { return }
+        applyZoom()
+    }
+
+    static func clamp(_ scale: Double) -> Double {
+        min(max(scale, scaleRange.lowerBound), scaleRange.upperBound)
+    }
+
+    private func setScale(_ value: Double) {
+        let target = CGFloat(Self.clamp(value))
+        if abs(pdfView.scaleFactor - target) > 0.0005 { pdfView.scaleFactor = target }
     }
 
     private func applyZoom() {
@@ -240,15 +465,32 @@ public final class PDFReaderController: NSObject {
             // Равные границы и есть фиксация: щипок и жест трекпада масштаб больше не меняют.
             pdfView.minScaleFactor = value
             pdfView.maxScaleFactor = value
-        } else {
-            pdfView.minScaleFactor = CGFloat(range.lowerBound)
-            pdfView.maxScaleFactor = CGFloat(range.upperBound)
+            return
         }
+        pdfView.minScaleFactor = CGFloat(range.lowerBound)
+        pdfView.maxScaleFactor = CGFloat(range.upperBound)
+        if referenceWidth != nil {
+            // Пока вид не разложен, ширины нет: масштаб поставится, когда она появится.
+            guard pdfView.bounds.width > 1 else { return }
+            pdfView.autoScales = false
+            setScale(fitScale * (zoomFactor ?? 1))
+        } else if let zoomFactor {
+            guard pdfView.bounds.width > 1 else { return }
+            pdfView.autoScales = false
+            setScale(Double(pdfView.scaleFactorForSizeToFit) * zoomFactor)
+        } else {
+            pdfView.autoScales = true
+        }
+        hookPinch()
     }
 
     /// Оглавление PDF (закладки файла). Якорь пункта это точка на странице: `x,y`.
     public func outline() -> [TocEntry] {
-        guard let document = pdfView.document, let root = document.outlineRoot else { return [] }
+        tocEntries
+    }
+
+    private static func outline(of document: PDFDocument) -> [TocEntry] {
+        guard let root = document.outlineRoot else { return [] }
         var entries: [TocEntry] = []
         func walk(_ item: PDFOutline, level: Int) {
             for index in 0..<item.numberOfChildren {
@@ -268,8 +510,9 @@ public final class PDFReaderController: NSObject {
 
     /// Переход к пункту оглавления: к точке на странице, если она известна.
     public func go(to entry: TocEntry) {
-        guard let document = pdfView.document, let page = document.page(at: entry.section) else { return }
         let parts = entry.anchor?.split(separator: ",").compactMap { Double($0) } ?? []
+        let x: CGFloat? = parts.count == 2 ? CGFloat(parts[0] + 8) : nil
+        guard let page = displayPage(entry.section, x: x) else { return }
         if parts.count == 2 {
             pdfView.go(to: PDFDestination(page: page, at: CGPoint(x: parts[0], y: parts[1])))
         } else {
@@ -288,8 +531,8 @@ public final class PDFReaderController: NSObject {
 
     /// Номер открытой страницы, с нуля.
     public var currentPageIndex: Int {
-        guard let document = pdfView.document, let page = pdfView.currentPage else { return 0 }
-        return document.index(for: page)
+        guard let page = pdfView.currentPage else { return 0 }
+        return originalIndex(of: page) ?? 0
     }
 
     /// Перекрашивает страницы под тему читалки и остаётся на том же месте.
@@ -312,6 +555,7 @@ public final class PDFReaderController: NSObject {
         pdfView.document = nil
         pdfView.document = document
         if let destination { pdfView.go(to: destination) }
+        applyZoom()
         observeScrolling()
     }
 
@@ -345,16 +589,19 @@ public final class PDFReaderController: NSObject {
             }
             var added: [PDFAnnotation] = []
             for rect in highlight.locator.rects ?? [] {
-                guard let page = document.page(at: rect.page ?? highlight.locator.section) else { continue }
-                let annotation = PDFAnnotation(
-                    bounds: CGRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height),
-                    forType: .highlight,
-                    withProperties: nil
-                )
-                annotation.color = highlightColor(highlight.colorHex)
-                annotation.setValue(highlight.id.uuidString, forAnnotationKey: Self.highlightKey)
-                page.addAnnotation(annotation)
-                added.append(annotation)
+                let original = rect.page ?? highlight.locator.section
+                guard displayRanges.indices.contains(original) else { continue }
+                let bounds = CGRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height)
+                let range = displayRanges[original]
+                // Страница в две колонки показана двумя кусками: выделение рисуется на том, где оно видно.
+                for displayIndex in range where range.count == 1 || displayRects[displayIndex].intersects(bounds) {
+                    guard let page = document.page(at: displayIndex) else { continue }
+                    let annotation = PDFAnnotation(bounds: bounds, forType: .highlight, withProperties: nil)
+                    annotation.color = highlightColor(highlight.colorHex)
+                    annotation.setValue(highlight.id.uuidString, forAnnotationKey: Self.highlightKey)
+                    page.addAnnotation(annotation)
+                    added.append(annotation)
+                }
             }
             annotations[highlight.id] = added
         }
@@ -363,40 +610,43 @@ public final class PDFReaderController: NSObject {
     // MARK: Уведомления PDFView
 
     @objc private func selectionChanged() {
-        guard let document = pdfView.document,
-              let selection = pdfView.currentSelection,
+        guard let selection = pdfView.currentSelection,
               let text = selection.string?.trimmingCharacters(in: .whitespacesAndNewlines),
               !text.isEmpty,
-              let firstPage = selection.pages.first else {
-            onEvent?(.selectionCleared)
+              let firstPage = selection.pages.first,
+              let section = originalIndex(of: firstPage) else {
+            emit(.selectionCleared)
             return
         }
-        let section = document.index(for: firstPage)
         var rects: [LocatorRect] = []
         for line in selection.selectionsByLine() {
-            guard let page = line.pages.first else { continue }
+            guard let page = line.pages.first, let index = originalIndex(of: page) else { continue }
             let bounds = line.bounds(for: page)
             guard bounds.width > 0.5, bounds.height > 0.5 else { continue }
-            let index = document.index(for: page)
             rects.append(LocatorRect(
                 page: index == section ? nil : index,
                 x: bounds.minX, y: bounds.minY, width: bounds.width, height: bounds.height
             ))
         }
-        let progression = document.pageCount > 1 ? Double(section) / Double(document.pageCount - 1) : 0
-        onEvent?(.selection(
+        let progression = originalCount > 1 ? Double(section) / Double(originalCount - 1) : 0
+        emit(.selection(
             text: text,
             locator: SourceLocator(section: section, progression: progression, text: text, rects: rects)
         ))
     }
 
+    private func emit(_ event: PDFReaderEvent) {
+        guard !isQuiet else { return }
+        onEvent?(event)
+    }
+
     @objc private func pageChanged() {
-        onEvent?(.pageChanged(index: currentPageIndex, count: pageCount))
+        emit(.pageChanged(index: currentPageIndex, count: pageCount))
     }
 
     @objc private func scaleChanged() {
-        onEvent?(.scaleChanged(scale))
-        onEvent?(.moved)
+        emit(.scaleChanged(scale))
+        emit(.moved)
     }
 
     /// Прокрутка внутри страницы уведомления PDFView не даёт: слушаем его прокручиваемый вид.
@@ -412,11 +662,32 @@ public final class PDFReaderController: NSObject {
         #else
         guard let scrollView = Self.firstScrollView(in: pdfView), scrollView !== observedScrollView else { return }
         observedScrollView = scrollView
+        // Палец, который ведёт почти вертикально, двигает страницу только вверх-вниз, без съезда вбок.
+        scrollView.isDirectionalLockEnabled = true
         scrollObservation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated { self?.scrolled() }
         }
+        hookPinch()
         #endif
     }
+
+    #if os(iOS)
+    private weak var hookedPinch: UIPinchGestureRecognizer?
+
+    /// Узнаёт, когда щипок закончился. Распознаватель щипка бывает только у незафиксированного масштаба.
+    private func hookPinch() {
+        guard let pinch = observedScrollView?.pinchGestureRecognizer, pinch !== hookedPinch else { return }
+        hookedPinch = pinch
+        pinch.addTarget(self, action: #selector(pinched(_:)))
+    }
+
+    @objc private func pinched(_ recognizer: UIPinchGestureRecognizer) {
+        guard recognizer.state == .ended else { return }
+        zoomEndedByHand()
+    }
+    #else
+    private func hookPinch() {}
+    #endif
 
     #if os(iOS)
     private static func firstScrollView(in view: UIView) -> UIScrollView? {
@@ -429,14 +700,14 @@ public final class PDFReaderController: NSObject {
     #endif
 
     @objc private func scrolled() {
-        onEvent?(.moved)
+        emit(.moved)
     }
 
     @objc private func annotationHit(_ notification: Notification) {
         guard let annotation = notification.userInfo?["PDFAnnotationHit"] as? PDFAnnotation,
               let value = annotation.value(forAnnotationKey: Self.highlightKey) as? String,
               let id = UUID(uuidString: value) else { return }
-        onEvent?(.highlightTapped(id))
+        emit(.highlightTapped(id))
     }
 
     #if os(macOS)
@@ -485,6 +756,30 @@ struct TrackpadScroll: Sendable {
     }
 }
 #endif
+
+/// PDFView, который говорит, когда поменялся его размер: «по ширине» тогда считается заново.
+final class LumenPDFView: PDFView {
+    var onResize: (@MainActor () -> Void)?
+    private var lastSize = CGSize.zero
+
+    #if os(macOS)
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        sizeMaybeChanged()
+    }
+    #else
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        sizeMaybeChanged()
+    }
+    #endif
+
+    private func sizeMaybeChanged() {
+        guard bounds.size != lastSize else { return }
+        lastSize = bounds.size
+        onResize?()
+    }
+}
 
 /// PDF в SwiftUI.
 public struct PDFReaderView: View {

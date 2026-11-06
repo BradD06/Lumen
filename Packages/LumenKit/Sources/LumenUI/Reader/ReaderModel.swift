@@ -74,6 +74,22 @@ final class ReaderModel {
     /// Масштаб PDF и зафиксирован ли он. Фиксация запоминается для каждой книги на этом устройстве.
     private(set) var pdfScale = 1.0
     private(set) var isZoomLocked = false
+    /// PDF без белых полей: текст крупнее при той же ширине экрана. Запоминается для каждой книги.
+    var cropsMargins = true {
+        didSet {
+            guard cropsMargins != oldValue else { return }
+            UserDefaults.standard.set(cropsMargins, forKey: cropKey)
+            applyPDFLayout()
+        }
+    }
+    /// PDF в две колонки читается по колонкам: левая по ширине экрана, под ней правая.
+    var splitsColumns = false {
+        didSet {
+            guard splitsColumns != oldValue else { return }
+            UserDefaults.standard.set(splitsColumns, forKey: columnsKey)
+            applyPDFLayout()
+        }
+    }
     var selection: Selection?
     /// Выделение, на которое нажали: для него показываются действия.
     var activeHighlightId: UUID?
@@ -88,6 +104,9 @@ final class ReaderModel {
     @ObservationIgnored let pdf = PDFReaderController()
     /// Ищет в оригинале PDF то, что выделили в режиме «Текст»: так выделение видно в обоих видах.
     @ObservationIgnored private var textFinder: PDFTextFinder?
+    /// Где у страниц PDF поля и колонки. Ищется один раз в фоне и потом берётся из кэша.
+    @ObservationIgnored private var pdfLayout: PDFBookLayout?
+    @ObservationIgnored private var layoutTask: Task<Void, Never>?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     /// Заметки к книге, которые сейчас создаются: два быстрых нажатия не заведут две заметки.
     @ObservationIgnored private var creatingNotes: Task<PageEditorModel?, Never>?
@@ -123,6 +142,8 @@ final class ReaderModel {
             if source.format == .pdf {
                 // Источник ещё не задан, поэтому смена вида здесь ничего не открывает.
                 documentMode = UserDefaults.standard.string(forKey: pdfModeKey).flatMap(DocumentMode.init(rawValue:)) ?? .original
+                cropsMargins = UserDefaults.standard.object(forKey: cropKey) as? Bool ?? true
+                splitsColumns = UserDefaults.standard.bool(forKey: columnsKey)
             }
             self.source = source
             savedLocator = source.locator
@@ -321,11 +342,13 @@ final class ReaderModel {
         case .pdf:
             let savedScale = UserDefaults.standard.object(forKey: zoomKey) as? Double
             isZoomLocked = savedScale != nil
-            pdf.lockZoom(at: savedScale)
-            guard pdf.load(url) else {
+            pdf.setZoom(locked: savedScale, factor: UserDefaults.standard.object(forKey: zoomFactorKey) as? Double)
+            if pdfLayout == nil { pdfLayout = PDFLayoutAnalyzer.cachedLayout(cacheKey: source.file) }
+            guard pdf.load(url, layout: pdfLayout, options: pdfLayoutOptions) else {
                 content = .failed("Файл PDF повреждён.")
                 return
             }
+            if pdfLayoutOptions != .original, pdfLayout == nil { findPDFLayout() }
             pageCount = pdf.pageCount
             pdfScale = pdf.scale
             toc = pdf.outline()
@@ -377,7 +400,7 @@ final class ReaderModel {
             loadSection(section, in: prepared, progression: sectionProgression, offset: sectionTextOffset)
         case .pdf:
             // Масштаб ставится до перехода: точка на странице зависит от него.
-            pdf.lockZoom(at: pdf.lockedScale)
+            pdf.refreshZoom()
             pdf.go(to: savedLocator ?? SourceLocator(section: section))
             section = pdf.currentPageIndex
             pdfScale = pdf.scale
@@ -700,6 +723,8 @@ final class ReaderModel {
             scheduleSave()
         case .scaleChanged(let scale):
             pdfScale = scale
+        case .zoomedByHand:
+            rememberZoom()
         case .highlightTapped(let id):
             selection = nil
             activeHighlightId = id
@@ -757,6 +782,40 @@ final class ReaderModel {
     // MARK: Масштаб PDF
 
     private var zoomKey: String { "reader.pdfZoom.\(sourceId.uuidString)" }
+    /// Свободный масштаб книги, во сколько раз крупнее, чем «по ширине».
+    private var zoomFactorKey: String { "reader.pdfZoomFactor.\(sourceId.uuidString)" }
+    private var cropKey: String { "reader.pdfCrop.\(sourceId.uuidString)" }
+    private var columnsKey: String { "reader.pdfColumns.\(sourceId.uuidString)" }
+
+    private var pdfLayoutOptions: PDFLayoutOptions {
+        PDFLayoutOptions(cropsMargins: cropsMargins, splitsColumns: splitsColumns)
+    }
+
+    /// Поля или колонки включили или выключили: страницы перекладываются, место чтения остаётся.
+    private func applyPDFLayout() {
+        guard content == .pdf else { return }
+        if pdfLayoutOptions != .original, pdfLayout == nil {
+            findPDFLayout()
+            return
+        }
+        pdf.setLayout(pdfLayout, options: pdfLayoutOptions)
+        if splitsColumns, pdfLayout?.hasColumns == false { showToast("Колонок в этой книге не нашлось") }
+    }
+
+    /// Разбирает страницы книги в фоне. У большой книги со сканами это занимает время,
+    /// поэтому до конца разбора страницы показаны как есть.
+    private func findPDFLayout() {
+        guard layoutTask == nil, let source, let url = fileURL else { return }
+        layoutTask = Task { [weak self] in
+            let layout = await PDFLayoutAnalyzer.layout(of: url, cacheKey: source.file)
+            guard let self else { return }
+            self.layoutTask = nil
+            self.pdfLayout = layout
+            guard self.content == .pdf, self.pdfLayoutOptions != .original else { return }
+            self.pdf.setLayout(layout, options: self.pdfLayoutOptions)
+            if self.splitsColumns, layout?.hasColumns == false { self.showToast("Колонок в этой книге не нашлось") }
+        }
+    }
 
     func zoom(in larger: Bool) {
         pdf.zoom(by: larger ? 1.2 : 1 / 1.2)
@@ -779,10 +838,16 @@ final class ReaderModel {
 
     private func rememberZoom() {
         pdfScale = pdf.scale
+        let defaults = UserDefaults.standard
         if isZoomLocked, let scale = pdf.lockedScale {
-            UserDefaults.standard.set(scale, forKey: zoomKey)
+            defaults.set(scale, forKey: zoomKey)
         } else {
-            UserDefaults.standard.removeObject(forKey: zoomKey)
+            defaults.removeObject(forKey: zoomKey)
+        }
+        if !isZoomLocked, let factor = pdf.zoomFactor {
+            defaults.set(factor, forKey: zoomFactorKey)
+        } else {
+            defaults.removeObject(forKey: zoomFactorKey)
         }
     }
 
