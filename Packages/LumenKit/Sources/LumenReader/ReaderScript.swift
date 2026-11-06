@@ -395,7 +395,8 @@ public struct ReaderAppearance: Hashable, Sendable {
         }
     }
 
-    public static let fontSizes = 14...28
+    /// Размер текста в точках. Верх с запасом: кому-то нужен очень крупный текст.
+    public static let fontSizes = 14...48
 
     public var palette: Palette
     public var fontSize: Int

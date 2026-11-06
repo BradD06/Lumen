@@ -23,7 +23,8 @@ final class ReaderModel {
         case failed(String)
     }
 
-    /// Как показывать документы Word и PowerPoint: текстом (с выписками) или как в оригинале.
+    /// Как показывать документы Word и PowerPoint, а также PDF: текстом (как книгу, с любым размером
+    /// шрифта) или как в оригинале.
     enum DocumentMode: String, CaseIterable, Identifiable {
         case text
         case original
@@ -53,7 +54,12 @@ final class ReaderModel {
     var besidePageId: UUID?
     var documentMode: DocumentMode = .text {
         didSet {
-            guard documentMode != oldValue else { return }
+            guard documentMode != oldValue, let source = self.source else { return }
+            if source.format == .pdf {
+                // Место чтения у PDF всегда хранится страницей, поэтому переходит в другой вид как есть.
+                savedLocator = readingLocator
+                UserDefaults.standard.set(documentMode.rawValue, forKey: pdfModeKey)
+            }
             Task { await openContent() }
         }
     }
@@ -79,6 +85,8 @@ final class ReaderModel {
 
     @ObservationIgnored let web = WebReaderController()
     @ObservationIgnored let pdf = PDFReaderController()
+    /// Ищет в оригинале PDF то, что выделили в режиме «Текст»: так выделение видно в обоих видах.
+    @ObservationIgnored private var textFinder: PDFTextFinder?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     /// Заметки к книге, которые сейчас создаются: два быстрых нажатия не заведут две заметки.
     @ObservationIgnored private var creatingNotes: Task<PageEditorModel?, Never>?
@@ -110,6 +118,10 @@ final class ReaderModel {
             guard let source = try await database.source(sourceId), !source.isTrashed else {
                 content = .failed("Книгу удалили или переместили в корзину.")
                 return
+            }
+            if source.format == .pdf {
+                // Источник ещё не задан, поэтому смена вида здесь ничего не открывает.
+                documentMode = UserDefaults.standard.string(forKey: pdfModeKey).flatMap(DocumentMode.init(rawValue:)) ?? .original
             }
             self.source = source
             savedLocator = source.locator
@@ -255,7 +267,17 @@ final class ReaderModel {
     /// Можно ли переключаться между текстом и оригиналом.
     var hasOriginalMode: Bool {
         guard let format = source?.format else { return false }
+        if format == .pdf { return true }
         return DocumentConverter.canConvert(format) && [.docx, .pptx, .doc, .odt, .rtf].contains(format)
+    }
+
+    /// Вид PDF (текст или оригинал) запоминается для каждой книги.
+    private var pdfModeKey: String { "reader.pdfMode.\(sourceId.uuidString)" }
+
+    /// PDF, открытый в режиме «Текст»: как места текста связаны со страницами.
+    private var pdfText: PDFTextIndex? {
+        guard source?.format == .pdf, case .web(let prepared) = content else { return nil }
+        return prepared.document.pdfText
     }
 
     private func openContent() async {
@@ -267,11 +289,34 @@ final class ReaderModel {
         loadedSection = nil
         toc = []
         currentAnchor = nil
-        if hasOriginalMode, documentMode == .original {
+        if hasOriginalMode, documentMode == .original, source.format != .pdf {
             content = .quickLook(url)
             return
         }
         switch source.format {
+        case .pdf where documentMode == .text:
+            if case .web = content {} else { content = .loading }
+            do {
+                let prepared = try await DocumentConverter.preparePDFText(file: url, cacheKey: source.file)
+                // Пока текст готовился, могли вернуться к оригиналу.
+                guard documentMode == .text else { return }
+                if let index = prepared.document.pdfText {
+                    let place = index.place(of: savedLocator ?? SourceLocator(section: 0))
+                    section = place.section
+                    sectionProgression = 0
+                    sectionTextOffset = place.offset
+                    pageCount = index.pageCount
+                }
+                toc = Self.toc(for: prepared.document)
+                content = .web(prepared)
+                section = min(section, max(prepared.document.sections.count - 1, 0))
+                restorePosition()
+            } catch {
+                showToast((error as? ReaderError) == .noText
+                    ? "В этом PDF нет текста, только картинки страниц"
+                    : "Не получилось достать текст из PDF")
+                documentMode = .original
+            }
         case .pdf:
             let savedScale = UserDefaults.standard.object(forKey: zoomKey) as? Double
             isZoomLocked = savedScale != nil
@@ -433,10 +478,11 @@ final class ReaderModel {
         activeHighlightId = nil
         switch content {
         case .web(let prepared):
-            if highlight.locator.section == loadedSection {
+            let place = webPlace(highlight.locator)
+            if place.section == loadedSection {
                 web.reveal(highlight.id)
             } else {
-                loadSection(highlight.locator.section, in: prepared, progression: highlight.locator.progression, reveal: highlight.id)
+                loadSection(place.section, in: prepared, progression: place.progression, reveal: highlight.id)
             }
         case .pdf:
             pdf.reveal(highlight.id)
@@ -460,16 +506,17 @@ final class ReaderModel {
         activeHighlightId = nil
         switch content {
         case .web(let prepared):
-            guard prepared.document.sections.indices.contains(locator.section) else { return }
-            if locator.section == loadedSection, let offset = locator.textOffset {
+            let place = webPlace(locator)
+            guard prepared.document.sections.indices.contains(place.section) else { return }
+            if place.section == loadedSection, let offset = place.offset {
                 web.scroll(toOffset: offset)
                 sectionTextOffset = offset
-            } else if locator.section == loadedSection {
-                web.scroll(to: locator.progression)
+            } else if place.section == loadedSection {
+                web.scroll(to: place.progression)
             } else {
-                loadSection(locator.section, in: prepared, progression: locator.progression, offset: locator.textOffset)
+                loadSection(place.section, in: prepared, progression: place.progression, offset: place.offset)
             }
-            sectionProgression = locator.progression
+            sectionProgression = place.progression
             scheduleSave()
         case .pdf:
             pdf.go(to: locator)
@@ -477,6 +524,22 @@ final class ReaderModel {
         default:
             break
         }
+    }
+
+    /// Глава и место в ней для места книги. У PDF в режиме «Текст» место хранится страницей
+    /// и символом от её начала, а глава находится по ним.
+    private func webPlace(_ locator: SourceLocator) -> (section: Int, offset: Int?, progression: Double) {
+        guard let index = pdfText else { return (locator.section, locator.textOffset, locator.progression) }
+        let place = index.place(of: locator)
+        return (place.section, place.offset, 0)
+    }
+
+    /// Сквозной номер символа вверху экрана в режиме «Текст» у PDF.
+    private func pdfTextPosition(_ index: PDFTextIndex) -> Int {
+        if let offset = sectionTextOffset { return index.global(section: section, offset: offset) }
+        let start = index.global(section: section, offset: 0)
+        let end = section + 1 < index.sections.count ? index.sections[section + 1] : index.length
+        return start + Int(Double(max(end - start, 0)) * sectionProgression)
     }
 
     /// Куда класть выписки: в заметку, открытую рядом с книгой в разделённом экране, а если
@@ -520,7 +583,7 @@ final class ReaderModel {
         case .pdf:
             label = "стр. \(locator.section + 1)"
         case .web:
-            label = webLabel(progression: locator.progression)
+            label = pdfText != nil ? "стр. \(locator.section + 1)" : webLabel(progression: locator.progression)
         default:
             return nil
         }
@@ -539,6 +602,10 @@ final class ReaderModel {
     var progress: Double {
         switch content {
         case .web(let prepared):
+            if let index = pdfText {
+                let page = index.page(at: pdfTextPosition(index))
+                return index.pageCount > 1 ? Double(page) / Double(index.pageCount - 1) : 1
+            }
             let count = max(prepared.document.sections.count, 1)
             return min((Double(section) + sectionProgression) / Double(count), 1)
         case .pdf:
@@ -552,6 +619,9 @@ final class ReaderModel {
     var positionLabel: String {
         switch content {
         case .web(let prepared):
+            if let index = pdfText {
+                return "Стр. \(index.page(at: pdfTextPosition(index)) + 1) из \(index.pageCount)"
+            }
             let count = prepared.document.sections.count
             let percent = Int((progress * 100).rounded())
             return count > 1 ? "Глава \(section + 1) из \(count) · \(percent)%" : "\(percent)%"
@@ -580,6 +650,10 @@ final class ReaderModel {
         case .selection(let text, let raw, let offset, let label, let progression):
             noteActivity()
             activeHighlightId = nil
+            if let index = pdfText {
+                selection = pdfTextSelection(text: text, raw: raw, offset: offset, index: index)
+                return
+            }
             selection = Selection(
                 text: text,
                 locator: SourceLocator(section: section, progression: progression, text: raw, textOffset: offset),
@@ -605,6 +679,8 @@ final class ReaderModel {
     }
 
     private func handle(_ event: PDFReaderEvent) {
+        // В режиме «Текст» вид PDF спрятан, его события места чтения не меняют.
+        guard content == .pdf else { return }
         switch event {
         case .selection(let text, let locator):
             noteActivity()
@@ -629,6 +705,23 @@ final class ReaderModel {
         }
     }
 
+    /// Выделение в режиме «Текст» у PDF запоминается страницей PDF и прямоугольниками строк в ней,
+    /// поэтому его видно и в оригинале, а выписка открывает книгу в любом виде.
+    private func pdfTextSelection(text: String, raw: String, offset: Int, index: PDFTextIndex) -> Selection {
+        let global = index.global(section: section, offset: offset)
+        let page = index.page(at: global)
+        if textFinder == nil, let url = fileURL { textFinder = PDFTextFinder(url: url) }
+        let rects = textFinder?.rects(of: text, page: page, fraction: index.fraction(of: global, onPage: page))
+        let locator = SourceLocator(
+            section: page,
+            progression: index.pageCount > 1 ? Double(page) / Double(index.pageCount - 1) : 0,
+            text: raw,
+            textOffset: global - index.global(page: page),
+            rects: rects
+        )
+        return Selection(text: text, locator: locator, label: "стр. \(page + 1)")
+    }
+
     /// Подпись места в HTML-книге, если глава сама её не дала (как слайды и страницы комикса).
     private func webLabel(progression: Double) -> String {
         let sections = sections
@@ -645,6 +738,15 @@ final class ReaderModel {
         case .pdf:
             return pdf.readingLocator
         case .web:
+            if let index = pdfText {
+                let global = pdfTextPosition(index)
+                let page = index.page(at: global)
+                return SourceLocator(
+                    section: page,
+                    progression: index.pageCount > 1 ? Double(page) / Double(index.pageCount - 1) : 0,
+                    textOffset: global - index.global(page: page)
+                )
+            }
             return SourceLocator(section: section, progression: sectionProgression, textOffset: sectionTextOffset)
         default:
             return savedLocator ?? SourceLocator(section: section, progression: sectionProgression)
@@ -723,6 +825,10 @@ final class ReaderModel {
     // MARK: Выделения и выписки
 
     private func paintHighlights() {
+        if let index = pdfText {
+            paintPDFTextHighlights(index)
+            return
+        }
         switch content {
         case .web:
             web.setHighlights(highlights.filter { $0.locator.section == section }.map { highlight in
@@ -738,6 +844,20 @@ final class ReaderModel {
         default:
             break
         }
+    }
+
+    /// Выделения на страницах, которые задевают открытую главу. Выделение из оригинала хранит текст
+    /// строками страницы, а в режиме «Текст» строки склеены, поэтому текст склеивается так же.
+    private func paintPDFTextHighlights(_ index: PDFTextIndex) {
+        let section = section
+        web.setHighlights(highlights.compactMap { highlight in
+            guard index.page(highlight.locator.section, overlaps: section) else { return nil }
+            let place = index.place(of: highlight.locator)
+            let text = highlight.locator.textOffset == nil
+                ? PDFTextIndex.reflow(highlight.locator.text ?? highlight.text)
+                : (highlight.locator.text ?? highlight.text)
+            return WebHighlight(id: highlight.id, text: text, offset: place.section == section ? place.offset : 0, colorHex: highlight.color.hex)
+        })
     }
 
     /// Сохраняет выделение цветом. Возвращает его, чтобы сразу сделать выписку.
