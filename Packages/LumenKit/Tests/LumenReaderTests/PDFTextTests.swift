@@ -225,17 +225,17 @@ struct PDFTextConverterTests {
         bitmap.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
         let picture = try #require(bitmap.makeImage())
         context.beginPDFPage(nil)
-        func draw(_ text: String, y: CGFloat) {
+        func draw(_ text: String, x: CGFloat = 30, y: CGFloat) {
             let font = CTFontCreateWithName("Helvetica" as CFString, 11, nil)
             let line = CTLineCreateWithAttributedString(NSAttributedString(
                 string: text, attributes: [NSAttributedString.Key(kCTFontAttributeName as String): font]
             ))
-            context.textPosition = CGPoint(x: 30, y: y)
+            context.textPosition = CGPoint(x: x, y: y)
             CTLineDraw(line, context)
         }
         draw("Text above the picture is a whole sentence that ends here.", y: 560)
         context.draw(picture, in: CGRect(x: 100, y: 300, width: 300, height: 200))
-        draw("Label", y: 400)
+        draw("Label", x: 220, y: 400)
         draw("Text below the picture is another sentence that ends here.", y: 260)
         context.endPDFPage()
         context.closePDF()
