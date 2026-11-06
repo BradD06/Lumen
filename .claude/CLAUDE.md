@@ -37,7 +37,7 @@ Packages/LumenKit/       one local SwiftPM package, all app code lives here
   Sources/LumenCore/     models and pure logic, no dependencies
   Sources/LumenStorage/  SQLite via GRDB 7: AppDatabase, migrations, repositories, queries, FTS5 search, backup, sync log
   Sources/LumenThemes/   Theme tokens, Sunset theme, LayeredWallpaper, glass/vivid card components
-  Sources/LumenReader/   format converters to HTML, WebReader (WKWebView + ReaderScript JS), PDFReader (PDFKit), QuickLook
+  Sources/LumenReader/   format converters to HTML, WebReader (WKWebView + ReaderScript JS), PDFReader (PDFKit), PDF text mode (PDFTextConverter, PDFTextLayout), QuickLook
   Sources/LumenSync/     CloudSync over CKSyncEngine (Swift 5 language mode; off by default)
   Sources/LumenUI/       all SwiftUI screens and their @Observable models
   Tests/                 LumenCoreTests, LumenStorageTests, LumenReaderTests, LumenUITests (model-level, not XCUITest)
@@ -57,7 +57,7 @@ Dependencies only go downward: `LumenUI` → `LumenReader`, `LumenSync`, `LumenS
 - Root and navigation: `RootView.swift` (`SidebarItem` enum, `detail(_:pane:)` renders each pane), `SidebarView`, `Navigation/Workspace.swift` (tabs, per-pane back/forward history, split panes, saved in UserDefaults `workspace.v1`), `Navigation/WorkspaceViews.swift` (`ItemTitle`, tab bar, drag-a-tab-to-split). iPhone uses `Phone/PhoneRootView.swift` (4 tabs) instead.
 - Editor: `Editor/PageEditorModel.swift` plus `+Blocks`, `+Structure`, `+Media`, `+Drawing` extensions (the model is the source of truth while a page is open, saves in batches after 350 ms, owns undo/redo), `PageEditorView`, `BlockRow`, `BlockTree`, `BlockColors`, `CodeBlockBody`, `EmptyBackspace` (iPhone backspace in an empty block), `OpenPageEditors` (registry of live editors).
 - Library: `Library/LibraryView*.swift` (canvas of pages, notebooks, books and folders), `LibraryTiles`, `LibraryCompactList` (iPhone), `MoveToFolderSheet`, `GlassMenu`.
-- Reader: `Reader/ReaderModel.swift` (opening, position, highlights, excerpts, reading time, notes beside the book), `ReaderView` + `+Book` / `+Notes`, `ReaderChrome` (soft style, progress, appearance panel), `SidePagePicker` (any page in the side pane), `SourceDashboardView` (per-book dashboard), `SourceImporter`.
+- Reader: `Reader/ReaderModel.swift` (opening, position, highlights, excerpts, reading time, notes beside the book, PDF "Текст / Оригинал" view), `ReaderView` + `+Book` / `+Notes`, `ReaderChrome` (soft style, progress, appearance panel), `SidePagePicker` (any page in the side pane), `SourceDashboardView` (per-book dashboard), `SourceImporter`.
 - Handwriting: `Drawing/` (`PencilCanvas` on iOS, `MouseDrawing` on macOS since there is no PKCanvasView there, `DrawingLasso`, `NotebookView`, `NotebookItemsViews`, `SheetPDFImages` for PDF pages as sheets, `NotebookPasteboard`).
 - Databases and tasks: `Database/` (`DataTableModel`, `DataTableScreen`, `DataLayouts` for table / board / calendar / list, `PropertyViews`). The task tracker is the database template `"tasks"` opened by `SidebarItem.tasks`.
 - Other: `HomeView` (widget-card dashboard), `InboxView`, `SearchView`, `Backup/` (data and backups sheet, database recovery screen), `Export/` (Markdown and PDF export, `PagePDFRenderer`), `Incoming/` (`IncomingOpenQueue`, `.opensIncomingLinks`, copy link), `Notices` (`NoticeCenter` toasts, `lumenLog`), `LumenSounds`, `SyncStatusRow`.
@@ -73,5 +73,6 @@ Dependencies only go downward: `LumenUI` → `LumenReader`, `LumenSync`, `LumenS
 - Links clicked in a note open in the opposite pane when the tab is split (`RootView.openLink(_:from:)`). Excerpts from a book go to the note open beside it (`besidePageId`), otherwise to the book's notes. Book notes live in the book's folder next to the book and are created lazily (`ReaderModel.ensureNotes()`).
 - Custom drag types and document types are declared in `project.yml` under `info:`. Don't set `LSSupportsOpeningDocumentsInPlace` (Xcode rejects `NO` for the macOS side).
 - In `LumenUI` files that import GRDB, write `ButtonStyleConfiguration`, not `Configuration` (name clash).
+- PDF text mode: places are always stored in PDF terms (`SourceLocator.section` = page; in the Text view `textOffset` counts characters from the page start), so highlights, excerpts and the reading place work in both views. `PDFTextIndex` maps pages to chapter offsets; chapter HTML has no whitespace between tags so its character counts match `ReaderScript`'s.
 - Tests: use `AppDatabase.inMemory()`. Wait for the editor to save with `model.flush()`, not sleeps. Keep heavy PDF / Core Image rendering out of main-actor tests, it slows the timing-sensitive ones on CI.
-- `UserDefaults` keys in use include `workspace.v1`, `reader.*` (appearance, `reader.sidePage.<sourceId>`, `reader.pdfZoom.<sourceId>`) and `drawing.recentColors`.
+- `UserDefaults` keys in use include `workspace.v1`, `reader.*` (appearance, `reader.sidePage.<sourceId>`, `reader.pdfZoom.<sourceId>`, `reader.pdfMode.<sourceId>`) and `drawing.recentColors`.

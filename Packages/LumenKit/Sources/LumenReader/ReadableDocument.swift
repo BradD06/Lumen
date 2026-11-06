@@ -11,19 +11,23 @@ public struct ReadableDocument: Codable, Hashable, Sendable {
     public var coverPath: String?
     /// Оглавление. Пустое, если в файле его нет: тогда читалка соберёт заголовки открытой главы сама.
     public var toc: [TocEntry]
+    /// Только у PDF в режиме «Текст»: где в тексте начинается каждая страница.
+    public var pdfText: PDFTextIndex?
 
     public init(
         title: String? = nil,
         author: String? = nil,
         sections: [ReadableSection],
         coverPath: String? = nil,
-        toc: [TocEntry] = []
+        toc: [TocEntry] = [],
+        pdfText: PDFTextIndex? = nil
     ) {
         self.title = title
         self.author = author
         self.sections = sections
         self.coverPath = coverPath
         self.toc = toc
+        self.pdfText = pdfText
     }
 }
 
@@ -77,6 +81,8 @@ public enum ReaderError: Error, Equatable {
     case unsupportedFormat
     /// Файл повреждён или это не тот формат, что указан в расширении.
     case unreadable
+    /// В PDF нет текста, только картинки страниц (скан): режим «Текст» показать нечего.
+    case noText
 }
 
 /// Переводит файл источника в HTML и складывает результат в кэш, чтобы второе открытие было мгновенным.
@@ -107,8 +113,23 @@ public enum DocumentConverter {
         try? FileManager.default.removeItem(at: cacheFolder(for: cacheKey))
     }
 
+    /// Текст PDF главами, как в EPUB: для режима «Текст». Кэш отдельный от других форматов.
+    public static func preparePDFText(file: URL, cacheKey: String) async throws -> PreparedDocument {
+        try await Task.detached(priority: .userInitiated) {
+            try prepareSync(file: file, cacheKey: "\(cacheKey)-text\(PDFTextConverter.version)") { folder in
+                try PDFTextConverter.convert(file: file, into: folder)
+            }
+        }.value
+    }
+
     static func prepareSync(file: URL, format: SourceFormat, cacheKey: String) throws -> PreparedDocument {
         guard canConvert(format) else { throw ReaderError.unsupportedFormat }
+        return try prepareSync(file: file, cacheKey: cacheKey) { folder in
+            try convert(file: file, format: format, into: folder)
+        }
+    }
+
+    static func prepareSync(file: URL, cacheKey: String, convert: (URL) throws -> ReadableDocument) throws -> PreparedDocument {
         let fileManager = FileManager.default
         let root = cacheFolder(for: cacheKey)
         let manifest = root.appendingPathComponent("lumen-manifest.json")
@@ -122,7 +143,7 @@ public enum DocumentConverter {
             .appendingPathComponent(".\(root.lastPathComponent)-\(UUID().uuidString)", isDirectory: true)
         try fileManager.createDirectory(at: work, withIntermediateDirectories: true)
         do {
-            let document = try convert(file: file, format: format, into: work)
+            let document = try convert(work)
             try JSONEncoder().encode(document).write(to: work.appendingPathComponent("lumen-manifest.json"))
             try? fileManager.removeItem(at: root)
             try fileManager.moveItem(at: work, to: root)
