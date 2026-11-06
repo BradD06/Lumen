@@ -87,6 +87,58 @@ struct PDFTextLayoutTests {
         #expect(html.contains("продолжение здесь."))
     }
 
+    /// Строка с положением на странице: от `left` до `right`, низ на `y`.
+    private func framed(_ text: String, left: Double = 50, right: Double = 590, y: Double, height: Double = 12) -> PDFLine {
+        PDFLine(text, frame: LineFrame(minX: left, minY: y, maxX: right, maxY: y + height))
+    }
+
+    @Test func narrowTextBesideAPictureStaysOneParagraph() throws {
+        let words = "слово другое третье"
+        // Справа от картинки строки 4–8 кончаются на 300, а не у края страницы.
+        var lines = (0..<13).map { number in
+            let narrow = (4...8).contains(number)
+            return framed("Строка \(number) \(words)", right: narrow ? 300 : 590, y: 580 - Double(number) * 16)
+        }
+        lines.insert(PDFLine("", image: "images/p1-1.jpg", frame: LineFrame(minX: 320, minY: 440, maxX: 590, maxY: 520)), at: 9)
+        let html = PDFTextLayout.build(pages: [lines], outline: [], frontTitle: "Книга").sections[0].html
+        // Один абзац, а картинка после него: предложение она не рвёт.
+        #expect(html.components(separatedBy: "<p>").count - 1 == 1)
+        #expect(html.contains("Строка 8 \(words) Строка 9"))
+        let paragraph = try #require(html.range(of: "Строка 12"))
+        let image = try #require(html.range(of: "<img"))
+        #expect(paragraph.lowerBound < image.lowerBound)
+    }
+
+    @Test func iconInsideALineDoesNotBreakTheParagraph() {
+        // Значок делает строку выше, и середины строк расходятся, но просвет между ними прежний.
+        let lines = [
+            framed("Первая строка абзаца, в которой мы можем", y: 580),
+            framed("скрыть её значком и продолжить предложение", y: 560, height: 18),
+            framed("до самого конца абзаца без всяких разрывов", y: 548),
+            framed("и ещё одна полная строка этого же абзаца", y: 532),
+        ]
+        let html = PDFTextLayout.build(pages: [lines], outline: [], frontTitle: "Книга").sections[0].html
+        #expect(html.components(separatedBy: "<p>").count - 1 == 1)
+    }
+
+    @Test func dropsObjectAndPrivateUseCharacters() {
+        #expect(PDFTextLayout.clean("Navigator \u{FFFC} и \u{E001}значок") == "Navigator и значок")
+    }
+
+    @Test func iconFontLettersAreNotText() {
+        let body = PDFTextConverter.FontInfo(name: "PTSerif-Regular", family: "PT Serif")
+        let icons = PDFTextConverter.FontInfo(name: "Wingdings-Regular", family: "Wingdings")
+        let other = PDFTextConverter.FontInfo(name: "Helvetica", family: "Helvetica")
+        let math = PDFTextConverter.FontInfo(name: "CMMI10", family: "CMMI10")
+        #expect(PDFTextConverter.isIcon("h", font: icons, mainFamily: "PT Serif", hasCyrillic: true, before: "Текст", isLast: false))
+        // Одинокая латинская буква чужим шрифтом после конца предложения или в начале строки.
+        #expect(PDFTextConverter.isIcon(" h", font: other, mainFamily: "PT Serif", hasCyrillic: true, before: "скрыть её.", isLast: true))
+        #expect(PDFTextConverter.isIcon("h ", font: other, mainFamily: "PT Serif", hasCyrillic: true, before: "", isLast: false))
+        #expect(!PDFTextConverter.isIcon("h", font: body, mainFamily: "PT Serif", hasCyrillic: true, before: "", isLast: false))
+        #expect(!PDFTextConverter.isIcon("x", font: math, mainFamily: "PT Serif", hasCyrillic: true, before: "", isLast: false))
+        #expect(!PDFTextConverter.isIcon("A", font: other, mainFamily: "PT Serif", hasCyrillic: false, before: "", isLast: false))
+    }
+
     @Test func splitsChaptersByOutlineAndMapsPages() throws {
         let pages = [
             page(["Предисловие автора.", sentence(1)]),

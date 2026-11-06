@@ -12,7 +12,7 @@ import UIKit
 /// Главы берутся из закладок файла, а если их нет, из заголовков, набранных крупным шрифтом.
 enum PDFTextConverter {
     /// Версия разбора: если поменять вывод, старый кэш перестанет подходить.
-    static let version = 3
+    static let version = 4
     /// Меньше стольких символов на страницу в среднем значит, что это скан без текстового слоя.
     static let minimumCharactersPerPage = 40
 
@@ -85,13 +85,14 @@ enum PDFTextConverter {
         guard let all = page.selection(for: NSRange(location: 0, length: length)) else { return nil }
         var lines: [PDFLine] = []
         for piece in all.selectionsByLine() {
-            let text = (piece.string ?? "").trimmingCharacters(in: .newlines)
+            let attributed = piece.attributedString
+            let text = (attributed.map(visibleText) ?? piece.string ?? "").trimmingCharacters(in: .newlines)
             let bounds = piece.bounds(for: page)
             guard !text.trimmingCharacters(in: .whitespaces).isEmpty, bounds.width > 0, bounds.height > 0 else { continue }
             let frame = LineFrame(minX: bounds.minX, minY: bounds.minY, maxX: bounds.maxX, maxY: bounds.maxY)
             var size = 0.0
             if withSizes {
-                size = piece.attributedString.map(dominantSize) ?? 0
+                size = attributed.map(dominantSize) ?? 0
                 if size == 0 { size = (frame.height * 2).rounded() / 2 }
             }
             if var last = lines.last, let previous = last.frame,
@@ -111,6 +112,78 @@ enum PDFTextConverter {
             }
         }
         return lines.isEmpty ? nil : lines
+    }
+
+    /// Текст строки без значков из шрифтов-пиктограмм: в таком шрифте буква «h» рисуется
+    /// стрелкой или рукой, и в тексте от неё осталась бы просто «h». Значок в начале строки
+    /// это пункт списка, он становится «•».
+    static func visibleText(_ attributed: NSAttributedString) -> String {
+        let string = attributed.string as NSString
+        var runs: [(text: String, font: FontInfo?)] = []
+        attributed.enumerateAttribute(.font, in: NSRange(location: 0, length: attributed.length)) { value, range, _ in
+            runs.append((string.substring(with: range), FontInfo(value)))
+        }
+        var families: [String: Int] = [:]
+        for run in runs { if let family = run.font?.family { families[family, default: 0] += run.text.count } }
+        let mainFamily = families.max { $0.value < $1.value }?.key
+        let hasCyrillic = attributed.string.unicodeScalars.contains { (0x0400...0x04FF).contains($0.value) }
+
+        var result = ""
+        var hasBullet = false
+        for (position, run) in runs.enumerated() {
+            let isLast = runs[(position + 1)...].allSatisfy { $0.text.trimmingCharacters(in: .whitespaces).isEmpty }
+            guard let font = run.font, isIcon(run.text, font: font, mainFamily: mainFamily, hasCyrillic: hasCyrillic, before: result, isLast: isLast) else {
+                result += run.text
+                continue
+            }
+            if !hasBullet, result.trimmingCharacters(in: .whitespaces).isEmpty {
+                result += "• "
+                hasBullet = true
+            }
+        }
+        return result
+    }
+
+    struct FontInfo {
+        var name: String
+        var family: String
+
+        init(name: String, family: String) {
+            self.name = name
+            self.family = family
+        }
+
+        init?(_ value: Any?) {
+            #if canImport(AppKit)
+            guard let font = value as? NSFont else { return nil }
+            name = font.fontName
+            family = font.familyName ?? font.fontName
+            #else
+            guard let font = value as? UIFont else { return nil }
+            name = font.fontName
+            family = font.familyName
+            #endif
+        }
+    }
+
+    /// Значок, а не буква: всё, что набрано шрифтом-пиктограммой, или одинокая латинская буква
+    /// чужим шрифтом в русском тексте в начале строки или после конца предложения («скрыть её. h»).
+    static func isIcon(_ text: String, font: FontInfo, mainFamily: String?, hasCyrillic: Bool, before: String, isLast: Bool) -> Bool {
+        if isSymbolFont(font.name) { return true }
+        let letter = text.trimmingCharacters(in: .whitespaces)
+        guard hasCyrillic, letter.count == 1, letter.unicodeScalars.allSatisfy({ $0.isASCII && $0.properties.isAlphabetic }),
+              let mainFamily, font.family != mainFamily else { return false }
+        let name = font.name.lowercased()
+        // Переменные в формулах набраны курсивом или математическим шрифтом, их не трогаем.
+        if ["italic", "oblique", "math", "cmmi"].contains(where: { name.contains($0) }) { return false }
+        let previous = before.trimmingCharacters(in: .whitespaces)
+        return previous.isEmpty || isLast && previous.last.map { ".!?:;".contains($0) } == true
+    }
+
+    /// Шрифты, в которых вместо букв значки.
+    static func isSymbolFont(_ name: String) -> Bool {
+        let name = name.lowercased()
+        return ["wingding", "dingbat", "webding", "marlett", "fontawesome", "icon", "pictogram", "glyphicon", "materialsymbols"].contains { name.contains($0) }
     }
 
     /// Размер шрифта, которым набрана большая часть текста.
@@ -329,13 +402,13 @@ enum PDFPageImages {
             }
             let center = CGPoint(x: frame.midX, y: frame.midY)
             while next < pending.count, pending[next].rect.minY > center.y {
-                result.append(PDFLine("", image: pending[next].path))
+                result.append(PDFLine("", image: pending[next].path, frame: LineFrame(pending[next].rect)))
                 next += 1
             }
             if images.contains(where: { $0.rect.contains(center) }) { continue }
             result.append(line)
         }
-        result += pending[next...].map { PDFLine("", image: $0.path) }
+        result += pending[next...].map { PDFLine("", image: $0.path, frame: LineFrame($0.rect)) }
         return result
     }
 
@@ -360,5 +433,11 @@ enum PDFPageImages {
               let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.jpeg" as CFString, 1, nil) else { return false }
         CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
         return CGImageDestinationFinalize(destination)
+    }
+}
+
+extension LineFrame {
+    init(_ rect: CGRect) {
+        self.init(minX: rect.minX, minY: rect.minY, maxX: rect.maxX, maxY: rect.maxY)
     }
 }
