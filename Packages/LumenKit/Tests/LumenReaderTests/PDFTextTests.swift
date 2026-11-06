@@ -243,9 +243,9 @@ struct PDFTextConverterTests {
         let document = try PDFTextConverter.convert(file: url, into: folder)
         let html = try String(contentsOf: folder.appendingPathComponent(document.sections[0].path), encoding: .utf8)
         let above = try #require(html.range(of: "Text above"))
-        let picture = try #require(html.range(of: "<img src=\"images/p1-1.jpg\""))
+        let image = try #require(html.range(of: "<img src=\"images/p1-1.jpg\""))
         let below = try #require(html.range(of: "Text below"))
-        #expect(above.lowerBound < picture.lowerBound && picture.lowerBound < below.lowerBound)
+        #expect(above.lowerBound < image.lowerBound && image.lowerBound < below.lowerBound)
         // Подпись внутри картинки уже есть на самой картинке.
         #expect(!html.contains("Label"))
         #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("images/p1-1.jpg").path))
