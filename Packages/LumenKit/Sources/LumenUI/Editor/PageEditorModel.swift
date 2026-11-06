@@ -45,6 +45,11 @@ final class PageEditorModel {
     /// Блок «Рисунок», в котором сейчас рисуют. В остальных рисунок только показан,
     /// поэтому страницу можно листать пальцем прямо по ним.
     var activeDrawingId: UUID?
+    /// Выделенный текст в блоке: над ним панель форматирования. Пустой курсор сюда не попадает.
+    var textSelection: TextSelectionInfo?
+    /// Выделение, которое поле должно вернуть после смены оформления (разметка в поле
+    /// при этом меняется, и система сбрасывает выделение).
+    var selectionRestore: TextSelectionInfo?
 
     struct SourceRequest: Equatable {
         var sourceId: UUID

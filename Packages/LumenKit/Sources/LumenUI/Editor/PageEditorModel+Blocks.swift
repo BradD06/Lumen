@@ -62,6 +62,32 @@ extension PageEditorModel {
         update(id) { $0.text = newText }
     }
 
+    /// Правка текста с разметкой (`InlineMarkup`): **жирный**, *курсив* и прочее оформление
+    /// сохраняется при наборе. Текст без оформления идёт обычным путём с Markdown-сокращениями.
+    func updateMarkup(_ id: UUID, to source: String) {
+        guard let block = findBlock(id) else { return }
+        let runs = InlineMarkup.runs(from: source)
+        guard block.type != .code, InlineMarkup.hasFormatting(runs) || InlineMarkup.hasFormatting(block.content.runs) else {
+            updateText(id, to: InlineMarkup.parse(source).plainText)
+            return
+        }
+        if source.contains("\n") {
+            recordUndo()
+            split(id, lines: source.components(separatedBy: "\n").map(InlineMarkup.runs(from:)))
+            return
+        }
+        guard runs != InlineMarkup.normalized(block.content.runs) else { return }
+        recordUndo(typing: .block(id))
+        update(id) { $0.content.runs = runs }
+    }
+
+    /// Новое оформление текста блока из панели или меню. Отдельный шаг отмены.
+    func setRuns(_ id: UUID, _ runs: [TextRun]) {
+        guard let block = findBlock(id), InlineMarkup.normalized(block.content.runs) != runs else { return }
+        recordUndo()
+        update(id) { $0.content.runs = runs }
+    }
+
     /// Return в конце блока (на macOS приходит как submit, а не как перевод строки).
     func submit(_ id: UUID) {
         guard let block = findBlock(id) else { return }
@@ -76,7 +102,8 @@ extension PageEditorModel {
             }
             return
         }
-        split(id, text: block.text + "\n")
+        // Оформление первой части остаётся на месте.
+        split(id, lines: [block.content.runs, []])
     }
 
     /// Второй Return подряд в блоке кода: лишняя пустая строка убирается, ниже появляется абзац.
@@ -89,8 +116,11 @@ extension PageEditorModel {
     /// Return в пустом пункте списка выходит из списка (или из вложенности), как в Notion.
     /// В раскрытом сворачиваемом блоке новые строки становятся его первыми детьми.
     private func split(_ id: UUID, text: String) {
+        split(id, lines: text.components(separatedBy: "\n").map { $0.isEmpty ? [] : [TextRun($0)] })
+    }
+
+    private func split(_ id: UUID, lines: [[TextRun]]) {
         guard let block = findBlock(id) else { return }
-        let lines = text.components(separatedBy: "\n")
 
         if block.type.continuation != .paragraph, lines.allSatisfy(\.isEmpty) {
             if isNested(block) {
@@ -105,12 +135,12 @@ extension PageEditorModel {
             return
         }
 
-        update(id) { $0.text = lines[0] }
+        update(id) { $0.content.runs = lines[0] }
 
         let opensInside = block.type == .toggle && !block.content.isCollapsed
         var lastId = id
         for (offset, line) in lines.dropFirst().enumerated() {
-            let content = BlockContent(text: line)
+            let content = BlockContent(runs: line)
             if opensInside && offset == 0 {
                 lastId = insertBlock(in: id, after: nil, type: .paragraph, content: content).id
             } else {

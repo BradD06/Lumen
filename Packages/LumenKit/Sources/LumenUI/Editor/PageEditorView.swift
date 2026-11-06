@@ -279,9 +279,15 @@ struct PageEditorView: View {
             }
         }
         #if os(macOS)
-        .onAppear { installKeyMonitor() }
+        .onAppear {
+            installKeyMonitor()
+            TextFormatMenu.install()
+        }
         #else
-        .onAppear { EmptyBackspace.install() }
+        .onAppear {
+            EmptyBackspace.install()
+            TextFormatMenu.install()
+        }
         // Стирание на пустом блоке: экранная клавиатура не даёт об этом знать иначе.
         .onReceive(NotificationCenter.default.publisher(for: .lumenBackspaceInEmptyField)) { _ in
             guard let id = model.focusedBlockId else { return }
@@ -325,7 +331,16 @@ struct PageEditorView: View {
             }
             #if os(iOS)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if isCompact, case .block(let id) = focus, let block = model.findBlock(id), block.type.isConvertible {
+                // Выделили текст: над клавиатурой панель оформления. Иначе на iPhone ряд типов блока.
+                if case .block(let id) = focus, let info = model.textSelection, info.blockId == id {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        FormatBar(model: model, selection: info)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .background(.ultraThinMaterial)
+                } else if isCompact, case .block(let id) = focus, let block = model.findBlock(id), block.type.isConvertible {
                     BlockTypeChips(current: block.type) { model.setType(id, $0) }
                 }
             }

@@ -21,6 +21,10 @@ struct BlockRow: View {
     @State private var isHovered = false
     @State private var size: CGSize = .zero
     @State private var isColorPickerShown = false
+    /// Разметка, которую человек сейчас набирает. Держится, пока блок в фокусе, чтобы курсор
+    /// не прыгал, если та же разметка собирается из фрагментов чуть иначе.
+    @State private var editingSource: String?
+    @State private var selection: TextSelection?
     @Environment(\.lumenTheme) private var theme
     private let focusMode = FocusModeState.shared
 
@@ -50,6 +54,7 @@ struct BlockRow: View {
         }
         .padding(.vertical, verticalPadding)
         .overlay(alignment: .topLeading) { addButton }
+        .overlay(alignment: .topLeading) { floatingFormatBar }
         // Режим фокуса: всё, кроме блока с курсором, приглушено.
         .opacity(focusMode.isOn && focus.wrappedValue != nil && !isFocused ? 0.3 : 1)
         .animation(.easeInOut(duration: 0.25), value: isFocused)
@@ -94,6 +99,19 @@ struct BlockRow: View {
                 }
             } label: {
                 Label("Превратить в", systemImage: "arrow.triangle.2.circlepath")
+            }
+        }
+        if let target = formatMenuTarget {
+            Menu {
+                ForEach(FormatAction.allCases) { action in
+                    Button {
+                        model.apply(action, to: target)
+                    } label: {
+                        Label(action.title, systemImage: action.systemImage)
+                    }
+                }
+            } label: {
+                Label(model.textSelection?.blockId == block.id ? "Оформить выделенное" : "Оформить весь текст", systemImage: "textformat")
             }
         }
         if block.type.hasText {
@@ -175,6 +193,13 @@ struct BlockRow: View {
         } label: {
             Label("Удалить блок", systemImage: "trash")
         }
+    }
+
+    /// Что оформляет меню блока: выделенный текст, а без выделения весь текст блока.
+    private var formatMenuTarget: TextSelectionInfo? {
+        guard isRichText, !block.text.isEmpty else { return nil }
+        if let selection = model.textSelection, selection.blockId == block.id { return selection }
+        return model.wholeText(of: block.id)
     }
 
     /// Текст блока задачей на сегодня. Блок остаётся на странице.
@@ -406,11 +431,7 @@ struct BlockRow: View {
     }
 
     private var field: some View {
-        TextField(
-            placeholder,
-            text: Binding(get: { block.text }, set: { model.updateText(block.id, to: $0) }),
-            axis: .vertical
-        )
+        TextField(placeholder, text: fieldText, selection: $selection, axis: .vertical)
         .textFieldStyle(.plain)
         .font(font)
         .foregroundStyle(fieldColor)
@@ -441,11 +462,152 @@ struct BlockRow: View {
             model.duplicateBlock(block.id)
             return .handled
         }
+        // ⌘B, ⌘I, ⌘U, ⇧⌘X и ⌘E: оформление выделенного текста.
+        .onKeyPress(keys: ["b", "i", "u", "x", "X", "e"]) { press in
+            guard isRichText, press.modifiers.contains(.command), !press.modifiers.contains(.option) else { return .ignored }
+            let action: FormatAction
+            switch press.key.character {
+            case "b": action = .bold
+            case "i": action = .italic
+            case "u": action = .underline
+            case "e": action = .code
+            case "x", "X":
+                guard press.modifiers.contains(.shift) else { return .ignored }
+                action = .strikethrough
+            default: return .ignored
+            }
+            applyShortcut(action)
+            return .handled
+        }
+        .overlay(alignment: .topLeading) {
+            if showsRenderedText {
+                Text(RichTextRendering.attributed(InlineMarkup.normalized(block.content.runs), linkColor: theme.accent))
+                    .font(font)
+                    .foregroundStyle(block.content.textColor.map(\.textColor) ?? theme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+        .onChange(of: selection) { _, _ in publishSelection() }
+        .onChange(of: isFocused) { _, focused in
+            if focused {
+                TextFormatMenu.editor = model
+            } else {
+                editingSource = nil
+                selection = nil
+                if model.textSelection?.blockId == block.id { model.textSelection = nil }
+            }
+        }
+        // Разметку поменяли не набором (отмена, смена типа): поле берёт её заново.
+        .onChange(of: block.content.runs) { _, runs in
+            guard let editingSource, InlineMarkup.runs(from: editingSource) != InlineMarkup.normalized(runs) else { return }
+            self.editingSource = nil
+        }
+        .onChange(of: model.selectionRestore) { _, restore in
+            guard let restore, restore.blockId == block.id else { return }
+            model.selectionRestore = nil
+            restoreSelection(restore.range)
+        }
+    }
+
+    // MARK: Оформление текста
+
+    /// Обычный текст с оформлением. В коде оформления нет: там разметка была бы самим кодом.
+    private var isRichText: Bool {
+        block.type.hasText && block.type != .code
+    }
+
+    private var markupSource: String {
+        editingSource ?? InlineMarkup.source(block.content.runs)
+    }
+
+    /// В поле видна разметка: **жирный**, *курсив*. Вне фокуса поверх лежит уже оформленный текст.
+    private var fieldText: Binding<String> {
+        guard isRichText else {
+            return Binding(get: { block.text }, set: { model.updateText(block.id, to: $0) })
+        }
+        return Binding(
+            get: { markupSource },
+            set: { value in
+                editingSource = value
+                model.updateMarkup(block.id, to: value)
+            }
+        )
+    }
+
+    /// Оформленный текст рисуется поверх поля, когда курсор не в блоке.
+    private var showsRenderedText: Bool {
+        isRichText && !isFocused && InlineMarkup.hasFormatting(block.content.runs)
+    }
+
+    /// Выделение в поле → выделение в тексте без разметки.
+    private var selectedRange: Range<Int>? {
+        guard isRichText, isFocused, let selection, case .selection(let range) = selection.indices else { return nil }
+        let source = markupSource
+        guard range.upperBound <= source.endIndex,
+              let lower = String.Index(range.lowerBound, within: source),
+              let upper = String.Index(range.upperBound, within: source) else { return nil }
+        let parsed = InlineMarkup.parse(source)
+        let start = parsed.plainOffset(forSource: source.distance(from: source.startIndex, to: lower))
+        let end = parsed.plainOffset(forSource: source.distance(from: source.startIndex, to: upper))
+        return start..<max(start, end)
+    }
+
+    private func publishSelection() {
+        let info = selectedRange.flatMap { $0.isEmpty ? nil : TextSelectionInfo(blockId: block.id, range: $0) }
+        guard info != nil || model.textSelection?.blockId == block.id else { return }
+        if model.textSelection != info { model.textSelection = info }
+    }
+
+    /// Сочетание клавиш: с выделением оформляет его, без выделения ставит пару значков
+    /// и курсор между ними, чтобы дальше печатать уже жирным.
+    private func applyShortcut(_ action: FormatAction) {
+        if let range = selectedRange, !range.isEmpty {
+            model.apply(action, to: TextSelectionInfo(blockId: block.id, range: range))
+            return
+        }
+        guard let mark = action.mark, let selection, case .selection(let caret) = selection.indices else { return }
+        var source = markupSource
+        guard caret.lowerBound <= source.endIndex, let index = String.Index(caret.lowerBound, within: source) else { return }
+        let marker = InlineMarkup.delimiter(for: mark)
+        let offset = source.distance(from: source.startIndex, to: index)
+        source.insert(contentsOf: marker + marker, at: index)
+        editingSource = source
+        model.updateMarkup(block.id, to: source)
+        let caretIndex = source.index(source.startIndex, offsetBy: offset + marker.count)
+        self.selection = TextSelection(insertionPoint: caretIndex)
+    }
+
+    /// После смены оформления разметка в поле другая: выделение ставится на тот же текст.
+    private func restoreSelection(_ range: Range<Int>) {
+        let source = InlineMarkup.source(block.content.runs)
+        editingSource = source
+        let target = InlineMarkup.parse(source).sourceRange(forPlain: range)
+        guard target.upperBound <= source.count else { return }
+        let lower = source.index(source.startIndex, offsetBy: target.lowerBound)
+        let upper = source.index(source.startIndex, offsetBy: target.upperBound)
+        selection = TextSelection(range: lower..<upper)
+    }
+
+    /// Панель над выделенным текстом на Mac. На iPhone и iPad она над клавиатурой (PageEditorView).
+    @ViewBuilder
+    private var floatingFormatBar: some View {
+        #if os(macOS)
+        if isFocused, let info = model.textSelection, info.blockId == block.id {
+            FormatBar(model: model, selection: info) {
+                DispatchQueue.main.async { isColorPickerShown = true }
+            }
+            .offset(x: Self.handleInset, y: -44)
+            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottomLeading)))
+        }
+        #endif
     }
 
     /// Код вне редактирования рисует подсвеченная копия поверх поля, само поле тогда прозрачное.
     private var fieldColor: Color {
         if block.type == .code, !isFocused, !block.text.isEmpty { return .clear }
+        if showsRenderedText { return .clear }
         return block.content.textColor.map(\.textColor) ?? theme.textPrimary
     }
 

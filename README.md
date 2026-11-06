@@ -26,6 +26,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Markdown shortcuts (`#`, `-`, `1.`, `[]`, `>`, ```` ``` ````, `---`) and a `/` command menu.
 - Nested blocks with Tab / ⇧Tab, drag-and-drop reordering, and columns: drop a block next to another one to place them side by side.
 - Text and background colors, duplicate (⌘D), full undo and redo (⌘Z / ⇧⌘Z).
+- Inline formatting: **bold**, *italic*, underline, ~~strikethrough~~, `code` and links. Select text and a floating format bar appears (on iPhone and iPad it sits above the keyboard), or use ⌘B, ⌘I, ⌘U, ⇧⌘X, ⌘E and the Format menu on right-click. While you edit a block you see light Markdown-style markers, and the block shows the finished formatting as soon as you leave it.
 - A tidy right-click (two-finger tap) menu on every block: add a block below, turn into, color, copy text, send to today's tasks, move, delete. A `+` next to the drag handle adds a block on the Mac.
 - Breadcrumbs above the title, a "Saved" indicator, a word count, and a focus mode (⇧⌘F) that hides everything except the paragraph you are writing.
 - Hover over an excerpt to preview the book and the place it came from.
