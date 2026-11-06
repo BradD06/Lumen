@@ -12,7 +12,7 @@ import UIKit
 /// Главы берутся из закладок файла, а если их нет, из заголовков, набранных крупным шрифтом.
 enum PDFTextConverter {
     /// Версия разбора: если поменять вывод, старый кэш перестанет подходить.
-    static let version = 2
+    static let version = 3
     /// Меньше стольких символов на страницу в среднем значит, что это скан без текстового слоя.
     static let minimumCharactersPerPage = 40
 
@@ -33,7 +33,7 @@ enum PDFTextConverter {
                 }
                 let text = lines(of: page, withSizes: needsSizes)
                 let images = PDFPageImages.extract(from: page, index: index, into: imagesFolder, pageHasText: text.contains { !$0.text.isEmpty })
-                pages.append(images.isEmpty ? text : PDFPageImages.place(images, among: text, on: page))
+                pages.append(images.isEmpty ? text : PDFPageImages.place(images, among: text))
             }
         }
         let characters = pages.reduce(0) { $0 + $1.reduce(0) { $0 + $1.text.count } }
@@ -63,9 +63,10 @@ enum PDFTextConverter {
         """
     }
 
-    /// Строки страницы. С размерами шрифта, если нужно искать заголовки.
+    /// Строки страницы с местом каждой на странице. С размерами шрифта, если нужно искать заголовки.
     static func lines(of page: PDFPage?, withSizes: Bool) -> [PDFLine] {
         guard let page else { return [] }
+        if let lines = framedLines(of: page, withSizes: withSizes) { return lines }
         guard withSizes else { return PDFTextLayout.split(page.string ?? "").map { PDFLine($0) } }
         if let attributed = page.attributedString, attributed.length > 0 {
             let lines = lines(from: attributed)
@@ -73,6 +74,53 @@ enum PDFTextConverter {
         }
         // Шрифта в тексте страницы нет: размер узнаём по высоте строки на странице.
         return measuredLines(of: page)
+    }
+
+    /// Строки так, как их делит PDFKit при выделении, с местом на странице. Куски одной строки
+    /// (так бывает в выровненном тексте) склеиваются в одну. `nil`, если PDFKit строк не дал.
+    static func framedLines(of page: PDFPage, withSizes: Bool) -> [PDFLine]? {
+        guard let string = page.string else { return [] }
+        let length = (string as NSString).length
+        guard length > 0 else { return [] }
+        guard let all = page.selection(for: NSRange(location: 0, length: length)) else { return nil }
+        var lines: [PDFLine] = []
+        for piece in all.selectionsByLine() {
+            let text = (piece.string ?? "").trimmingCharacters(in: .newlines)
+            let bounds = piece.bounds(for: page)
+            guard !text.trimmingCharacters(in: .whitespaces).isEmpty, bounds.width > 0, bounds.height > 0 else { continue }
+            let frame = LineFrame(minX: bounds.minX, minY: bounds.minY, maxX: bounds.maxX, maxY: bounds.maxY)
+            var size = 0.0
+            if withSizes {
+                size = piece.attributedString.map(dominantSize) ?? 0
+                if size == 0 { size = (frame.height * 2).rounded() / 2 }
+            }
+            if var last = lines.last, let previous = last.frame,
+               abs(previous.midY - frame.midY) < min(previous.height, frame.height) * 0.5,
+               frame.minX >= previous.maxX - 2 {
+                // Вплотную это продолжение слова, с промежутком следующее слово.
+                let gap = frame.minX - previous.maxX
+                last.text += (gap < min(previous.height, frame.height) * 0.15 ? "" : " ") + text
+                last.frame = LineFrame(
+                    minX: min(previous.minX, frame.minX), minY: min(previous.minY, frame.minY),
+                    maxX: max(previous.maxX, frame.maxX), maxY: max(previous.maxY, frame.maxY)
+                )
+                last.size = max(last.size, size)
+                lines[lines.count - 1] = last
+            } else {
+                lines.append(PDFLine(text, size: size, frame: frame))
+            }
+        }
+        return lines.isEmpty ? nil : lines
+    }
+
+    /// Размер шрифта, которым набрана большая часть текста.
+    static func dominantSize(_ attributed: NSAttributedString) -> Double {
+        var sizes: [Double: Int] = [:]
+        attributed.enumerateAttribute(.font, in: NSRange(location: 0, length: attributed.length)) { value, run, _ in
+            guard let size = pointSize(value) else { return }
+            sizes[(size * 2).rounded() / 2, default: 0] += run.length
+        }
+        return sizes.max { $0.value < $1.value }?.key ?? 0
     }
 
     /// Строки текста с размером шрифта, которым набрана большая часть строки.
@@ -269,23 +317,17 @@ enum PDFPageImages {
 
     /// Ставит картинки между строками страницы по высоте: картинка идёт перед первой строкой ниже неё.
     /// Строки внутри картинки (подписи на схеме) уже есть на самой картинке и в текст не идут.
-    static func place(_ images: [Image], among lines: [PDFLine], on page: PDFPage) -> [PDFLine] {
+    /// Если места строк неизвестны, картинки встают в конце страницы.
+    static func place(_ images: [Image], among lines: [PDFLine]) -> [PDFLine] {
         let pending = images.sorted { $0.rect.maxY > $1.rect.maxY }
-        let string = (page.string ?? "") as NSString
-        let ranges = PDFTextConverter.lineRanges(in: string)
-        // Строки не совпали с текстом страницы: картинки просто в конце страницы.
-        guard ranges.count == lines.count else {
-            return lines + pending.map { PDFLine("", image: $0.path) }
-        }
         var result: [PDFLine] = []
         var next = 0
-        for (line, range) in zip(lines, ranges) {
-            guard range.length > 0, !line.text.isEmpty, let selection = page.selection(for: range) else {
+        for line in lines {
+            guard let frame = line.frame, !line.text.isEmpty else {
                 result.append(line)
                 continue
             }
-            let bounds = selection.bounds(for: page)
-            let center = CGPoint(x: bounds.midX, y: bounds.midY)
+            let center = CGPoint(x: frame.midX, y: frame.midY)
             while next < pending.count, pending[next].rect.minY > center.y {
                 result.append(PDFLine("", image: pending[next].path))
                 next += 1

@@ -249,6 +249,20 @@ enum ReaderScript {
         window.scrollBy({ top: direction * Math.max(window.innerHeight - 48, 80), behavior: 'smooth' });
       }
 
+      // Свайп двумя пальцами по трекпаду на Mac: одна страница на жест, инерция после него не листает.
+      let wheel = null;
+      window.addEventListener('wheel', (event) => {
+        const now = Date.now();
+        if (!wheel || now - wheel.last > 250) { wheel = { x: 0, y: 0, turned: false }; }
+        wheel.last = now;
+        wheel.x += event.deltaX;
+        wheel.y += Math.abs(event.deltaY);
+        if (!wheel.turned && Math.abs(wheel.x) > 90 && Math.abs(wheel.x) > wheel.y * 2) {
+          wheel.turned = true;
+          turn(wheel.x > 0 ? 1 : -1);
+        }
+      }, { passive: true });
+
       let touch = null;
       document.addEventListener('touchstart', (event) => {
         if (event.touches.length !== 1) { touch = null; return; }
