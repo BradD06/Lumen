@@ -31,6 +31,7 @@ final class ReaderModel {
 
         var id: String { rawValue }
         var title: String { self == .text ? "Текст" : "Оригинал" }
+        var systemImage: String { self == .text ? "text.alignleft" : "doc.richtext" }
     }
 
     /// Выделенный, но ещё не сохранённый текст.
