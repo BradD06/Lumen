@@ -2,13 +2,55 @@ import Foundation
 import LumenCore
 
 /// Строка текста со страницы PDF и размер её шрифта (0, если он неизвестен).
+/// Картинка со страницы тоже строка: без текста, с путём к файлу картинки.
 struct PDFLine: Hashable, Sendable {
     var text: String
     var size: Double
+    var image: String?
+    /// Где строка на странице, в координатах страницы (ось Y вверх). По нему видно,
+    /// где кончился абзац: строка оборвалась раньше края, следующая с отступом или ниже обычного.
+    var frame: LineFrame?
 
-    init(_ text: String, size: Double = 0) {
+    init(_ text: String, size: Double = 0, image: String? = nil, frame: LineFrame? = nil) {
         self.text = text
         self.size = size
+        self.image = image
+        self.frame = frame
+    }
+}
+
+struct LineFrame: Hashable, Sendable {
+    var minX: Double
+    var minY: Double
+    var maxX: Double
+    var maxY: Double
+
+    var midX: Double { (minX + maxX) / 2 }
+    var midY: Double { (minY + maxY) / 2 }
+    var height: Double { maxY - minY }
+}
+
+/// Поля и шаг строк основного текста страницы.
+struct PageMetrics: Hashable, Sendable {
+    var left: Double
+    var right: Double
+    /// Обычное расстояние между строками одного абзаца.
+    var spacing: Double
+
+    var width: Double { right - left }
+
+    /// Строки с краями текста: самый частый левый край, правый край длинных строк, обычный шаг.
+    static func of(_ lines: [PDFLine]) -> PageMetrics? {
+        let frames = lines.filter { !$0.text.isEmpty }.compactMap(\.frame)
+        guard frames.count >= 3 else { return nil }
+        let rights = frames.map(\.maxX).sorted()
+        let right = rights[min(Int(Double(rights.count) * 0.9), rights.count - 1)]
+        let lefts = Dictionary(grouping: frames.map { ($0.minX).rounded() }, by: { $0 })
+        guard let left = lefts.max(by: { $0.value.count < $1.value.count || ($0.value.count == $1.value.count && $0.key > $1.key) })?.key,
+              right - left > 40 else { return nil }
+        let steps = zip(frames, frames.dropFirst()).map { $0.midY - $1.midY }.filter { $0 > 0 }.sorted()
+        let spacing = steps.isEmpty ? 0 : steps[steps.count / 2]
+        return PageMetrics(left: left, right: right, spacing: spacing)
     }
 }
 
@@ -142,7 +184,7 @@ enum PDFTextLayout {
     static let chunkPages = 20
 
     static func build(pages raw: [[PDFLine]], outline: [PDFOutlineItem], frontTitle: String = "Начало") -> Book {
-        let cleaned = raw.map { $0.map { PDFLine(clean($0.text), size: $0.size) } }
+        let cleaned = raw.map { $0.map { PDFLine(clean($0.text), size: $0.size, image: $0.image, frame: $0.frame) } }
         let body = bodySize(cleaned)
         let pages = stripRunningLines(cleaned, bodySize: body)
         var breaks = outline.isEmpty ? headingBreaks(pages, bodySize: body) : outlineBreaks(outline, pages: pages)
@@ -156,6 +198,7 @@ enum PDFTextLayout {
         var nextBreak = 0
         for (pageIndex, lines) in pages.enumerated() {
             writer.pendingPages += 1
+            let metrics = PageMetrics.of(lines)
             var index = 0
             func applyBreaks(upTo line: Int) -> Int {
                 var consumed = 0
@@ -180,15 +223,21 @@ enum PDFTextLayout {
                 }
                 let line = lines[index]
                 if line.text.isEmpty {
-                    writer.flushParagraph()
+                    if let image = line.image {
+                        writer.image(image)
+                    } else {
+                        writer.flushParagraph()
+                    }
                     index += 1
                     continue
                 }
-                let next = index + 1 < lines.count
+                let onThisPage = index + 1 < lines.count
+                let next = onThisPage
                     ? lines[index + 1]
                     : pages.dropFirst(pageIndex + 1).lazy.compactMap { following in following.first { !$0.text.isEmpty } }.first
                 let breaksNext = nextBreak < breaks.count && breaks[nextBreak].page == pageIndex && breaks[nextBreak].line == index + 1
-                writer.append(line.text, breakAfter: breaksNext || endsParagraph(line, next: next, fullLength: full))
+                let ends = endsParagraph(line, next: next, sameColumn: onThisPage, metrics: metrics, fullLength: full)
+                writer.append(line.text, breakAfter: breaksNext || ends)
                 index += 1
             }
             _ = applyBreaks(upTo: Int.max)
@@ -252,10 +301,27 @@ enum PDFTextLayout {
     }
 
     /// Кончается ли абзац на этой строке.
-    static func endsParagraph(_ line: PDFLine, next: PDFLine?, fullLength: Int) -> Bool {
+    /// Без положения строк на странице абзацы угадываются по длине строки в буквах.
+    /// С положением точнее: в выровненном тексте строки разной длины в буквах, но одной ширины.
+    static func endsParagraph(_ line: PDFLine, next: PDFLine?, sameColumn: Bool = true, metrics: PageMetrics? = nil, fullLength: Int) -> Bool {
         guard let next, !next.text.isEmpty else { return true }
         let text = line.text
         if text.hasSuffix("-") || text.hasSuffix("\u{00AD}") || text.hasSuffix("\u{2010}") { return false }
+        if let metrics, let frame = line.frame {
+            // Строка кончилась заметно раньше правого края.
+            if frame.maxX < metrics.right - max(metrics.width * 0.1, 12) { return true }
+            guard sameColumn, let following = next.frame else { return false }
+            let indent = max(metrics.width * 0.025, 6)
+            // Красная строка: эта строка от левого края, следующая с отступом.
+            if frame.minX <= metrics.left + indent, following.minX > metrics.left + indent, following.minX < metrics.left + metrics.width * 0.3 {
+                return true
+            }
+            // Пустое место между строками больше обычного.
+            if metrics.spacing > 0, frame.midY - following.midY > metrics.spacing * 1.45 { return true }
+            // Следующая строка выше этой: другая колонка или текст не по порядку.
+            if following.midY > frame.maxY { return true }
+            return false
+        }
         // Короткая строка: конец абзаца, строка стиха или пункт списка.
         if Double(text.count) < Double(fullLength) * 0.8 { return true }
         let terminal = text.last.map { ".!?…:;»\"”)".contains($0) } ?? false
@@ -502,6 +568,13 @@ enum PDFTextLayout {
             resolvePages()
             paragraph = paragraph.isEmpty ? line : PDFTextLayout.join(paragraph, line)
             if breakAfter { flushParagraph() }
+        }
+
+        /// Картинка со страницы. Текста в ней нет, поэтому места в тексте она не сдвигает.
+        mutating func image(_ path: String) {
+            flushParagraph()
+            resolvePages()
+            html += "<p class=\"image\"><img src=\"\(HTML.escape(path))\" alt=\"\"></p>"
         }
 
         mutating func heading(_ text: String, level: Int) {

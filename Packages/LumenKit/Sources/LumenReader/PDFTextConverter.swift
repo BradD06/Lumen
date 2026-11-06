@@ -1,5 +1,6 @@
 import Foundation
 import LumenCore
+import ImageIO
 import PDFKit
 #if canImport(AppKit)
 import AppKit
@@ -11,7 +12,7 @@ import UIKit
 /// Главы берутся из закладок файла, а если их нет, из заголовков, набранных крупным шрифтом.
 enum PDFTextConverter {
     /// Версия разбора: если поменять вывод, старый кэш перестанет подходить.
-    static let version = 1
+    static let version = 3
     /// Меньше стольких символов на страницу в среднем значит, что это скан без текстового слоя.
     static let minimumCharactersPerPage = 40
 
@@ -22,9 +23,17 @@ enum PDFTextConverter {
         let needsSizes = outline.isEmpty
         var pages: [[PDFLine]] = []
         pages.reserveCapacity(document.pageCount)
+        let imagesFolder = folder.appendingPathComponent("images", isDirectory: true)
+        try FileManager.default.createDirectory(at: imagesFolder, withIntermediateDirectories: true)
         for index in 0..<document.pageCount {
             autoreleasepool {
-                pages.append(lines(of: document.page(at: index), withSizes: needsSizes))
+                guard let page = document.page(at: index) else {
+                    pages.append([])
+                    return
+                }
+                let text = lines(of: page, withSizes: needsSizes)
+                let images = PDFPageImages.extract(from: page, index: index, into: imagesFolder, pageHasText: text.contains { !$0.text.isEmpty })
+                pages.append(images.isEmpty ? text : PDFPageImages.place(images, among: text))
             }
         }
         let characters = pages.reduce(0) { $0 + $1.reduce(0) { $0 + $1.text.count } }
@@ -49,14 +58,15 @@ enum PDFTextConverter {
         <html><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>\(HTML.escape(title))</title>
-        <style>h1 { font-size: 1.55em; margin: 0.3em 0 1em; } h2 { font-size: 1.25em; margin: 1.6em 0 0.7em; } h3 { font-size: 1.08em; margin: 1.4em 0 0.6em; } p { margin: 0 0 0.85em; }</style>
+        <style>p.image { margin: 1.2em 0; } p.image img { border-radius: 10px; } h1 { font-size: 1.55em; margin: 0.3em 0 1em; } h2 { font-size: 1.25em; margin: 1.6em 0 0.7em; } h3 { font-size: 1.08em; margin: 1.4em 0 0.6em; } p { margin: 0 0 0.85em; }</style>
         </head><body>\(body)</body></html>
         """
     }
 
-    /// Строки страницы. С размерами шрифта, если нужно искать заголовки.
+    /// Строки страницы с местом каждой на странице. С размерами шрифта, если нужно искать заголовки.
     static func lines(of page: PDFPage?, withSizes: Bool) -> [PDFLine] {
         guard let page else { return [] }
+        if let lines = framedLines(of: page, withSizes: withSizes) { return lines }
         guard withSizes else { return PDFTextLayout.split(page.string ?? "").map { PDFLine($0) } }
         if let attributed = page.attributedString, attributed.length > 0 {
             let lines = lines(from: attributed)
@@ -64,6 +74,53 @@ enum PDFTextConverter {
         }
         // Шрифта в тексте страницы нет: размер узнаём по высоте строки на странице.
         return measuredLines(of: page)
+    }
+
+    /// Строки так, как их делит PDFKit при выделении, с местом на странице. Куски одной строки
+    /// (так бывает в выровненном тексте) склеиваются в одну. `nil`, если PDFKit строк не дал.
+    static func framedLines(of page: PDFPage, withSizes: Bool) -> [PDFLine]? {
+        guard let string = page.string else { return [] }
+        let length = (string as NSString).length
+        guard length > 0 else { return [] }
+        guard let all = page.selection(for: NSRange(location: 0, length: length)) else { return nil }
+        var lines: [PDFLine] = []
+        for piece in all.selectionsByLine() {
+            let text = (piece.string ?? "").trimmingCharacters(in: .newlines)
+            let bounds = piece.bounds(for: page)
+            guard !text.trimmingCharacters(in: .whitespaces).isEmpty, bounds.width > 0, bounds.height > 0 else { continue }
+            let frame = LineFrame(minX: bounds.minX, minY: bounds.minY, maxX: bounds.maxX, maxY: bounds.maxY)
+            var size = 0.0
+            if withSizes {
+                size = piece.attributedString.map(dominantSize) ?? 0
+                if size == 0 { size = (frame.height * 2).rounded() / 2 }
+            }
+            if var last = lines.last, let previous = last.frame,
+               abs(previous.midY - frame.midY) < min(previous.height, frame.height) * 0.5,
+               frame.minX >= previous.maxX - 2 {
+                // Вплотную это продолжение слова, с промежутком следующее слово.
+                let gap = frame.minX - previous.maxX
+                last.text += (gap < min(previous.height, frame.height) * 0.15 ? "" : " ") + text
+                last.frame = LineFrame(
+                    minX: min(previous.minX, frame.minX), minY: min(previous.minY, frame.minY),
+                    maxX: max(previous.maxX, frame.maxX), maxY: max(previous.maxY, frame.maxY)
+                )
+                last.size = max(last.size, size)
+                lines[lines.count - 1] = last
+            } else {
+                lines.append(PDFLine(text, size: size, frame: frame))
+            }
+        }
+        return lines.isEmpty ? nil : lines
+    }
+
+    /// Размер шрифта, которым набрана большая часть текста.
+    static func dominantSize(_ attributed: NSAttributedString) -> Double {
+        var sizes: [Double: Int] = [:]
+        attributed.enumerateAttribute(.font, in: NSRange(location: 0, length: attributed.length)) { value, run, _ in
+            guard let size = pointSize(value) else { return }
+            sizes[(size * 2).rounded() / 2, default: 0] += run.length
+        }
+        return sizes.max { $0.value < $1.value }?.key ?? 0
     }
 
     /// Строки текста с размером шрифта, которым набрана большая часть строки.
@@ -207,5 +264,101 @@ public final class PDFTextFinder {
         }.joined(separator: #"\s+"#)
         guard !pattern.isEmpty else { return nil }
         return try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+    }
+}
+
+/// Картинки со страниц PDF для режима «Текст»: каждая вырезается из страницы в свой файл
+/// и встаёт в текст там же, где стояла на странице.
+enum PDFPageImages {
+    struct Image {
+        /// Где картинка на странице, в координатах страницы.
+        var rect: CGRect
+        /// Путь к файлу относительно папки документа.
+        var path: String
+    }
+
+    /// Картинки мельче этого (значки, линии, буквицы) в текст не попадают.
+    static let minimumSide: CGFloat = 40
+    /// Самая длинная сторона файла картинки, в точках экрана.
+    static let maximumPixels: CGFloat = 1600
+
+    static func extract(from page: PDFPage, index: Int, into folder: URL, pageHasText: Bool) -> [Image] {
+        guard let pageRef = page.pageRef else { return [] }
+        let bounds = page.bounds(for: .mediaBox)
+        var rects = PDFImageFinder.imageRects(in: pageRef)
+            .map { $0.intersection(bounds) }
+            .filter { !$0.isNull && $0.width >= minimumSide && $0.height >= minimumSide }
+        // Картинка под текстом на всю страницу это фон или скан: в тексте она не нужна.
+        if pageHasText {
+            rects.removeAll { PDFImageFinder.isScan([$0], page: bounds) }
+        }
+        rects = merged(rects)
+        var images: [Image] = []
+        for (number, rect) in rects.enumerated() {
+            let path = "images/p\(index + 1)-\(number + 1).jpg"
+            guard render(rect, of: page, to: folder.deletingLastPathComponent().appendingPathComponent(path)) else { continue }
+            images.append(Image(rect: rect, path: path))
+        }
+        return images
+    }
+
+    /// Картинка из нескольких кусков (так часто устроены схемы) становится одной.
+    static func merged(_ rects: [CGRect]) -> [CGRect] {
+        var result: [CGRect] = []
+        for rect in rects.sorted(by: { $0.maxY > $1.maxY }) {
+            if let index = result.firstIndex(where: { $0.insetBy(dx: -4, dy: -4).intersects(rect) }) {
+                result[index] = result[index].union(rect)
+            } else {
+                result.append(rect)
+            }
+        }
+        return result
+    }
+
+    /// Ставит картинки между строками страницы по высоте: картинка идёт перед первой строкой ниже неё.
+    /// Строки внутри картинки (подписи на схеме) уже есть на самой картинке и в текст не идут.
+    /// Если места строк неизвестны, картинки встают в конце страницы.
+    static func place(_ images: [Image], among lines: [PDFLine]) -> [PDFLine] {
+        let pending = images.sorted { $0.rect.maxY > $1.rect.maxY }
+        var result: [PDFLine] = []
+        var next = 0
+        for line in lines {
+            guard let frame = line.frame, !line.text.isEmpty else {
+                result.append(line)
+                continue
+            }
+            let center = CGPoint(x: frame.midX, y: frame.midY)
+            while next < pending.count, pending[next].rect.minY > center.y {
+                result.append(PDFLine("", image: pending[next].path))
+                next += 1
+            }
+            if images.contains(where: { $0.rect.contains(center) }) { continue }
+            result.append(line)
+        }
+        result += pending[next...].map { PDFLine("", image: $0.path) }
+        return result
+    }
+
+    /// Вырезает кусок страницы в JPEG на белом фоне.
+    static func render(_ rect: CGRect, of page: PDFPage, to url: URL) -> Bool {
+        let scale = min(2, maximumPixels / max(rect.width, rect.height))
+        let width = Int((rect.width * scale).rounded())
+        let height = Int((rect.height * scale).rounded())
+        guard width > 0, height > 0,
+              let context = CGContext(
+                data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+              ) else { return false }
+        context.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        // Страница рисуется от начала своей рамки, а прямоугольники картинок в координатах страницы.
+        let box = page.bounds(for: .mediaBox)
+        context.scaleBy(x: scale, y: scale)
+        context.translateBy(x: box.minX - rect.minX, y: box.minY - rect.minY)
+        page.draw(with: .mediaBox, to: context)
+        guard let image = context.makeImage(),
+              let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.jpeg" as CFString, 1, nil) else { return false }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
+        return CGImageDestinationFinalize(destination)
     }
 }

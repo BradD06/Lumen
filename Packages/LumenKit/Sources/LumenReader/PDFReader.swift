@@ -71,7 +71,80 @@ public final class PDFReaderController: NSObject {
         center.addObserver(self, selector: #selector(pageChanged), name: .PDFViewPageChanged, object: pdfView)
         center.addObserver(self, selector: #selector(annotationHit(_:)), name: .PDFViewAnnotationHit, object: pdfView)
         center.addObserver(self, selector: #selector(scaleChanged), name: .PDFViewScaleChanged, object: pdfView)
+        #if os(macOS)
+        // Прокрутку забирает внутренний вид PDFView, поэтому свайп по трекпаду ловится до него.
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            let scroll = TrackpadScroll(event)
+            let swallowed = MainActor.assumeIsolated { () -> Bool in
+                self?.handleSwipe(scroll) ?? false
+            }
+            return swallowed ? nil : event
+        }
+        #else
+        for direction in [UISwipeGestureRecognizer.Direction.left, .right] {
+            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swiped(_:)))
+            swipe.direction = direction
+            swipe.delegate = self
+            pdfView.addGestureRecognizer(swipe)
+        }
+        #endif
     }
+
+    /// Листает на страницу вперёд или назад, как в книге.
+    public func turnPage(forward: Bool) {
+        if forward {
+            guard pdfView.canGoToNextPage else { return }
+            pdfView.goToNextPage(nil)
+        } else {
+            guard pdfView.canGoToPreviousPage else { return }
+            pdfView.goToPreviousPage(nil)
+        }
+    }
+
+    /// Свайп листает, только пока страница целиком входит по ширине: в увеличенной им двигают страницу.
+    var canSwipe: Bool {
+        pdfView.scaleFactor <= pdfView.scaleFactorForSizeToFit * 1.02
+    }
+
+    #if os(macOS)
+    nonisolated(unsafe) private var scrollMonitor: Any?
+    private var swipeX: CGFloat = 0
+    private var swipeY: CGFloat = 0
+    /// Страницу уже перелистнули этим жестом: остаток жеста и инерция больше ничего не делают.
+    private var swipeTurned = false
+
+    deinit {
+        if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
+    }
+
+    /// Горизонтальный свайп двумя пальцами по трекпаду над PDF: одна страница на жест.
+    /// Возвращает `true`, если жест забран и прокручивать страницу не нужно.
+    private func handleSwipe(_ event: TrackpadScroll) -> Bool {
+        guard event.isTrackpad, let window = pdfView.window, event.windowNumber == window.windowNumber,
+              pdfView.bounds.contains(pdfView.convert(event.location, from: nil)), canSwipe else { return false }
+        if event.phase == .began {
+            swipeX = 0
+            swipeY = 0
+            swipeTurned = false
+        }
+        if event.phase == .changed {
+            // Движение пальцев, а не страницы: свайп влево всегда вперёд, как бы ни была настроена прокрутка.
+            swipeX += event.fingersX
+            swipeY += abs(event.deltaY)
+            if !swipeTurned, abs(swipeX) > 70, abs(swipeX) > swipeY * 2 {
+                swipeTurned = true
+                turnPage(forward: swipeX < 0)
+            }
+        }
+        let sideways = abs(swipeX) > 6 && abs(swipeX) > swipeY * 2
+        return swipeTurned || (sideways && event.momentumPhase == [])
+    }
+    #else
+    @objc private func swiped(_ recognizer: UISwipeGestureRecognizer) {
+        guard canSwipe else { return }
+        turnPage(forward: recognizer.direction == .left)
+    }
+    #endif
 
     public var pageCount: Int { pdfView.document?.pageCount ?? 0 }
 
@@ -376,6 +449,42 @@ public final class PDFReaderController: NSObject {
         PlatformColor(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
     }
 }
+
+#if os(iOS)
+extension PDFReaderController: UIGestureRecognizerDelegate {
+    public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        true
+    }
+
+    public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        canSwipe
+    }
+}
+#endif
+
+#if os(macOS)
+/// То, что нужно от события прокрутки, чтобы узнать свайп. Само событие на главный поток не передаётся.
+struct TrackpadScroll: Sendable {
+    var isTrackpad: Bool
+    var windowNumber: Int
+    var location: CGPoint
+    var phase: NSEvent.Phase
+    var momentumPhase: NSEvent.Phase
+    /// Куда двигались пальцы по горизонтали, без учёта настройки «естественной» прокрутки.
+    var fingersX: CGFloat
+    var deltaY: CGFloat
+
+    init(_ event: NSEvent) {
+        isTrackpad = event.hasPreciseScrollingDeltas
+        windowNumber = event.windowNumber
+        location = event.locationInWindow
+        phase = event.phase
+        momentumPhase = event.momentumPhase
+        fingersX = event.isDirectionInvertedFromDevice ? event.scrollingDeltaX : -event.scrollingDeltaX
+        deltaY = event.scrollingDeltaY
+    }
+}
+#endif
 
 /// PDF в SwiftUI.
 public struct PDFReaderView: View {

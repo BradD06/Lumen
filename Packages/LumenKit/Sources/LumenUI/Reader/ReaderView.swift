@@ -206,15 +206,28 @@ struct ReaderView: View {
     private var toolbar: some ToolbarContent {
         ToolbarItemGroup {
             if model.hasOriginalMode {
-                Picker("Вид", selection: $model.documentMode) {
-                    ForEach(ReaderModel.DocumentMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
+                if isCompact {
+                    // На iPhone в верхней панели мало места: вместо двух кнопок одна, с выбором в меню.
+                    Menu {
+                        Picker("Вид", selection: $model.documentMode) {
+                            ForEach(ReaderModel.DocumentMode.allCases) { mode in
+                                Label(mode.title, systemImage: mode.systemImage).tag(mode)
+                            }
+                        }
+                    } label: {
+                        Label("Вид: \(model.documentMode.title)", systemImage: model.documentMode.systemImage)
                     }
+                } else {
+                    Picker("Вид", selection: $model.documentMode) {
+                        ForEach(ReaderModel.DocumentMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .help(model.source?.format == .pdf
+                        ? "Текст: как книга, по главам и с любым размером шрифта. Оригинал: страницы как в файле"
+                        : "Текст можно выделять и выписывать, оригинал показывает файл как есть")
                 }
-                .pickerStyle(.segmented)
-                .help(model.source?.format == .pdf
-                    ? "Текст: как книга, по главам и с любым размером шрифта. Оригинал: страницы как в файле"
-                    : "Текст можно выделять и выписывать, оригинал показывает файл как есть")
             }
             // На iPhone эти кнопки живут в нижней панели.
             if !isCompact {
