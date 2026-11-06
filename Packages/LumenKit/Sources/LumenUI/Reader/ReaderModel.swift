@@ -893,6 +893,13 @@ final class ReaderModel {
         }
     }
 
+    /// Выделение и ссылка `lumen://` на него в буфер обмена.
+    func copySelectionLink() async {
+        guard let highlight = await highlightSelection(.yellow) else { return }
+        copyLink(ExcerptReference(sourceId: sourceId, highlightId: highlight.id, label: highlight.label).link)
+        showToast("Ссылка на цитату скопирована")
+    }
+
     /// Выделение плюс выписка в заметки рядом.
     func excerptSelection(_ color: HighlightColor = .yellow) async {
         guard let highlight = await highlightSelection(color) else { return }

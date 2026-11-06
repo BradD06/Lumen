@@ -23,6 +23,30 @@ extension PageEditorModel {
         activeDrawingId = nil
     }
 
+    /// «Пером» в заметках рядом с книгой: рисовать в последнем рисунке страницы, а если в конце
+    /// его нет, в новом. Пустой абзац в конце остаётся последним, чтобы вернуться к тексту.
+    func startPenAtEnd() {
+        let topLevel = children(of: nil)
+        let trailingEmpty = topLevel.last.map { $0.type == .paragraph && $0.text.isEmpty && children(of: $0.id).isEmpty } ?? false
+        let body = trailingEmpty ? Array(topLevel.dropLast()) : topLevel
+        if let last = body.last, last.type == .drawing {
+            startDrawing(last.id)
+            return
+        }
+        recordUndo()
+        if topLevel.count == 1, let only = topLevel.first, trailingEmpty {
+            update(only.id) { $0.type = .drawing }
+            insertBlock(in: nil, after: only.id, type: .paragraph)
+            startDrawing(only.id)
+            return
+        }
+        let drawing = insertBlock(in: nil, after: body.last?.id, type: .drawing)
+        if !trailingEmpty {
+            insertBlock(in: nil, after: drawing.id, type: .paragraph)
+        }
+        startDrawing(drawing.id)
+    }
+
     /// Новые штрихи блока. `recordsUndo: false` продолжает прошлый шаг отмены,
     /// например когда ластик за одно движение стирает несколько штрихов.
     /// `visibleWidth`: сколько пунктов рисунка видно по ширине области. По нему запоминается

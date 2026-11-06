@@ -3,6 +3,7 @@ import LumenReader
 import LumenStorage
 import LumenThemes
 import SwiftUI
+import Translation
 
 /// Круглая кнопка на листе книги: перелистнуть главу.
 struct SheetRoundButtonStyle: ButtonStyle {
@@ -110,10 +111,14 @@ private struct HighlightActionBar<Extra: View>: View {
     }
 }
 
-/// Плашка под выделенным текстом: покрасить, отправить в заметки, скопировать.
+/// Плашка под выделенным текстом: покрасить, отправить в заметки, ссылка, перевод, копия.
 struct SelectionBar: View {
     let model: ReaderModel
     var isCompact = false
+
+    @State private var isTranslating = false
+    /// Текст запоминается до показа перевода: выделение в книге к тому времени может сняться.
+    @State private var textToTranslate = ""
 
     var body: some View {
         HighlightActionBar(
@@ -124,12 +129,29 @@ struct SelectionBar: View {
             onClose: { model.clearSelection() }
         ) {
             Button {
+                Task { await model.copySelectionLink() }
+            } label: {
+                Image(systemName: "link")
+            }
+            .help("Выделить и скопировать ссылку на это место")
+            .accessibilityLabel("Ссылка")
+            Button {
+                textToTranslate = model.selection?.text ?? ""
+                isTranslating = !textToTranslate.isEmpty
+            } label: {
+                Image(systemName: "translate")
+            }
+            .help("Перевести")
+            .accessibilityLabel("Перевести")
+            .translationPresentation(isPresented: $isTranslating, text: textToTranslate)
+            Button {
                 if let text = model.selection?.text { copyToPasteboard(text) }
                 model.showToast("Скопировано")
             } label: {
                 Image(systemName: "doc.on.doc")
             }
             .help("Скопировать")
+            .accessibilityLabel("Скопировать")
         }
     }
 }

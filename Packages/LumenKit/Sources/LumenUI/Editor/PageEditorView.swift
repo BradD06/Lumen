@@ -58,6 +58,7 @@ struct PageEditorView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     @Environment(\.lumenTheme) private var theme
+    private let focusMode = FocusModeState.shared
 
     private static let icons = ["📝", "📘", "📚", "🎓", "💡", "✅", "🧠", "🌅", "🗂️", "⭐️"]
     private static let coverGradients = ["Персик", "Солнце", "Лаванда", "Лайм", "Небо"]
@@ -119,6 +120,11 @@ struct PageEditorView: View {
             ToolbarItemGroup(placement: .keyboard) {
                 if case .block(let id) = focus {
                     Button {
+                        model.addBlock(below: id)
+                    } label: {
+                        Label("Новый блок", systemImage: "plus")
+                    }
+                    Button {
                         model.outdent(id)
                     } label: {
                         Label("Вынести на уровень выше", systemImage: "decrease.indent")
@@ -130,6 +136,16 @@ struct PageEditorView: View {
                         Label("Вложить в блок выше", systemImage: "increase.indent")
                     }
                     .disabled(!model.canIndent(id))
+                    Button {
+                        model.moveBlock(id, by: -1)
+                    } label: {
+                        Label("Переместить вверх", systemImage: "arrow.up")
+                    }
+                    Button {
+                        model.moveBlock(id, by: 1)
+                    } label: {
+                        Label("Переместить вниз", systemImage: "arrow.down")
+                    }
                     Spacer()
                     // На iPhone в панели окна места нет: отмена и повтор над клавиатурой.
                     if isCompact && !isEmbedded {
@@ -139,12 +155,11 @@ struct PageEditorView: View {
                             Label("Отменить", systemImage: "arrow.uturn.backward")
                         }
                         .disabled(!model.canUndo)
-                        Button {
-                            model.redo()
-                        } label: {
-                            Label("Повторить", systemImage: "arrow.uturn.forward")
-                        }
-                        .disabled(!model.canRedo)
+                    }
+                    Button {
+                        focus = nil
+                    } label: {
+                        Label("Спрятать клавиатуру", systemImage: "keyboard.chevron.compact.down")
                     }
                 }
             }
@@ -300,6 +315,21 @@ struct PageEditorView: View {
             .onScrollTargetVisibilityChange(idType: UUID.self) { ids in
                 visibleBlockIds = ids
             }
+            .overlay(alignment: .bottomTrailing) {
+                if !isEmbedded, !isCompact, isActivePane {
+                    WordCountCapsule(words: model.wordCount, isFocusMode: focusMode.isOn) {
+                        focusMode.toggle()
+                    }
+                    .padding(18)
+                }
+            }
+            #if os(iOS)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if isCompact, case .block(let id) = focus, let block = model.findBlock(id), block.type.isConvertible {
+                    BlockTypeChips(current: block.type) { model.setType(id, $0) }
+                }
+            }
+            #endif
             .overlay(alignment: .trailing) {
                 let outline = model.outline
                 if showsOutline, !showsSubpages, outline.count >= 2 {
@@ -552,20 +582,8 @@ struct PageEditorView: View {
                 }
                 .buttonStyle(.plain)
             }
-            if let parent = model.parentPage {
-                Button {
-                    model.open(parent.id)
-                } label: {
-                    Label {
-                        Text(parent.displayTitle).lineLimit(1)
-                    } icon: {
-                        Image(systemName: "arrow.turn.left.up")
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(theme.textSecondary)
-                }
-                .buttonStyle(.plain)
-                .help("Открыть страницу, в которую вложена эта")
+            if !isEmbedded {
+                PageBreadcrumbs(database: model.database, pageId: model.pageId) { model.open($0) }
             }
             HStack(spacing: 8) {
                 Menu {
@@ -615,6 +633,8 @@ struct PageEditorView: View {
                     .foregroundStyle(theme.accent)
                     .help("Перенести в страницы")
                 }
+                Spacer(minLength: 8)
+                SaveStatusLabel(hasUnsavedChanges: model.hasUnsavedChanges)
             }
 
             TextField(

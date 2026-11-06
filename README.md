@@ -26,15 +26,22 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Markdown shortcuts (`#`, `-`, `1.`, `[]`, `>`, ```` ``` ````, `---`) and a `/` command menu.
 - Nested blocks with Tab / ⇧Tab, drag-and-drop reordering, and columns: drop a block next to another one to place them side by side.
 - Text and background colors, duplicate (⌘D), full undo and redo (⌘Z / ⇧⌘Z).
+- A tidy right-click (two-finger tap) menu on every block: add a block below, turn into, color, copy text, send to today's tasks, move, delete. A `+` next to the drag handle adds a block on the Mac.
+- Breadcrumbs above the title, a "Saved" indicator, a word count, and a focus mode (⇧⌘F) that hides everything except the paragraph you are writing.
+- Hover over an excerpt to preview the book and the place it came from.
+- On iPhone, a keyboard bar (new block, indent, move, hide keyboard) and block-type chips above it.
 - Subpages and links to any page with `[[` or `@`, plus backlinks at the bottom of every page.
 - Page covers from the theme's gradients or your own photos.
+- One **Create** button for everything: note (⌘N), task (⇧⌘N), handwritten notebook, book or file (⌘O), database, folder. On iPhone it is a round `+` button.
 - Quick note with ⌘N, from Shortcuts or from Siri. It lands in the Inbox to sort later.
-- Full-text search across all pages with ⌘K.
+- A ⌘K command palette: search pages, books and quotes, open recent items, and run actions (⌘↵ opens a result beside the current one).
 
 ### 📚 Reader for almost any file
 - Read **EPUB, PDF, FB2, CBZ, Word, PowerPoint, RTF, ODT, Markdown, HTML and plain text** right inside the app. Other files open with Quick Look.
 - Open books from Files, Telegram, Mail or Finder with "Share" / "Open with" → Lumen, or drop a file onto the Dock icon.
 - Highlights with comments. Save a quote as an excerpt, and it links back to the exact place in the book.
+- The selection bar also copies a link to the quote and translates the selected text with Apple's built-in translation.
+- A **Text / Pen** switch in the notes beside a book: write with the keyboard, or draw at the end of the note.
 - Bookmark a place while you write notes, and jump back to it later.
 - Notes open beside the book in a split view. On iPhone they slide up as a sheet.
 - Lumen remembers exactly where you stopped reading. Dark mode tints PDF pages too.
@@ -60,12 +67,14 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - A visual library for pages, notebooks, books and folders. Notes made from a book stay right next to it.
 - Browser-style back and forward, tabs (⌘T, ⌘1…9) and split screen on Mac and iPad. Drag a tab to one side of the window to open it next to another one.
 - Favorites, an Inbox for quick notes, and a trash you can restore from.
+- Sort the Inbox one note at a time: swipe, pick one of three suggested folders, turn a note into a task, keep it or delete it.
+- A sidebar with search on top, Today, Inbox, Tasks, Library, Recent and folders, and Trash and Settings at the bottom. On iPad in portrait, an icon rail with labels keeps everything one tap away.
 - Export a page to Markdown or PDF, plus full backups of your data.
-- On iPhone: Home, Inbox, Library and Search tabs at the bottom of the screen.
+- On iPhone: Today, Inbox, Library and Search tabs at the bottom of the screen.
 
 ### 🌅 Design
 - A dark "Sunset" theme with warm gradients.
-- A home screen dashboard made of widget cards.
+- A **Today** screen: a capture field (tick "This is a task" to add it to today's tasks), Continue reading, today's tasks you can check off, the Inbox, and recent pages.
 
 ## Roadmap
 

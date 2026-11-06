@@ -32,6 +32,8 @@ public struct SidebarSnapshot: Equatable, Sendable {
     public var folders: [FolderNode]
     public var inboxCount: Int
     public var trashCount: Int
+    /// Что открывали и правили последним: страницы и книги вперемешку.
+    public var recent: [RecentItem] = []
 
     public static let empty = SidebarSnapshot(favorites: [], databases: [], folders: [], inboxCount: 0, trashCount: 0)
 
@@ -49,8 +51,141 @@ public struct SidebarSnapshot: Equatable, Sendable {
             databases: try DataTableListQuery.fetch(db),
             folders: try FolderTreeQuery.fetch(db),
             inboxCount: try alive.filter(Column("inInbox") == true).fetchCount(db),
-            trashCount: trashedPages + trashedFolders + trashedSources
+            trashCount: trashedPages + trashedFolders + trashedSources,
+            recent: try RecentQuery.fetch(db, limit: 5)
         )
+    }
+}
+
+/// Недавнее: страница или книга.
+public enum RecentItem: Hashable, Identifiable, Sendable {
+    case page(Page)
+    case source(Source)
+
+    public var id: UUID {
+        switch self {
+        case .page(let page): page.id
+        case .source(let source): source.id
+        }
+    }
+
+    public var title: String {
+        switch self {
+        case .page(let page): page.displayTitle
+        case .source(let source): source.displayTitle
+        }
+    }
+
+    /// Когда с ним работали последний раз.
+    public var date: Date {
+        switch self {
+        case .page(let page): page.updatedAt
+        case .source(let source): source.lastOpenedAt ?? source.createdAt
+        }
+    }
+}
+
+public enum RecentQuery {
+    /// Последние правленые страницы (без строк баз) и последние открытые книги, новые сверху.
+    public static func fetch(_ db: Database, limit: Int) throws -> [RecentItem] {
+        let pages = try Page
+            .filter(Column("deletedAt") == nil && Column("databaseId") == nil)
+            .order(Column("updatedAt").desc)
+            .limit(limit)
+            .fetchAll(db)
+        let sources = try Source
+            .filter(Column("deletedAt") == nil && Column("lastOpenedAt") != nil)
+            .order(Column("lastOpenedAt").desc)
+            .limit(limit)
+            .fetchAll(db)
+        let items = pages.map(RecentItem.page) + sources.map(RecentItem.source)
+        return Array(items.sorted { $0.date > $1.date }.prefix(limit))
+    }
+}
+
+/// Папки, куда скорее всего положат заметку из «Входящих»: в которых недавно что-то правили.
+public enum SuggestedFoldersQuery {
+    public static func fetch(_ db: Database, limit: Int = 3) throws -> [Folder] {
+        let busy = try Folder.fetchAll(db, sql: """
+            SELECT folder.*
+            FROM folder
+            JOIN page ON page.folderId = folder.id
+            WHERE folder.deletedAt IS NULL AND page.deletedAt IS NULL
+            GROUP BY folder.id
+            ORDER BY MAX(page.updatedAt) DESC
+            LIMIT ?
+            """, arguments: [limit])
+        guard busy.count < limit else { return busy }
+        let taken = Set(busy.map(\.id))
+        let rest = try Folder
+            .filter(Column("deletedAt") == nil)
+            .order(Column("updatedAt").desc)
+            .fetchAll(db)
+            .filter { !taken.contains($0.id) }
+        return busy + rest.prefix(limit - busy.count)
+    }
+}
+
+/// Шаг пути к странице: «Входящие», папка библиотеки или страница-родитель.
+public enum Breadcrumb: Hashable, Identifiable, Sendable {
+    case inbox
+    case library
+    case folder(Folder)
+    case page(Page)
+
+    public var id: String {
+        switch self {
+        case .inbox: "inbox"
+        case .library: "library"
+        case .folder(let folder): "folder-\(folder.id)"
+        case .page(let page): "page-\(page.id)"
+        }
+    }
+
+    public var title: String {
+        switch self {
+        case .inbox: "Входящие"
+        case .library: "Библиотека"
+        case .folder(let folder): folder.displayName
+        case .page(let page): page.displayTitle
+        }
+    }
+}
+
+public enum BreadcrumbQuery {
+    /// Путь от корня до страницы, без самой страницы. Строка базы идёт после страницы базы.
+    public static func fetch(_ db: Database, pageId: UUID) throws -> [Breadcrumb] {
+        guard var page = try Page.fetchOne(db, key: pageId) else { return [] }
+        var pages: [Page] = []
+        var seen: Set<UUID> = [pageId]
+        // Вверх по родителям: подстраница, строка базы (её родитель это страница базы).
+        while true {
+            var parent: Page?
+            if let parentId = page.parentId {
+                parent = try Page.fetchOne(db, key: parentId)
+            } else if let databaseId = page.databaseId {
+                parent = try Page.fetchOne(db, sql: """
+                    SELECT page.* FROM page JOIN dataTable ON dataTable.pageId = page.id WHERE dataTable.id = ?
+                    """, arguments: [databaseId])
+            }
+            guard let next = parent, next.deletedAt == nil, !seen.contains(next.id) else { break }
+            seen.insert(next.id)
+            pages.insert(next, at: 0)
+            page = next
+        }
+        // Самая верхняя страница лежит во «Входящих» или в папке.
+        if page.inInbox {
+            return [.inbox] + pages.map(Breadcrumb.page)
+        }
+        var folders: [Folder] = []
+        var folderId = page.folderId
+        var seenFolders: Set<UUID> = []
+        while let id = folderId, !seenFolders.contains(id), let folder = try Folder.fetchOne(db, key: id), folder.deletedAt == nil {
+            seenFolders.insert(id)
+            folders.insert(folder, at: 0)
+            folderId = folder.parentId
+        }
+        return [.library] + folders.map(Breadcrumb.folder) + pages.map(Breadcrumb.page)
     }
 }
 

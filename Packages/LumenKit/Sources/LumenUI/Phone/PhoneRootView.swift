@@ -35,10 +35,13 @@ struct PhoneRootView: View {
 
     @State private var tab: PhoneTab = .home
     @State private var paths: [PhoneTab: [PhoneRoute]] = [:]
+    @State private var isCreating = false
+    @State private var isImportingBook = false
+    @State private var isSettingsPresented = false
 
     var body: some View {
         TabView(selection: $tab) {
-            Tab("Главная", systemImage: "sparkles", value: PhoneTab.home) {
+            Tab("Сегодня", systemImage: "sun.max", value: PhoneTab.home) {
                 stack(.home) {
                     HomeView(
                         database: database,
@@ -48,13 +51,14 @@ struct PhoneRootView: View {
                         onShowInbox: { tab = .inbox },
                         onShowLibrary: { tab = .library }
                     )
-                    .toolbar { newNoteButton }
+                    .toolbar { settingsButton }
+                    .overlay(alignment: .bottomTrailing) { createButton }
                 }
             }
             Tab("Входящие", systemImage: "tray", value: PhoneTab.inbox) {
                 stack(.inbox) {
                     InboxView(database: database, onOpen: { push(.page($0)) }, onNewNote: newQuickNote)
-                        .toolbar { newNoteButton }
+                        .overlay(alignment: .bottomTrailing) { createButton }
                 }
             }
             Tab("Задачи", systemImage: "checklist", value: PhoneTab.tasks) {
@@ -80,6 +84,66 @@ struct PhoneRootView: View {
         }
         // Книги из «Файлов», Telegram и «Поделиться», ссылки lumen:// на страницы, книги и цитаты.
         .opensIncomingLinks(database: database, open: openIncoming)
+        .environment(\.appActions, appActions)
+        .sheet(isPresented: $isCreating) {
+            CreateSheet(
+                onCapture: { text, asTask in creator.capture(text, asTask: asTask) },
+                onSelect: { appActions.create($0) }
+            )
+        }
+        .sheet(isPresented: $isSettingsPresented) {
+            SettingsSheet(database: database) { isSettingsPresented = false }
+        }
+        .fileImporter(
+            isPresented: $isImportingBook,
+            allowedContentTypes: SourceImporter.contentTypes,
+            allowsMultipleSelection: true
+        ) { result in
+            if case .success(let urls) = result {
+                creator.importBooks(urls)
+            }
+        }
+    }
+
+    private var creator: Creator {
+        Creator(database: database, open: openIncoming)
+    }
+
+    private var appActions: AppActions {
+        AppActions(
+            open: openIncoming,
+            create: { kind in
+                if kind == .book {
+                    // Окно выбора файла открывается после того, как закроется окно «Создать».
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(400))
+                        isImportingBook = true
+                    }
+                } else {
+                    creator.create(kind)
+                }
+            },
+            capture: { text, asTask in creator.capture(text, asTask: asTask) },
+            search: { tab = .search },
+            settings: { isSettingsPresented = true }
+        )
+    }
+
+    /// Круглая «+» над вкладками: создать что угодно одним касанием.
+    private var createButton: some View {
+        PhoneCreateButton { isCreating = true }
+            .padding(.trailing, 20)
+            .padding(.bottom, 16)
+    }
+
+    private var settingsButton: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                isSettingsPresented = true
+            } label: {
+                Label("Настройки", systemImage: "gearshape")
+            }
+        }
     }
 
     private func stack<Root: View>(_ tab: PhoneTab, @ViewBuilder root: () -> Root) -> some View {
@@ -149,13 +213,6 @@ struct PhoneRootView: View {
         )
     }
 
-    private var newNoteButton: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Button(action: newQuickNote) {
-                Label("Быстрая заметка", systemImage: "square.and.pencil")
-            }
-        }
-    }
 
     // MARK: Переходы
 
@@ -230,6 +287,25 @@ struct PhoneRootView: View {
                 NoticeCenter.shared.report("Не удалось создать заметку", error)
             }
         }
+    }
+}
+
+/// Круглая кнопка «Создать» в углу экрана.
+private struct PhoneCreateButton: View {
+    var action: () -> Void
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "plus")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(theme.vividCard(0).foreground)
+                .frame(width: 60, height: 60)
+                .background(LinearGradient(colors: theme.vividCard(0).colors, startPoint: .top, endPoint: .bottom), in: Circle())
+                .shadow(color: (theme.vividCard(0).colors.last ?? .orange).opacity(0.45), radius: 12, y: 6)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Создать")
     }
 }
 

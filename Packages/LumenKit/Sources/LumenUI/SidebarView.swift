@@ -11,18 +11,22 @@ struct SidebarView: View {
     var onNewPage: (UUID?) -> Void
     var onNewFolder: (UUID?) -> Void
     var onNewDataTable: () -> Void
+    /// Поиск и действия (⌘K).
+    var onSearch: () -> Void = {}
+    /// Кнопка «Создать».
+    var onCreate: (CreateKind) -> Void = { _ in }
+    var onSettings: () -> Void = {}
 
     @State private var snapshot = SidebarSnapshot.empty
     @State private var renaming: Page?
     @State private var renamingFolder: Folder?
     @State private var newTitle = ""
-    @State private var isDataSafetyPresented = false
     @Environment(\.workspaceActions) private var workspaceActions
 
     var body: some View {
         List(selection: $selection) {
             Section {
-                Label("Главная", systemImage: "sparkles")
+                Label("Сегодня", systemImage: "sun.max")
                     .tag(SidebarItem.home)
                 Label("Входящие", systemImage: "tray")
                     .badge(snapshot.inboxCount)
@@ -34,6 +38,14 @@ struct SidebarView: View {
                     .dropDestination(for: PageDragItem.self) { items, _ in
                         move(items, toFolder: nil)
                     }
+            }
+
+            if !snapshot.recent.isEmpty {
+                Section("Недавние") {
+                    ForEach(snapshot.recent) { item in
+                        recentRow(item)
+                    }
+                }
             }
 
             if !snapshot.favorites.isEmpty {
@@ -85,24 +97,10 @@ struct SidebarView: View {
                 Text("Папки")
             }
 
-            Section {
-                Label("Корзина", systemImage: "trash")
-                    .badge(snapshot.trashCount)
-                    .tag(SidebarItem.trash)
-                // Не раздел, а окно: резервная копия, восстановление и состояние синхронизации.
-                Button {
-                    isDataSafetyPresented = true
-                } label: {
-                    Label("Данные и копии", systemImage: "externaldrive")
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
-            }
         }
+        .safeAreaInset(edge: .top, spacing: 0) { topBar }
+        .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
         .navigationTitle("Lumen")
-        .sheet(isPresented: $isDataSafetyPresented) {
-            DataSafetySheet(database: database) { isDataSafetyPresented = false }
-        }
         .task { await observe() }
         .alert("Переименовать страницу", isPresented: isRenaming) {
             TextField("Название", text: $newTitle)
@@ -133,6 +131,84 @@ struct SidebarView: View {
                 renamingFolder = nil
             }
             Button("Отмена", role: .cancel) { renamingFolder = nil }
+        }
+    }
+
+    /// Поиск и «Создать» над разделами: всегда на виду.
+    private var topBar: some View {
+        VStack(spacing: 10) {
+            Button(action: onSearch) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                    Text("Найти или сделать…")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    ShortcutHint(text: "⌘K")
+                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .frame(height: 34)
+                .background(.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.primary.opacity(0.1)))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Поиск по страницам, книгам и цитатам, а ещё быстрые действия (⌘K)")
+            .accessibilityIdentifier("sidebar-search")
+
+            CreateButton(onSelect: onCreate)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+        .padding(.bottom, 8)
+    }
+
+    /// Корзина и настройки внизу, отдельно от разделов.
+    private var bottomBar: some View {
+        HStack(spacing: 4) {
+            Button {
+                selection = .trash
+            } label: {
+                Label(snapshot.trashCount > 0 ? "Корзина · \(snapshot.trashCount)" : "Корзина", systemImage: "trash")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+                    .frame(height: 30)
+                    .background(selection == .trash ? Color.accentColor.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("sidebar-trash")
+            Button(action: onSettings) {
+                Label("Настройки", systemImage: "gearshape")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+                    .frame(height: 30)
+                    .contentShape(Rectangle())
+            }
+            .help("Звуки, данные, копии и синхронизация")
+        }
+        .buttonStyle(.plain)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    @ViewBuilder
+    private func recentRow(_ item: RecentItem) -> some View {
+        switch item {
+        case .page(let page):
+            PageLabel(page: page)
+                .tag(SidebarItem.page(page.id))
+                .contextMenu { menu(for: page) }
+        case .source(let source):
+            Label {
+                Text(source.displayTitle).lineLimit(1)
+            } icon: {
+                Image(systemName: source.format.symbolName)
+            }
+            .tag(SidebarItem.source(source.id, highlight: nil))
+            .contextMenu { openElsewhereButtons(.source(source.id, highlight: nil)) }
         }
     }
 

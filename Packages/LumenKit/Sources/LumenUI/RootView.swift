@@ -31,6 +31,13 @@ public struct RootView: View {
         storageKey: ProcessInfo.processInfo.arguments.contains("-uiTesting") ? nil : "workspace.v1"
     )
     @State private var isSearchPresented = false
+    @State private var isSettingsPresented = false
+    /// Окно выбора книги или файла из «Создать».
+    @State private var isImportingBook = false
+    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    /// Ширина окна: на узком iPad (вертикально) вместо сайдбара полоса значков.
+    @State private var windowWidth: CGFloat = 0
+    private let focusMode = FocusModeState.shared
     /// К какому краю сейчас держат вкладку, и ширина области панелей для расчёта краёв.
     @State private var tabDropSide: TabDropSide?
     @State private var panesWidth: CGFloat = 0
@@ -84,16 +91,31 @@ public struct RootView: View {
     }
 
     private var splitView: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(
                 database: database,
                 selection: Binding { selection } set: { selection = $0 },
                 onNewPage: openNewPage,
                 onNewFolder: openNewFolder,
-                onNewDataTable: openNewDataTable
+                onNewDataTable: openNewDataTable,
+                onSearch: { isSearchPresented = true },
+                onCreate: create,
+                onSettings: { isSettingsPresented = true }
             )
         } detail: {
             workspaceDetail
+                .safeAreaInset(edge: .leading, spacing: 0) {
+                    if showsRail {
+                        IconRail(
+                            selection: selection,
+                            onSelect: { selection = $0 },
+                            onCreate: create,
+                            onSearch: { isSearchPresented = true },
+                            onSettings: { isSettingsPresented = true }
+                        )
+                        .transition(.move(edge: .leading))
+                    }
+                }
                 .toolbar {
                     ToolbarItemGroup(placement: .navigation) {
                         Button(action: workspace.goBack) {
@@ -118,10 +140,20 @@ public struct RootView: View {
                         }
                         .keyboardShortcut("k", modifiers: .command)
 
-                        Button(action: newQuickNote) {
-                            Label("Быстрая заметка", systemImage: "square.and.pencil")
+                        Menu {
+                            ForEach(CreateKind.allCases) { kind in
+                                Button {
+                                    create(kind)
+                                } label: {
+                                    Label(kind.title, systemImage: kind.systemImage)
+                                }
+                            }
+                        } label: {
+                            Label("Создать", systemImage: "plus")
+                        } primaryAction: {
+                            newQuickNote()
                         }
-                        .keyboardShortcut("n", modifiers: .command)
+                        .help("Новая заметка (⌘N). Удерживайте, чтобы выбрать, что создать")
 
                         Button {
                             withAnimation(.snappy) { workspace.toggleSplit() }
@@ -137,19 +169,40 @@ public struct RootView: View {
                 }
         }
         .environment(\.workspaceActions, workspaceActions)
+        .environment(\.appActions, appActions(pane: nil))
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
+        .onChange(of: focusMode.isOn) { _, isOn in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                columnVisibility = isOn ? .detailOnly : .automatic
+            }
+        }
         .task(id: workspace.referencedItems) { await removeMissingItems() }
         .sheet(isPresented: $isSearchPresented) {
-            SearchView(
+            CommandPalette(
                 database: database,
-                onOpen: { pageId in
+                commands: PaletteCommand.standard(actions: appActions(pane: nil), extra: paletteExtras),
+                onOpen: { item, beside in
                     isSearchPresented = false
-                    selection = .page(pageId)
+                    if beside {
+                        withAnimation(.snappy) { workspace.openBeside(item) }
+                    } else {
+                        selection = item
+                    }
                 },
-                onOpenSource: { sourceId, highlightId in
-                    isSearchPresented = false
-                    selection = .source(sourceId, highlight: highlightId)
-                }
+                onDismiss: { isSearchPresented = false }
             )
+        }
+        .sheet(isPresented: $isSettingsPresented) {
+            SettingsSheet(database: database) { isSettingsPresented = false }
+        }
+        .fileImporter(
+            isPresented: $isImportingBook,
+            allowedContentTypes: SourceImporter.contentTypes,
+            allowsMultipleSelection: true
+        ) { result in
+            if case .success(let urls) = result {
+                creator(pane: nil).importBooks(urls)
+            }
         }
         // Книги из «Файлов» и Finder, ссылки lumen:// на страницы, книги и цитаты.
         .opensIncomingLinks(database: database) { selection = $0 }
@@ -228,7 +281,9 @@ public struct RootView: View {
     /// Вкладки сверху, под ними одна или две панели.
     private var workspaceDetail: some View {
         VStack(spacing: 0) {
-            WorkspaceTabStrip(database: database, workspace: workspace)
+            if !focusMode.isOn {
+                WorkspaceTabStrip(database: database, workspace: workspace)
+            }
             panes
                 // Своя вкладка у каждого набора панелей: при переключении экраны создаются заново.
                 .id(workspace.selectedTabId)
@@ -285,6 +340,14 @@ public struct RootView: View {
                 .keyboardShortcut("]", modifiers: [.command, .shift])
             Button("Предыдущая вкладка") { workspace.selectPreviousTab() }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
+            Button("Новая заметка") { newQuickNote() }
+                .keyboardShortcut("n", modifiers: .command)
+            Button("Новая задача") { create(.task) }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+            Button("Добавить книгу") { create(.book) }
+                .keyboardShortcut("o", modifiers: .command)
+            Button("Режим фокуса") { focusMode.toggle() }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
             ForEach(1...9, id: \.self) { number in
                 Button("Вкладка \(number)") { workspace.select(number: number) }
                     .keyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: .command)
@@ -306,6 +369,7 @@ public struct RootView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .environment(\.isActivePane, isActive)
                 .environment(\.besidePageId, besidePageId(of: index, in: tab))
+                .environment(\.appActions, appActions(pane: index))
                 // Щелчок в панели делает её активной. Без разделения жест выключен.
                 .simultaneousGesture(
                     TapGesture().onEnded { workspace.focus(pane: index) },
@@ -351,6 +415,78 @@ public struct RootView: View {
                 workspace.remove { missing.contains($0) }
             }
         } catch {}
+    }
+
+    /// Полоса значков вместо сайдбара: только на iPad, когда сайдбар спрятан.
+    private var showsRail: Bool {
+        #if os(iOS)
+        guard horizontalSizeClass == .regular, !focusMode.isOn else { return false }
+        return columnVisibility == .detailOnly || (columnVisibility == .automatic && windowWidth > 0 && windowWidth < 1000)
+        #else
+        return false
+        #endif
+    }
+
+    /// Открыть в панели `pane` (или в активной, если `nil`).
+    private func open(_ item: SidebarItem, pane: Int?) {
+        if let pane {
+            workspace.open(item, inPane: pane)
+        } else {
+            selection = item
+        }
+    }
+
+    private func creator(pane: Int?) -> Creator {
+        Creator(database: database) { item in open(item, pane: pane) }
+    }
+
+    private func appActions(pane: Int?) -> AppActions {
+        AppActions(
+            open: { open($0, pane: pane) },
+            create: { kind in
+                if kind == .book {
+                    isImportingBook = true
+                } else {
+                    creator(pane: pane).create(kind)
+                }
+            },
+            capture: { text, asTask in creator(pane: pane).capture(text, asTask: asTask) },
+            search: { isSearchPresented = true },
+            settings: { isSettingsPresented = true }
+        )
+    }
+
+    private func create(_ kind: CreateKind) {
+        appActions(pane: nil).create(kind)
+    }
+
+    /// Действия ⌘K, которым нужно окно: панели и режим фокуса.
+    private var paletteExtras: [PaletteCommand] {
+        [
+            PaletteCommand(
+                id: "split",
+                title: workspace.isSplit ? "Убрать вторую панель" : "Разделить экран на две панели",
+                systemImage: "rectangle.split.2x1",
+                shortcut: "⌘\\",
+                keywords: ["рядом", "две", "панели"],
+                run: { withAnimation(.snappy) { workspace.toggleSplit() } }
+            ),
+            PaletteCommand(
+                id: "focus",
+                title: focusMode.isOn ? "Выйти из режима фокуса" : "Режим фокуса",
+                systemImage: "viewfinder",
+                shortcut: "⇧⌘F",
+                keywords: ["тишина", "сосредоточиться", "писать"],
+                run: { focusMode.toggle() }
+            ),
+            PaletteCommand(
+                id: "triage",
+                title: "Разобрать входящие",
+                systemImage: "rectangle.stack",
+                keywords: ["входящие", "по одной"],
+                run: { selection = .inbox }
+            ),
+        ]
     }
 
     /// Главный сценарий: «+» и сразу пишешь, заметка попадает во «Входящие».

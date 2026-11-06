@@ -25,6 +25,8 @@ final class PageEditorModel {
     private(set) var links = PageLinksSnapshot.empty
     private(set) var canUndo = false
     private(set) var canRedo = false
+    /// Есть правки, которые ещё не записаны: в шапке «Сохраняется…» вместо «Сохранено».
+    private(set) var hasUnsavedChanges = false
     /// Блок, на который нужно перевести фокус. Вью сбрасывает его после применения.
     var focusRequest: UUID?
     /// Блок, в котором сейчас курсор. Вью обновляет его при каждой смене фокуса.
@@ -144,6 +146,7 @@ final class PageEditorModel {
     }
 
     func scheduleSave() {
+        if !hasUnsavedChanges { hasUnsavedChanges = true }
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: Self.saveDelay)
@@ -165,7 +168,10 @@ final class PageEditorModel {
         pendingDeletes.removeAll()
         let newTitle = isTitleDirty ? title : nil
         isTitleDirty = false
-        guard newTitle != nil || !pending.isEmpty || !deletes.isEmpty else { return }
+        guard newTitle != nil || !pending.isEmpty || !deletes.isEmpty else {
+            if saveTask == nil, hasUnsavedChanges { hasUnsavedChanges = false }
+            return
+        }
 
         let database = database
         let pageId = pageId
@@ -189,6 +195,9 @@ final class PageEditorModel {
         }
         lastWrite = write
         await write.value
+        if saveTask == nil, dirtyBlocks.isEmpty, pendingDeletes.isEmpty, !isTitleDirty, hasUnsavedChanges {
+            hasUnsavedChanges = false
+        }
     }
 
     /// Удаление блоков из базы при следующей записи. Запоздалая запись их уже не вернёт:

@@ -20,6 +20,12 @@ extension PageEditorModel {
         }
     }
 
+    /// Пустой абзац сразу под блоком: «+» у ручки и кнопка над клавиатурой.
+    func addBlock(below id: UUID) {
+        recordUndo()
+        focusRequest = insertBlock(after: id, type: .paragraph).id
+    }
+
     func updateText(_ id: UUID, to newText: String) {
         guard let block = findBlock(id) else { return }
 

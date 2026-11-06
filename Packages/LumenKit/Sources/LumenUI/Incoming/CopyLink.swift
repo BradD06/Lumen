@@ -23,3 +23,14 @@ func copyLink(_ link: LumenLink) {
     ]]
     #endif
 }
+
+/// Обычный текст в буфер обмена, например текст блока из меню по правой кнопке.
+@MainActor
+func copyText(_ text: String) {
+    #if os(macOS)
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
+    #else
+    UIPasteboard.general.string = text
+    #endif
+}

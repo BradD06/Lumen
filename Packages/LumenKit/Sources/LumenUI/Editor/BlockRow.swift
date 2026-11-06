@@ -21,6 +21,7 @@ struct BlockRow: View {
     @State private var size: CGSize = .zero
     @State private var isColorPickerShown = false
     @Environment(\.lumenTheme) private var theme
+    private let focusMode = FocusModeState.shared
 
     var body: some View {
         HStack(alignment: .top, spacing: Self.handleSpacing) {
@@ -47,6 +48,10 @@ struct BlockRow: View {
             }
         }
         .padding(.vertical, verticalPadding)
+        .overlay(alignment: .topLeading) { addButton }
+        // Режим фокуса: всё, кроме блока с курсором, приглушено.
+        .opacity(focusMode.isOn && focus.wrappedValue != nil && !isFocused ? 0.3 : 1)
+        .animation(.easeInOut(duration: 0.25), value: isFocused)
         .overlay { dropIndicator }
         .contentShape(Rectangle())
         .onHover { hovering in
@@ -67,17 +72,27 @@ struct BlockRow: View {
         .accessibilityIdentifier("row-\(block.text)")
     }
 
+    /// Меню по правой кнопке или нажатию двумя пальцами: сначала частые правки,
+    /// потом перемещение, удаление в самом низу.
     @ViewBuilder
     private var menu: some View {
+        Button {
+            model.addBlock(below: block.id)
+        } label: {
+            Label("Добавить блок ниже", systemImage: "plus")
+        }
         if block.type.isConvertible {
-            Menu("Превратить в") {
+            Menu {
                 ForEach(BlockType.allCases.filter(\.isConvertible)) { type in
                     Button {
                         model.setType(block.id, type)
                     } label: {
                         Label(type.title, systemImage: type.symbolName)
                     }
+                    .disabled(type == block.type)
                 }
+            } label: {
+                Label("Превратить в", systemImage: "arrow.triangle.2.circlepath")
             }
         }
         if block.type.hasText {
@@ -85,13 +100,20 @@ struct BlockRow: View {
                 // Палитра открывается после того, как закроется контекстное меню.
                 DispatchQueue.main.async { isColorPickerShown = true }
             } label: {
-                Label("Цвет…", systemImage: "paintpalette")
+                Label("Цвет текста и фона…", systemImage: "paintpalette")
             }
         }
-        Button {
-            model.duplicateBlock(block.id)
-        } label: {
-            Label("Дублировать", systemImage: "plus.square.on.square")
+        if block.type.hasText, !block.text.isEmpty {
+            Button {
+                copyText(block.text)
+            } label: {
+                Label("Скопировать текст", systemImage: "doc.on.doc")
+            }
+            Button {
+                sendToTasks()
+            } label: {
+                Label("Отправить в «Задачи» на сегодня", systemImage: "checklist")
+            }
         }
         if let reference = block.content.excerpt {
             Button {
@@ -99,44 +121,72 @@ struct BlockRow: View {
             } label: {
                 Label(reference.isPlace ? "Скопировать ссылку на место" : "Скопировать ссылку на цитату", systemImage: "link")
             }
+            Button {
+                model.openExcerpt(reference)
+            } label: {
+                Label("Открыть в книге", systemImage: "book")
+            }
+        }
+        Button {
+            model.duplicateBlock(block.id)
+        } label: {
+            Label("Дублировать", systemImage: "plus.square.on.square")
         }
         Divider()
-        Button {
-            model.moveBlock(block.id, by: -1)
+        Menu {
+            Button {
+                model.moveBlock(block.id, by: -1)
+            } label: {
+                Label("Вверх", systemImage: "arrow.up")
+            }
+            Button {
+                model.moveBlock(block.id, by: 1)
+            } label: {
+                Label("Вниз", systemImage: "arrow.down")
+            }
+            if model.canIndent(block.id) {
+                Button {
+                    model.indent(block.id)
+                } label: {
+                    Label("Вложить в блок выше", systemImage: "increase.indent")
+                }
+            }
+            if model.canOutdent(block.id) {
+                Button {
+                    model.outdent(block.id)
+                } label: {
+                    Label("Вынести на уровень выше", systemImage: "decrease.indent")
+                }
+            }
+            if model.previousSibling(of: block.id) != nil {
+                Button {
+                    model.placeBesidePrevious(block.id)
+                } label: {
+                    Label("В колонку рядом с блоком выше", systemImage: "rectangle.split.2x1")
+                }
+            }
         } label: {
-            Label("Переместить вверх", systemImage: "arrow.up")
-        }
-        Button {
-            model.moveBlock(block.id, by: 1)
-        } label: {
-            Label("Переместить вниз", systemImage: "arrow.down")
-        }
-        if model.previousSibling(of: block.id) != nil {
-            Button {
-                model.placeBesidePrevious(block.id)
-            } label: {
-                Label("Поставить в колонку рядом с блоком выше", systemImage: "rectangle.split.2x1")
-            }
-        }
-        if model.canIndent(block.id) {
-            Button {
-                model.indent(block.id)
-            } label: {
-                Label("Вложить в блок выше", systemImage: "increase.indent")
-            }
-        }
-        if model.canOutdent(block.id) {
-            Button {
-                model.outdent(block.id)
-            } label: {
-                Label("Вынести на уровень выше", systemImage: "decrease.indent")
-            }
+            Label("Переместить", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
         }
         Divider()
         Button(role: .destructive) {
             model.deleteBlock(block.id)
         } label: {
             Label("Удалить блок", systemImage: "trash")
+        }
+    }
+
+    /// Текст блока задачей на сегодня. Блок остаётся на странице.
+    private func sendToTasks() {
+        let title = block.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let database = model.database
+        Task {
+            if await NoticeCenter.shared.attempt("Не удалось добавить задачу", {
+                _ = try await Creator.addTodayTask(title: title, in: database)
+            }) {
+                LumenSounds.play(.create)
+                NoticeCenter.shared.show("Задача на сегодня добавлена")
+            }
         }
     }
 
@@ -204,6 +254,29 @@ struct BlockRow: View {
             .help("Перетащите, чтобы переместить блок")
             .accessibilityLabel("Переместить блок")
             .accessibilityIdentifier("handle-\(block.text)")
+    }
+
+    /// «+» слева от ручки на Mac: новый пустой блок сразу под этим.
+    @ViewBuilder
+    private var addButton: some View {
+        #if os(macOS)
+        if isHovered, model.draggingBlockId == nil {
+            Button {
+                model.addBlock(below: block.id)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(theme.textSecondary)
+                    .frame(width: 20, height: 22)
+                    .background(theme.textPrimary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .offset(x: -24, y: 1)
+            .help("Добавить блок ниже. Или нажмите «/» в пустой строке")
+            .accessibilityLabel("Добавить блок ниже")
+        }
+        #endif
     }
 
     private var handleOpacity: Double {
@@ -299,7 +372,8 @@ struct BlockRow: View {
             ExcerptBlock(
                 text: block.text,
                 reference: block.content.excerpt,
-                source: model.source(block.content.excerpt?.sourceId)
+                source: model.source(block.content.excerpt?.sourceId),
+                attachments: model.database.attachments
             ) {
                 if let reference = block.content.excerpt {
                     model.openExcerpt(reference)
@@ -376,7 +450,7 @@ struct BlockRow: View {
 
     private var placeholder: String {
         switch block.type {
-        case .paragraph: isFocused ? "Пишите, / для команд, [[ для ссылки" : ""
+        case .paragraph: isFocused ? "Пишите или нажмите «/»: заголовок, список, задача, картинка…" : ""
         case .heading1: "Заголовок 1"
         case .heading2: "Заголовок 2"
         case .heading3: "Заголовок 3"
@@ -530,15 +604,39 @@ private struct ExcerptBlock: View {
     let text: String
     let reference: ExcerptReference?
     let source: Source?
+    let attachments: AttachmentStore
     var onOpen: () -> Void
 
+    @State private var isPreviewShown = false
+    @State private var hoverTask: Task<Void, Never>?
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
-        if reference?.isPlace == true {
-            placeLink
-        } else {
-            quote
+        Group {
+            if reference?.isPlace == true {
+                placeLink
+            } else {
+                quote
+            }
+        }
+        // Курсор задержался на цитате: карточка с книгой и местом, откуда она.
+        .onHover { hovering in
+            hoverTask?.cancel()
+            guard source != nil else { return }
+            if hovering {
+                hoverTask = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(600))
+                    if !Task.isCancelled { isPreviewShown = true }
+                }
+            } else {
+                isPreviewShown = false
+            }
+        }
+        .popover(isPresented: $isPreviewShown, arrowEdge: .bottom) {
+            if let source {
+                ExcerptPreviewCard(text: text, reference: reference, source: source, attachments: attachments)
+                    .presentationCompactAdaptation(.popover)
+            }
         }
     }
 
@@ -625,6 +723,50 @@ private struct ExcerptBlock: View {
         guard let source else { return "Книга удалена" }
         let label = reference?.label ?? ""
         return label.isEmpty ? source.displayTitle : "\(source.displayTitle) · \(label)"
+    }
+}
+
+/// Превью цитаты: обложка, книга, место и полный текст выписки.
+private struct ExcerptPreviewCard: View {
+    let text: String
+    let reference: ExcerptReference?
+    let source: Source
+    let attachments: AttachmentStore
+
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            SourceCoverArt(source: source, attachments: attachments, width: 52, height: 74)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(source.displayTitle)
+                    .font(.subheadline.weight(.bold))
+                    .lineLimit(2)
+                if let author = source.author, !author.isEmpty {
+                    Text(author)
+                        .font(.caption)
+                        .foregroundStyle(theme.textSecondary)
+                }
+                if let label = reference?.label, !label.isEmpty {
+                    Text(label)
+                        .font(.caption)
+                        .foregroundStyle(theme.textSecondary)
+                }
+                if !text.isEmpty {
+                    Text(text)
+                        .font(.system(.callout, design: .serif))
+                        .italic()
+                        .lineLimit(6)
+                        .padding(.top, 2)
+                }
+                Text("Нажмите на цитату, чтобы открыть это место")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(theme.accent)
+                    .padding(.top, 2)
+            }
+            .frame(width: 240, alignment: .leading)
+        }
+        .padding(14)
     }
 }
 
