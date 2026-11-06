@@ -281,10 +281,18 @@ extension ReaderView {
     }
 
     var appearancePanel: some View {
-        ReaderAppearancePanel(paletteRaw: $paletteRaw, fontSize: $fontSize, typefaceRaw: $typefaceRaw, showsTextOptions: isWebContent)
-            .presentationDetents([.height(isWebContent ? 340 : 190)])
-            .presentationCornerRadius(34)
-            .presentationCompactAdaptation(.sheet)
+        let isPDF = model.content == .pdf
+        return ReaderAppearancePanel(
+            paletteRaw: $paletteRaw,
+            fontSize: $fontSize,
+            typefaceRaw: $typefaceRaw,
+            showsTextOptions: isWebContent,
+            cropsMargins: isPDF ? Binding(get: { model.cropsMargins }, set: { model.cropsMargins = $0 }) : nil,
+            splitsColumns: isPDF ? Binding(get: { model.splitsColumns }, set: { model.splitsColumns = $0 }) : nil
+        )
+        .presentationDetents([.height(isWebContent ? 340 : (isPDF ? 270 : 190))])
+        .presentationCornerRadius(34)
+        .presentationCompactAdaptation(.sheet)
     }
 
     var highlightsList: some View {
