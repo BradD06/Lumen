@@ -169,14 +169,16 @@ struct PDFTextConverterTests {
         let context = try #require(CGContext(url as CFURL, mediaBox: &mediaBox, nil))
         for lines in pages {
             context.beginPDFPage(nil)
-            var y: CGFloat = 560
+            // Строка опускается на свою высоту до того, как её нарисовать: крупный заголовок
+            // не налезает на строку над ним, и PDFKit не склеивает их в одну.
+            var y: CGFloat = 590
             for (text, size) in lines {
+                y -= size * 1.7
                 let font = CTFontCreateWithName("Helvetica" as CFString, size, nil)
                 let string = NSAttributedString(string: text, attributes: [NSAttributedString.Key(kCTFontAttributeName as String): font])
                 let line = CTLineCreateWithAttributedString(string)
                 context.textPosition = CGPoint(x: 30, y: y)
                 CTLineDraw(line, context)
-                y -= size * 1.6
             }
             context.endPDFPage()
         }
