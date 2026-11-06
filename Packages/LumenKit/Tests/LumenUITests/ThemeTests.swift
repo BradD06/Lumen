@@ -30,3 +30,10 @@ struct ThemeTests {
         #expect(Theme.mono.fontDesign == .monospaced)
     }
 }
+
+struct ThemeLayoutTests {
+    @Test func onlyMonochromeHidesTheSidebar() {
+        #expect(Theme.mono.layout == .commandLine)
+        #expect(Theme.all.filter { $0.layout == .commandLine }.map(\.id) == ["mono"])
+    }
+}

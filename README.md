@@ -74,7 +74,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - On iPhone: Today, Inbox, Library and Search tabs at the bottom of the screen.
 
 ### 🌅 Design
-- Five themes to pick in Settings: dark "Sunset" with warm gradients, light "Paper" with serif type and red ink, near-black "Monochrome" with a monospaced font, dark green and brass "Study", and quiet light "Zen". A theme changes colors, the font and light or dark mode across the whole app.
+- Five themes to pick in Settings: dark "Sunset" with warm gradients, light "Paper" with serif type and red ink, near-black "Monochrome" with a monospaced font and no sidebar (a command line at the bottom opens ⌘K for everything), dark green and brass "Study", and quiet light "Zen". A theme changes colors, the font and light or dark mode across the whole app.
 - A **Today** screen: a capture field (tick "This is a task" to add it to today's tasks), Continue reading, today's tasks you can check off, the Inbox, and recent pages.
 
 ## Roadmap

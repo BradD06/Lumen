@@ -103,6 +103,13 @@ public struct RootView: View {
             )
         } detail: {
             workspaceDetail
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    // «Монохром»: вместо сайдбара командная строка, до всего дотягиваются через ⌘K.
+                    if isCommandLine, !focusMode.isOn {
+                        CommandLineBar(location: locationTitle) { isSearchPresented = true }
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
                 .safeAreaInset(edge: .leading, spacing: 0) {
                     if showsRail {
                         IconRail(
@@ -172,7 +179,14 @@ public struct RootView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
         .onChange(of: focusMode.isOn) { _, isOn in
             withAnimation(.easeInOut(duration: 0.3)) {
-                columnVisibility = isOn ? .detailOnly : .automatic
+                columnVisibility = isOn || isCommandLine ? .detailOnly : .automatic
+            }
+        }
+        // Тема без сайдбара прячет его сразу при выборе и при запуске; сайдбар можно открыть кнопкой.
+        .onChange(of: theme.layout, initial: true) { _, _ in
+            guard !focusMode.isOn else { return }
+            withAnimation(.easeInOut(duration: 0.3)) {
+                columnVisibility = isCommandLine ? .detailOnly : .automatic
             }
         }
         .task(id: workspace.referencedItems) { await removeMissingItems() }
@@ -417,9 +431,28 @@ public struct RootView: View {
     }
 
     /// Полоса значков вместо сайдбара: только на iPad, когда сайдбар спрятан.
+    /// Тема устроена как командная строка («Монохром»): без сайдбара и полосы значков.
+    private var isCommandLine: Bool { theme.layout == .commandLine }
+
+    /// Короткое «где я» для командной строки.
+    private var locationTitle: String {
+        let place: String
+        switch selection {
+        case .home, nil: place = "сегодня"
+        case .inbox: place = "входящие"
+        case .tasks: place = "задачи"
+        case .library: place = "библиотека"
+        case .trash: place = "корзина"
+        case .page: place = "страница"
+        case .source: place = "книга"
+        case .sourceInfo: place = "о книге"
+        }
+        return "lumen / \(place)"
+    }
+
     private var showsRail: Bool {
         #if os(iOS)
-        guard horizontalSizeClass == .regular, !focusMode.isOn else { return false }
+        guard horizontalSizeClass == .regular, !focusMode.isOn, !isCommandLine else { return false }
         return columnVisibility == .detailOnly || (columnVisibility == .automatic && windowWidth > 0 && windowWidth < 1000)
         #else
         return false

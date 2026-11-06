@@ -11,6 +11,15 @@ public struct Theme: Sendable, Equatable, Identifiable {
     public var isDark: Bool
     /// Начертание шрифта по всему приложению: обычный, с засечками, моноширинный.
     public var fontDesign: Font.Design
+    /// Как устроено окно: где навигация и как до всего дотянуться.
+    public var layout: Layout
+
+    public enum Layout: String, Sendable, Equatable {
+        /// Боковая панель с разделами, вкладки, кнопки в панели инструментов.
+        case standard
+        /// Без боковой панели: внизу всегда командная строка ⌘K, всё делается командами.
+        case commandLine
+    }
     /// Фон сверху вниз.
     public var backgroundStops: [Color]
     /// Тёплое свечение «солнца» в углу фона.
@@ -48,6 +57,7 @@ public struct Theme: Sendable, Equatable, Identifiable {
         caption: String = "",
         isDark: Bool = true,
         fontDesign: Font.Design = .default,
+        layout: Layout = .standard,
         backgroundStops: [Color],
         glow: Color,
         glowStrength: Double = 0.45,
@@ -66,6 +76,7 @@ public struct Theme: Sendable, Equatable, Identifiable {
         self.caption = caption
         self.isDark = isDark
         self.fontDesign = fontDesign
+        self.layout = layout
         self.backgroundStops = backgroundStops
         self.glow = glow
         self.glowStrength = glowStrength
@@ -151,9 +162,10 @@ extension Theme {
     public static let mono = Theme(
         id: "mono",
         name: "Монохром",
-        caption: "Почти чёрная, моноширинный шрифт, один тёплый акцент",
+        caption: "Всё с клавиатуры: без боковой панели, внизу строка ⌘K",
         isDark: true,
         fontDesign: .monospaced,
+        layout: .commandLine,
         backgroundStops: [Color(hex: 0x141416), Color(hex: 0x0F0F10), Color(hex: 0x0B0B0C)],
         glow: Color(hex: 0xFFB86B),
         glowStrength: 0.08,
