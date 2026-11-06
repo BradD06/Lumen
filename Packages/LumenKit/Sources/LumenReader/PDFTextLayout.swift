@@ -36,6 +36,9 @@ struct PageMetrics: Hashable, Sendable {
     var right: Double
     /// Обычное расстояние между строками одного абзаца.
     var spacing: Double
+    /// Обычный просвет между строками абзаца (от низа строки до верха следующей) и обычная высота строки.
+    var gap: Double = 0
+    var lineHeight: Double = 0
 
     var width: Double { right - left }
 
@@ -50,7 +53,13 @@ struct PageMetrics: Hashable, Sendable {
               right - left > 40 else { return nil }
         let steps = zip(frames, frames.dropFirst()).map { $0.midY - $1.midY }.filter { $0 > 0 }.sorted()
         let spacing = steps.isEmpty ? 0 : steps[steps.count / 2]
-        return PageMetrics(left: left, right: right, spacing: spacing)
+        let gaps = zip(frames, frames.dropFirst()).filter { $0.midY > $1.midY }.map { $0.minY - $1.maxY }.sorted()
+        let heights = frames.map(\.height).sorted()
+        return PageMetrics(
+            left: left, right: right, spacing: spacing,
+            gap: gaps.isEmpty ? 0 : gaps[gaps.count / 2],
+            lineHeight: heights[heights.count / 2]
+        )
     }
 }
 
@@ -231,12 +240,17 @@ enum PDFTextLayout {
                     index += 1
                     continue
                 }
-                let onThisPage = index + 1 < lines.count
-                let next = onThisPage
-                    ? lines[index + 1]
-                    : pages.dropFirst(pageIndex + 1).lazy.compactMap { following in following.first { !$0.text.isEmpty } }.first
+                // Картинка посреди предложения его не рвёт: она встанет после абзаца.
+                let following = lines[(index + 1)...].firstIndex { $0.image == nil }
+                let onThisPage = following != nil
+                let next = following.map { lines[$0] }
+                    ?? pages.dropFirst(pageIndex + 1).lazy.compactMap { later in later.first { !$0.text.isEmpty } }.first
+                let acrossPicture = (following ?? lines.count) > index + 1
                 let breaksNext = nextBreak < breaks.count && breaks[nextBreak].page == pageIndex && breaks[nextBreak].line == index + 1
-                let ends = endsParagraph(line, next: next, sameColumn: onThisPage, metrics: metrics, fullLength: full)
+                let ends = endsParagraph(
+                    line, next: next, edge: pictureEdge(lines, beside: line), sameColumn: onThisPage,
+                    acrossPicture: acrossPicture, metrics: metrics, fullLength: full
+                )
                 writer.append(line.text, breakAfter: breaksNext || ends)
                 index += 1
             }
@@ -272,7 +286,9 @@ enum PDFTextLayout {
             } else if character.isWhitespace || character == "\u{FEFF}" {
                 if !lastWasSpace { result.append(" ") }
                 lastWasSpace = true
-            } else if character == "\u{00AD}" || character.unicodeScalars.allSatisfy({ $0.properties.generalCategory == .control }) {
+            } else if character == "\u{00AD}" || character == "\u{FFFC}" || character == "\u{FFFD}"
+                        || character.unicodeScalars.allSatisfy({ [.control, .privateUse].contains($0.properties.generalCategory) }) {
+                // Значок вместо картинки (￼) и символы из личной области шрифта в тексте не нужны.
                 // Мягкий перенос внутри строки не виден и только мешает искать текст. В конце строки он нужен для склейки.
                 continue
             } else {
@@ -303,21 +319,36 @@ enum PDFTextLayout {
     /// Кончается ли абзац на этой строке.
     /// Без положения строк на странице абзацы угадываются по длине строки в буквах.
     /// С положением точнее: в выровненном тексте строки разной длины в буквах, но одной ширины.
-    static func endsParagraph(_ line: PDFLine, next: PDFLine?, sameColumn: Bool = true, metrics: PageMetrics? = nil, fullLength: Int) -> Bool {
+    static func endsParagraph(
+        _ line: PDFLine,
+        next: PDFLine?,
+        edge localEdge: Double? = nil,
+        sameColumn: Bool = true,
+        acrossPicture: Bool = false,
+        metrics: PageMetrics? = nil,
+        fullLength: Int
+    ) -> Bool {
         guard let next, !next.text.isEmpty else { return true }
         let text = line.text
         if text.hasSuffix("-") || text.hasSuffix("\u{00AD}") || text.hasSuffix("\u{2010}") { return false }
+        // Перед картинкой кончилось предложение: скорее всего, кончился и абзац.
+        if acrossPicture, let last = text.last, ".!?…:".contains(last) { return true }
         if let metrics, let frame = line.frame {
-            // Строка кончилась заметно раньше правого края.
-            if frame.maxX < metrics.right - max(metrics.width * 0.1, 12) { return true }
+            // Строка кончилась заметно раньше соседних. Край берётся по соседним строкам, а не по странице:
+            // рядом с картинкой текст идёт узкой колонкой, и её строки не короткие, а полные.
+            let edge = min(metrics.right, localEdge ?? metrics.right)
+            if frame.maxX < edge - max((edge - metrics.left) * 0.1, 12) { return true }
             guard sameColumn, let following = next.frame else { return false }
+            // Следующая строка начинается со значка списка.
+            if let first = next.text.first, "•·▪◦●■–—".contains(first) { return true }
             let indent = max(metrics.width * 0.025, 6)
             // Красная строка: эта строка от левого края, следующая с отступом.
             if frame.minX <= metrics.left + indent, following.minX > metrics.left + indent, following.minX < metrics.left + metrics.width * 0.3 {
                 return true
             }
-            // Пустое место между строками больше обычного.
-            if metrics.spacing > 0, frame.midY - following.midY > metrics.spacing * 1.45 { return true }
+            // Просвет между строками больше обычного. Считается от низа строки до верха следующей:
+            // значок посреди строки делает её выше, но просвет от этого не растёт.
+            if !acrossPicture, metrics.lineHeight > 0, frame.minY - following.maxY > metrics.gap + max(metrics.lineHeight * 0.5, 3) { return true }
             // Следующая строка выше этой: другая колонка или текст не по порядку.
             if following.midY > frame.maxY { return true }
             return false
@@ -329,6 +360,17 @@ enum PDFTextLayout {
         // Другой размер шрифта: сноска, подпись или заголовок.
         if line.size > 0, next.size > 0, abs(line.size - next.size) > 1.5 { return true }
         return false
+    }
+
+    /// Где кончается строка, если справа от неё картинка: текст обтекает картинку узкой колонкой,
+    /// и такие строки не короткие, а полные.
+    static func pictureEdge(_ lines: [PDFLine], beside line: PDFLine) -> Double? {
+        guard let frame = line.frame else { return nil }
+        return lines.compactMap { picture -> Double? in
+            guard picture.image != nil, let rect = picture.frame,
+                  rect.minY < frame.maxY, rect.maxY > frame.minY, rect.minX >= frame.maxX - 4 else { return nil }
+            return rect.minX
+        }.min()
     }
 
     /// Длина полной строки текста: так видно, где строка кончилась раньше, то есть кончился абзац.
@@ -539,6 +581,8 @@ enum PDFTextLayout {
         var base = 0
         var paragraph = ""
         var headingCount = 0
+        /// Картинки, которые встретились посреди абзаца: они встанут сразу после него.
+        var waitingImages: [String] = []
 
         init(title: String) {
             self.title = title
@@ -562,6 +606,8 @@ enum PDFTextLayout {
             // Пробел в конце абзаца не виден, зато выделение через два абзаца совпадает с текстом PDF.
             html += "<p>\(HTML.escape(text)) </p>"
             length += text.utf16.count + 1
+            for path in waitingImages { writeImage(path) }
+            waitingImages = []
         }
 
         mutating func append(_ line: String, breakAfter: Bool) {
@@ -571,9 +617,17 @@ enum PDFTextLayout {
         }
 
         /// Картинка со страницы. Текста в ней нет, поэтому места в тексте она не сдвигает.
+        /// Посреди абзаца картинка ждёт его конца, чтобы не разорвать предложение.
         mutating func image(_ path: String) {
-            flushParagraph()
-            resolvePages()
+            if paragraph.isEmpty {
+                resolvePages()
+                writeImage(path)
+            } else {
+                waitingImages.append(path)
+            }
+        }
+
+        private mutating func writeImage(_ path: String) {
             html += "<p class=\"image\"><img src=\"\(HTML.escape(path))\" alt=\"\"></p>"
         }
 
