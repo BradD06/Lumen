@@ -21,6 +21,8 @@ public struct Theme: Sendable, Equatable, Identifiable {
         case commandLine
         /// Без боковой панели: сверху строка разделов, как в газете («Бумага»).
         case sectionBar
+        /// Без боковой панели: сверху латунные таблички-комнаты («Кабинет»).
+        case rooms
 
         /// Боковая панель спрятана, навигация в своей строке.
         public var hidesSidebar: Bool { self != .standard }
@@ -196,9 +198,10 @@ extension Theme {
     public static let study = Theme(
         id: "study",
         name: "Кабинет",
-        caption: "Тёмно-зелёная библиотека, латунь и пергамент",
+        caption: "Тёмно-зелёная библиотека: комнаты-таблички сверху, латунь",
         isDark: true,
         fontDesign: .serif,
+        layout: .rooms,
         backgroundStops: [Color(hex: 0x1A3329), Color(hex: 0x12251E), Color(hex: 0x0C1A15)],
         glow: Color(hex: 0xC9A45C),
         glowStrength: 0.28,
