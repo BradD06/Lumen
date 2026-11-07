@@ -53,19 +53,19 @@ struct GlassMenu: View {
         .frame(width: Self.width)
         .background {
             shape.fill(.ultraThinMaterial)
-            shape.fill(Color(red: 47 / 255, green: 33 / 255, blue: 54 / 255).opacity(0.86))
+            shape.fill(theme.menuFill)
         }
-        .overlay(shape.strokeBorder(.white.opacity(0.14), lineWidth: 1))
+        .overlay(shape.strokeBorder(theme.contrast.opacity(0.14), lineWidth: 1))
         .overlay(
             // Светлая кромка сверху, как у стекла.
             shape.inset(by: 1).stroke(
-                LinearGradient(colors: [.white.opacity(0.14), .clear], startPoint: .top, endPoint: .init(x: 0.5, y: 0.08)),
+                LinearGradient(colors: [theme.contrast.opacity(theme.isDark ? 0.14 : 0.04), .clear], startPoint: .top, endPoint: .init(x: 0.5, y: 0.08)),
                 lineWidth: 1
             )
         )
         .clipShape(shape)
-        .shadow(color: .black.opacity(0.75), radius: 25, y: 12)
-        .environment(\.colorScheme, .dark)
+        .shadow(color: .black.opacity(theme.isDark ? 0.75 : 0.22), radius: 25, y: 12)
+        .environment(\.colorScheme, theme.colorScheme)
         .focusable()
         .focusEffectDisabled()
         .focused($isFocused)
@@ -209,7 +209,7 @@ private struct FolderSwatch: View {
             .overlay {
                 if isSelected {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .strokeBorder(Color(hex: 0xFFF3EC), lineWidth: 2)
+                        .strokeBorder(theme.textPrimary, lineWidth: 2)
                 }
             }
     }

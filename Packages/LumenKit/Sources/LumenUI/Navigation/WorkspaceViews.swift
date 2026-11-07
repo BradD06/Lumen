@@ -278,7 +278,7 @@ struct PaneHeader: View {
         // Шапка не плоская полоса, а скруглённая плашка внутри карточки панели.
         .background {
             Capsule(style: .continuous)
-                .fill(isFocused ? theme.accent.opacity(0.16) : Color.white.opacity(0.05))
+                .fill(isFocused ? theme.accent.opacity(0.16) : theme.contrast.opacity(0.05))
                 .overlay {
                     Capsule(style: .continuous)
                         .strokeBorder(isFocused ? theme.accent.opacity(0.5) : theme.cardStroke, lineWidth: 1)
@@ -303,12 +303,13 @@ private struct PaneHeaderButton: View {
     let configuration: ButtonStyleConfiguration
 
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.lumenTheme) private var theme
     @State private var isHovered = false
 
     var body: some View {
         configuration.label
             .background {
-                Circle().fill(Color.white.opacity(configuration.isPressed ? 0.16 : (isHovered && isEnabled ? 0.09 : 0)))
+                Circle().fill(theme.contrast.opacity(configuration.isPressed ? 0.16 : (isHovered && isEnabled ? 0.09 : 0)))
             }
             .contentShape(Circle())
             .opacity(isEnabled ? 1 : 0.4)
