@@ -13,7 +13,7 @@ struct ItemTitle: Hashable, Sendable {
 
     /// Название без базы: для разделов, у которых оно постоянное.
     static func fixed(_ item: SidebarItem) -> ItemTitle? {
-        if item == .home { return ItemTitle(title: "Главная", systemImage: "sparkles") }
+        if item == .home { return ItemTitle(title: "Сегодня", systemImage: "sun.max") }
         if item == .inbox { return ItemTitle(title: "Входящие", systemImage: "tray") }
         if item == .trash { return ItemTitle(title: "Корзина", systemImage: "trash") }
         if item == .tasks { return ItemTitle(title: "Задачи", systemImage: "checklist") }

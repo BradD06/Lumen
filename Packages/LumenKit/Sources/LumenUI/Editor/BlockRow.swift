@@ -1,8 +1,12 @@
 import LumenCore
+import LumenStorage
 import LumenThemes
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(macOS)
+import AppKit
+#endif
 
 /// Один блок страницы: ручка для перетаскивания, маркер (точка, номер, чекбокс) и содержимое.
 struct BlockRow: View {
@@ -20,7 +24,11 @@ struct BlockRow: View {
     @State private var isHovered = false
     @State private var size: CGSize = .zero
     @State private var isColorPickerShown = false
+    /// Разметка, которую человек сейчас набирает. Держится, пока блок в фокусе, чтобы курсор
+    /// не прыгал, если та же разметка собирается из фрагментов чуть иначе.
+    @State private var editingSource: String?
     @Environment(\.lumenTheme) private var theme
+    private let focusMode = FocusModeState.shared
 
     var body: some View {
         HStack(alignment: .top, spacing: Self.handleSpacing) {
@@ -47,6 +55,11 @@ struct BlockRow: View {
             }
         }
         .padding(.vertical, verticalPadding)
+        .overlay(alignment: .topLeading) { addButton }
+        .overlay(alignment: .topLeading) { floatingFormatBar }
+        // Режим фокуса: всё, кроме блока с курсором, приглушено.
+        .opacity(focusMode.isOn && focus.wrappedValue != nil && !isFocused ? 0.3 : 1)
+        .animation(.easeInOut(duration: 0.25), value: isFocused)
         .overlay { dropIndicator }
         .contentShape(Rectangle())
         .onHover { hovering in
@@ -67,17 +80,40 @@ struct BlockRow: View {
         .accessibilityIdentifier("row-\(block.text)")
     }
 
+    /// Меню по правой кнопке или нажатию двумя пальцами: сначала частые правки,
+    /// потом перемещение, удаление в самом низу.
     @ViewBuilder
     private var menu: some View {
+        Button {
+            model.addBlock(below: block.id)
+        } label: {
+            Label("Добавить блок ниже", systemImage: "plus")
+        }
         if block.type.isConvertible {
-            Menu("Превратить в") {
+            Menu {
                 ForEach(BlockType.allCases.filter(\.isConvertible)) { type in
                     Button {
                         model.setType(block.id, type)
                     } label: {
                         Label(type.title, systemImage: type.symbolName)
                     }
+                    .disabled(type == block.type)
                 }
+            } label: {
+                Label("Превратить в", systemImage: "arrow.triangle.2.circlepath")
+            }
+        }
+        if let target = formatMenuTarget {
+            Menu {
+                ForEach(FormatAction.allCases) { action in
+                    Button {
+                        model.apply(action, to: target)
+                    } label: {
+                        Label(action.title, systemImage: action.systemImage)
+                    }
+                }
+            } label: {
+                Label(model.textSelection?.blockId == block.id ? "Оформить выделенное" : "Оформить весь текст", systemImage: "textformat")
             }
         }
         if block.type.hasText {
@@ -85,13 +121,20 @@ struct BlockRow: View {
                 // Палитра открывается после того, как закроется контекстное меню.
                 DispatchQueue.main.async { isColorPickerShown = true }
             } label: {
-                Label("Цвет…", systemImage: "paintpalette")
+                Label("Цвет текста и фона…", systemImage: "paintpalette")
             }
         }
-        Button {
-            model.duplicateBlock(block.id)
-        } label: {
-            Label("Дублировать", systemImage: "plus.square.on.square")
+        if block.type.hasText, !block.text.isEmpty {
+            Button {
+                copyText(block.text)
+            } label: {
+                Label("Скопировать текст", systemImage: "doc.on.doc")
+            }
+            Button {
+                sendToTasks()
+            } label: {
+                Label("Отправить в «Задачи» на сегодня", systemImage: "checklist")
+            }
         }
         if let reference = block.content.excerpt {
             Button {
@@ -99,44 +142,79 @@ struct BlockRow: View {
             } label: {
                 Label(reference.isPlace ? "Скопировать ссылку на место" : "Скопировать ссылку на цитату", systemImage: "link")
             }
+            Button {
+                model.openExcerpt(reference)
+            } label: {
+                Label("Открыть в книге", systemImage: "book")
+            }
+        }
+        Button {
+            model.duplicateBlock(block.id)
+        } label: {
+            Label("Дублировать", systemImage: "plus.square.on.square")
         }
         Divider()
-        Button {
-            model.moveBlock(block.id, by: -1)
+        Menu {
+            Button {
+                model.moveBlock(block.id, by: -1)
+            } label: {
+                Label("Вверх", systemImage: "arrow.up")
+            }
+            Button {
+                model.moveBlock(block.id, by: 1)
+            } label: {
+                Label("Вниз", systemImage: "arrow.down")
+            }
+            if model.canIndent(block.id) {
+                Button {
+                    model.indent(block.id)
+                } label: {
+                    Label("Вложить в блок выше", systemImage: "increase.indent")
+                }
+            }
+            if model.canOutdent(block.id) {
+                Button {
+                    model.outdent(block.id)
+                } label: {
+                    Label("Вынести на уровень выше", systemImage: "decrease.indent")
+                }
+            }
+            if model.previousSibling(of: block.id) != nil {
+                Button {
+                    model.placeBesidePrevious(block.id)
+                } label: {
+                    Label("В колонку рядом с блоком выше", systemImage: "rectangle.split.2x1")
+                }
+            }
         } label: {
-            Label("Переместить вверх", systemImage: "arrow.up")
-        }
-        Button {
-            model.moveBlock(block.id, by: 1)
-        } label: {
-            Label("Переместить вниз", systemImage: "arrow.down")
-        }
-        if model.previousSibling(of: block.id) != nil {
-            Button {
-                model.placeBesidePrevious(block.id)
-            } label: {
-                Label("Поставить в колонку рядом с блоком выше", systemImage: "rectangle.split.2x1")
-            }
-        }
-        if model.canIndent(block.id) {
-            Button {
-                model.indent(block.id)
-            } label: {
-                Label("Вложить в блок выше", systemImage: "increase.indent")
-            }
-        }
-        if model.canOutdent(block.id) {
-            Button {
-                model.outdent(block.id)
-            } label: {
-                Label("Вынести на уровень выше", systemImage: "decrease.indent")
-            }
+            Label("Переместить", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
         }
         Divider()
         Button(role: .destructive) {
             model.deleteBlock(block.id)
         } label: {
             Label("Удалить блок", systemImage: "trash")
+        }
+    }
+
+    /// Что оформляет меню блока: выделенный текст, а без выделения весь текст блока.
+    private var formatMenuTarget: TextSelectionInfo? {
+        guard isRichText, !block.text.isEmpty else { return nil }
+        if let selection = model.textSelection, selection.blockId == block.id { return selection }
+        return model.wholeText(of: block.id)
+    }
+
+    /// Текст блока задачей на сегодня. Блок остаётся на странице.
+    private func sendToTasks() {
+        let title = block.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let database = model.database
+        Task {
+            if await NoticeCenter.shared.attempt("Не удалось добавить задачу", {
+                _ = try await Creator.addTodayTask(title: title, in: database)
+            }) {
+                LumenSounds.play(.create)
+                NoticeCenter.shared.show("Задача на сегодня добавлена")
+            }
         }
     }
 
@@ -204,6 +282,29 @@ struct BlockRow: View {
             .help("Перетащите, чтобы переместить блок")
             .accessibilityLabel("Переместить блок")
             .accessibilityIdentifier("handle-\(block.text)")
+    }
+
+    /// «+» слева от ручки на Mac: новый пустой блок сразу под этим.
+    @ViewBuilder
+    private var addButton: some View {
+        #if os(macOS)
+        if isHovered, model.draggingBlockId == nil {
+            Button {
+                model.addBlock(below: block.id)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(theme.textSecondary)
+                    .frame(width: 20, height: 22)
+                    .background(theme.textPrimary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .offset(x: -24, y: 1)
+            .help("Добавить блок ниже. Или нажмите «/» в пустой строке")
+            .accessibilityLabel("Добавить блок ниже")
+        }
+        #endif
     }
 
     private var handleOpacity: Double {
@@ -299,7 +400,8 @@ struct BlockRow: View {
             ExcerptBlock(
                 text: block.text,
                 reference: block.content.excerpt,
-                source: model.source(block.content.excerpt?.sourceId)
+                source: model.source(block.content.excerpt?.sourceId),
+                attachments: model.database.attachments
             ) {
                 if let reference = block.content.excerpt {
                     model.openExcerpt(reference)
@@ -331,11 +433,7 @@ struct BlockRow: View {
     }
 
     private var field: some View {
-        TextField(
-            placeholder,
-            text: Binding(get: { block.text }, set: { model.updateText(block.id, to: $0) }),
-            axis: .vertical
-        )
+        TextField(placeholder, text: fieldText, axis: .vertical)
         .textFieldStyle(.plain)
         .font(font)
         .foregroundStyle(fieldColor)
@@ -366,17 +464,124 @@ struct BlockRow: View {
             model.duplicateBlock(block.id)
             return .handled
         }
+        // ⌘B, ⌘I, ⌘U, ⇧⌘X и ⌘E: оформление выделенного текста.
+        .onKeyPress(keys: ["b", "i", "u", "x", "X", "e"]) { press in
+            guard isRichText, press.modifiers.contains(.command), !press.modifiers.contains(.option) else { return .ignored }
+            let action: FormatAction
+            switch press.key.character {
+            case "b": action = .bold
+            case "i": action = .italic
+            case "u": action = .underline
+            case "e": action = .code
+            case "x", "X":
+                guard press.modifiers.contains(.shift) else { return .ignored }
+                action = .strikethrough
+            default: return .ignored
+            }
+            TextFormatting.perform(action, model: model, blockId: block.id)
+            return .handled
+        }
+        .overlay(alignment: .topLeading) {
+            if showsRenderedText {
+                Text(RichTextRendering.attributed(InlineMarkup.normalized(block.content.runs), linkColor: theme.accent))
+                    .font(font)
+                    .foregroundStyle(block.content.textColor.map(\.textColor) ?? theme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+        #if os(macOS)
+        // Выделение на Mac: над ним всплывает панель оформления.
+        .onReceive(NotificationCenter.default.publisher(for: NSTextView.didChangeSelectionNotification)) { notification in
+            guard isFocused, isRichText, let textView = notification.object as? NSTextView,
+                  textView === NSApp.keyWindow?.firstResponder else { return }
+            let info = TextFormatting.currentSelection(blockId: block.id)
+            if model.textSelection != info { model.textSelection = info }
+        }
+        #endif
+        .onChange(of: isFocused) { _, focused in
+            if focused {
+                TextFormatMenu.editor = model
+            } else {
+                editingSource = nil
+                if model.textSelection?.blockId == block.id { model.textSelection = nil }
+            }
+        }
+        // Разметку поменяли не набором (отмена, смена типа): поле берёт её заново.
+        .onChange(of: block.content.runs) { _, runs in
+            guard let editingSource, InlineMarkup.runs(from: editingSource) != InlineMarkup.normalized(runs) else { return }
+            self.editingSource = nil
+        }
+        .onChange(of: model.selectionRestore) { _, restore in
+            guard let restore, restore.blockId == block.id else { return }
+            model.selectionRestore = nil
+            restoreSelection(restore.range)
+        }
+    }
+
+    // MARK: Оформление текста
+
+    /// Обычный текст с оформлением. В коде оформления нет: там разметка была бы самим кодом.
+    private var isRichText: Bool {
+        block.type.hasText && block.type != .code
+    }
+
+    private var markupSource: String {
+        editingSource ?? InlineMarkup.source(block.content.runs)
+    }
+
+    /// В поле видна разметка: **жирный**, *курсив*. Вне фокуса поверх лежит уже оформленный текст.
+    private var fieldText: Binding<String> {
+        guard isRichText else {
+            return Binding(get: { block.text }, set: { model.updateText(block.id, to: $0) })
+        }
+        return Binding(
+            get: { markupSource },
+            set: { value in
+                editingSource = value
+                model.updateMarkup(block.id, to: value)
+            }
+        )
+    }
+
+    /// Оформленный текст рисуется поверх поля, когда курсор не в блоке.
+    private var showsRenderedText: Bool {
+        isRichText && !isFocused && InlineMarkup.hasFormatting(block.content.runs)
+    }
+
+    /// После смены оформления разметка в поле другая: выделение ставится на тот же текст.
+    private func restoreSelection(_ range: Range<Int>) {
+        let source = InlineMarkup.source(block.content.runs)
+        editingSource = source
+        let target = InlineMarkup.parse(source).sourceRange(forPlain: range)
+        ActiveTextField.select(target, whenTextIs: source)
+    }
+
+    /// Панель над выделенным текстом на Mac. На iPhone и iPad она над клавиатурой (PageEditorView).
+    @ViewBuilder
+    private var floatingFormatBar: some View {
+        #if os(macOS)
+        if isFocused, let info = model.textSelection, info.blockId == block.id {
+            FormatBar(model: model, blockId: block.id, selection: info) {
+                DispatchQueue.main.async { isColorPickerShown = true }
+            }
+            .offset(x: Self.handleInset, y: -44)
+            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottomLeading)))
+        }
+        #endif
     }
 
     /// Код вне редактирования рисует подсвеченная копия поверх поля, само поле тогда прозрачное.
     private var fieldColor: Color {
         if block.type == .code, !isFocused, !block.text.isEmpty { return .clear }
+        if showsRenderedText { return .clear }
         return block.content.textColor.map(\.textColor) ?? theme.textPrimary
     }
 
     private var placeholder: String {
         switch block.type {
-        case .paragraph: isFocused ? "Пишите, / для команд, [[ для ссылки" : ""
+        case .paragraph: isFocused ? "Пишите или нажмите «/»: заголовок, список, задача, картинка…" : ""
         case .heading1: "Заголовок 1"
         case .heading2: "Заголовок 2"
         case .heading3: "Заголовок 3"
@@ -530,15 +735,39 @@ private struct ExcerptBlock: View {
     let text: String
     let reference: ExcerptReference?
     let source: Source?
+    let attachments: AttachmentStore
     var onOpen: () -> Void
 
+    @State private var isPreviewShown = false
+    @State private var hoverTask: Task<Void, Never>?
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
-        if reference?.isPlace == true {
-            placeLink
-        } else {
-            quote
+        Group {
+            if reference?.isPlace == true {
+                placeLink
+            } else {
+                quote
+            }
+        }
+        // Курсор задержался на цитате: карточка с книгой и местом, откуда она.
+        .onHover { hovering in
+            hoverTask?.cancel()
+            guard source != nil else { return }
+            if hovering {
+                hoverTask = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(600))
+                    if !Task.isCancelled { isPreviewShown = true }
+                }
+            } else {
+                isPreviewShown = false
+            }
+        }
+        .popover(isPresented: $isPreviewShown, arrowEdge: .bottom) {
+            if let source {
+                ExcerptPreviewCard(text: text, reference: reference, source: source, attachments: attachments)
+                    .presentationCompactAdaptation(.popover)
+            }
         }
     }
 
@@ -625,6 +854,50 @@ private struct ExcerptBlock: View {
         guard let source else { return "Книга удалена" }
         let label = reference?.label ?? ""
         return label.isEmpty ? source.displayTitle : "\(source.displayTitle) · \(label)"
+    }
+}
+
+/// Превью цитаты: обложка, книга, место и полный текст выписки.
+private struct ExcerptPreviewCard: View {
+    let text: String
+    let reference: ExcerptReference?
+    let source: Source
+    let attachments: AttachmentStore
+
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            SourceCoverArt(source: source, attachments: attachments, width: 52, height: 74)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(source.displayTitle)
+                    .font(.subheadline.weight(.bold))
+                    .lineLimit(2)
+                if let author = source.author, !author.isEmpty {
+                    Text(author)
+                        .font(.caption)
+                        .foregroundStyle(theme.textSecondary)
+                }
+                if let label = reference?.label, !label.isEmpty {
+                    Text(label)
+                        .font(.caption)
+                        .foregroundStyle(theme.textSecondary)
+                }
+                if !text.isEmpty {
+                    Text(text)
+                        .font(.system(.callout, design: .serif))
+                        .italic()
+                        .lineLimit(6)
+                        .padding(.top, 2)
+                }
+                Text("Нажмите на цитату, чтобы открыть это место")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(theme.accent)
+                    .padding(.top, 2)
+            }
+            .frame(width: 240, alignment: .leading)
+        }
+        .padding(14)
     }
 }
 

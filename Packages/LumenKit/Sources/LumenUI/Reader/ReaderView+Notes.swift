@@ -108,6 +108,12 @@ extension ReaderView {
                 .presentationCompactAdaptation(.sheet)
             }
             Spacer(minLength: 4)
+            if let notes, notes.isLoaded, !notes.isNotebook {
+                InputModeToggle(isPen: notes.activeDrawingId != nil) { pen in
+                    LumenSounds.play(.toggle)
+                    if pen { notes.startPenAtEnd() } else { notes.stopDrawing() }
+                }
+            }
             if model.canLinkPlace {
                 headerButton("bookmark", help: "Вставить в заметку ссылку на это место в книге") {
                     Task { await model.addPlaceLink() }
@@ -221,5 +227,38 @@ extension ReaderView {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
             showsNotes = isOpen
         }
+    }
+}
+
+/// «Текст / Пером» в шапке заметок: писать с клавиатуры или рисовать в конце заметки.
+private struct InputModeToggle: View {
+    let isPen: Bool
+    var onChange: (_ pen: Bool) -> Void
+
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: 2) {
+            segment("Текст", "textformat", selected: !isPen) { onChange(false) }
+            segment("Пером", "pencil.tip", selected: isPen) { onChange(true) }
+        }
+        .padding(2)
+        .background(.white.opacity(0.08), in: Capsule())
+    }
+
+    private func segment(_ title: String, _ symbol: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .labelStyle(.titleAndIcon)
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundStyle(selected ? ReaderStyle.onPeach : theme.textSecondary)
+                .padding(.horizontal, 10)
+                .frame(height: 26)
+                .background(selected ? AnyShapeStyle(ReaderStyle.peach) : AnyShapeStyle(.clear), in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .help(title == "Пером" ? "Рисовать в конце заметки пальцем, пером или мышью" : "Писать текстом")
     }
 }
