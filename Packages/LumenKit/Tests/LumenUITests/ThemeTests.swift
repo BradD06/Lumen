@@ -1,4 +1,6 @@
+import Foundation
 import LumenThemes
+@testable import LumenUI
 import SwiftUI
 import Testing
 
@@ -32,8 +34,31 @@ struct ThemeTests {
 }
 
 struct ThemeLayoutTests {
-    @Test func onlyMonochromeHidesTheSidebar() {
+    @Test func eachThemeHasItsOwnLayout() {
         #expect(Theme.mono.layout == .commandLine)
-        #expect(Theme.all.filter { $0.layout == .commandLine }.map(\.id) == ["mono"])
+        #expect(Theme.paper.layout == .sectionBar)
+        #expect(Theme.all.filter { $0.layout.hidesSidebar }.map(\.id) == ["paper", "mono"])
+        #expect(!Theme.sunset.layout.hidesSidebar)
+    }
+
+    @Test func paperUnderlinesTheOpenSection() {
+        #expect(PaperSection.allCases.map(\.title) == ["Сегодня", "Входящие", "Задачи", "Библиотека"])
+        #expect(PaperSection.home.contains(nil))
+        #expect(PaperSection.library.contains(.library(UUID())))
+        #expect(PaperSection.inbox.contains(.inbox))
+        #expect(PaperSection.allCases.allSatisfy { $0.contains($0.item) })
+        // Страница или книга открыты поверх разделов: ни один не подчёркнут.
+        #expect(!PaperSection.allCases.contains { $0.contains(.page(UUID())) })
+        #expect(!PaperSection.allCases.contains { $0.contains(.trash) })
+    }
+
+    @Test func paperDateLooksLikeANewspaperHeader() {
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 11
+        components.day = 7
+        components.hour = 12
+        let date = Calendar(identifier: .gregorian).date(from: components)!
+        #expect(SectionBar.dateTitle(date) == "Суббота, 7 ноября")
     }
 }

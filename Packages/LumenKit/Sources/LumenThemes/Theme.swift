@@ -19,6 +19,11 @@ public struct Theme: Sendable, Equatable, Identifiable {
         case standard
         /// Без боковой панели: внизу всегда командная строка ⌘K, всё делается командами.
         case commandLine
+        /// Без боковой панели: сверху строка разделов, как в газете («Бумага»).
+        case sectionBar
+
+        /// Боковая панель спрятана, навигация в своей строке.
+        public var hidesSidebar: Bool { self != .standard }
     }
     /// Фон сверху вниз.
     public var backgroundStops: [Color]
@@ -135,9 +140,10 @@ extension Theme {
     public static let paper = Theme(
         id: "paper",
         name: "Бумага",
-        caption: "Светлая, как книга: засечки и красные чернила",
+        caption: "Светлая газета: разделы строкой сверху, засечки, красные чернила",
         isDark: false,
         fontDesign: .serif,
+        layout: .sectionBar,
         backgroundStops: [Color(hex: 0xF6F1E7), Color(hex: 0xF3ECDF), Color(hex: 0xEFE7D8)],
         glow: Color(hex: 0xE8C9A8),
         glowStrength: 0.25,

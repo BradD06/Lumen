@@ -103,6 +103,18 @@ public struct RootView: View {
             )
         } detail: {
             workspaceDetail
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    // «Бумага»: разделы строкой сверху, как в газете, вместо сайдбара.
+                    if theme.layout == .sectionBar, !focusMode.isOn {
+                        SectionBar(
+                            database: database,
+                            selection: selection,
+                            onSelect: { selection = $0 },
+                            onSettings: { isSettingsPresented = true }
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     // «Монохром»: вместо сайдбара командная строка, до всего дотягиваются через ⌘K.
                     if isCommandLine, !focusMode.isOn {
@@ -179,14 +191,14 @@ public struct RootView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
         .onChange(of: focusMode.isOn) { _, isOn in
             withAnimation(.easeInOut(duration: 0.3)) {
-                columnVisibility = isOn || isCommandLine ? .detailOnly : .automatic
+                columnVisibility = isOn || theme.layout.hidesSidebar ? .detailOnly : .automatic
             }
         }
         // Тема без сайдбара прячет его сразу при выборе и при запуске; сайдбар можно открыть кнопкой.
         .onChange(of: theme.layout, initial: true) { _, _ in
             guard !focusMode.isOn else { return }
             withAnimation(.easeInOut(duration: 0.3)) {
-                columnVisibility = isCommandLine ? .detailOnly : .automatic
+                columnVisibility = theme.layout.hidesSidebar ? .detailOnly : .automatic
             }
         }
         .task(id: workspace.referencedItems) { await removeMissingItems() }
@@ -430,7 +442,6 @@ public struct RootView: View {
         } catch {}
     }
 
-    /// Полоса значков вместо сайдбара: только на iPad, когда сайдбар спрятан.
     /// Тема устроена как командная строка («Монохром»): без сайдбара и полосы значков.
     private var isCommandLine: Bool { theme.layout == .commandLine }
 
@@ -450,9 +461,10 @@ public struct RootView: View {
         return "lumen / \(place)"
     }
 
+    /// Полоса значков вместо сайдбара: только на iPad, когда сайдбар спрятан.
     private var showsRail: Bool {
         #if os(iOS)
-        guard horizontalSizeClass == .regular, !focusMode.isOn, !isCommandLine else { return false }
+        guard horizontalSizeClass == .regular, !focusMode.isOn, !theme.layout.hidesSidebar else { return false }
         return columnVisibility == .detailOnly || (columnVisibility == .automatic && windowWidth > 0 && windowWidth < 1000)
         #else
         return false
