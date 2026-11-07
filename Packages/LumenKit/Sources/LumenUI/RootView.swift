@@ -103,18 +103,7 @@ public struct RootView: View {
             )
         } detail: {
             workspaceDetail
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    // «Бумага»: разделы строкой сверху, как в газете, вместо сайдбара.
-                    if theme.layout == .sectionBar, !focusMode.isOn {
-                        SectionBar(
-                            database: database,
-                            selection: selection,
-                            onSelect: { selection = $0 },
-                            onSettings: { isSettingsPresented = true }
-                        )
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                }
+                .safeAreaInset(edge: .top, spacing: 0) { topBar }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     // «Монохром»: вместо сайдбара командная строка, до всего дотягиваются через ⌘K.
                     if isCommandLine, !focusMode.isOn {
@@ -440,6 +429,34 @@ public struct RootView: View {
                 workspace.remove { missing.contains($0) }
             }
         } catch {}
+    }
+
+    /// Навигация сверху для тем без сайдбара: строка разделов «Бумаги» или комнаты «Кабинета».
+    @ViewBuilder
+    private var topBar: some View {
+        if !focusMode.isOn {
+            switch theme.layout {
+            case .sectionBar:
+                SectionBar(
+                    database: database,
+                    selection: selection,
+                    onSelect: { selection = $0 },
+                    onSettings: { isSettingsPresented = true }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            case .rooms:
+                RoomsBar(
+                    database: database,
+                    selection: selection,
+                    onSelect: { selection = $0 },
+                    onSearch: { isSearchPresented = true },
+                    onSettings: { isSettingsPresented = true }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            case .standard, .commandLine:
+                EmptyView()
+            }
+        }
     }
 
     /// Тема устроена как командная строка («Монохром»): без сайдбара и полосы значков.

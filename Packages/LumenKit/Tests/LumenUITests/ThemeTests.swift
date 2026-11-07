@@ -1,4 +1,5 @@
 import Foundation
+import LumenStorage
 import LumenThemes
 @testable import LumenUI
 import SwiftUI
@@ -37,7 +38,8 @@ struct ThemeLayoutTests {
     @Test func eachThemeHasItsOwnLayout() {
         #expect(Theme.mono.layout == .commandLine)
         #expect(Theme.paper.layout == .sectionBar)
-        #expect(Theme.all.filter { $0.layout.hidesSidebar }.map(\.id) == ["paper", "mono"])
+        #expect(Theme.study.layout == .rooms)
+        #expect(Theme.all.filter { $0.layout.hidesSidebar }.map(\.id) == ["paper", "mono", "study"])
         #expect(!Theme.sunset.layout.hidesSidebar)
     }
 
@@ -50,6 +52,29 @@ struct ThemeLayoutTests {
         // Страница или книга открыты поверх разделов: ни один не подчёркнут.
         #expect(!PaperSection.allCases.contains { $0.contains(.page(UUID())) })
         #expect(!PaperSection.allCases.contains { $0.contains(.trash) })
+    }
+
+    @Test func studyLightsTheOpenRoom() {
+        #expect(StudyRoom.allCases.map(\.title) == ["Стол", "Полка", "Записки", "Дела", "Архив"])
+        #expect(StudyRoom.allCases.allSatisfy { $0.contains($0.item) })
+        #expect(StudyRoom.desk.contains(nil))
+        #expect(StudyRoom.shelf.contains(.library(UUID())))
+        #expect(StudyRoom.archive.item == .trash)
+        #expect(!StudyRoom.allCases.contains { $0.contains(.source(UUID(), highlight: nil)) })
+        // Каждое открытое место горит не больше чем на одной табличке.
+        let places: [SidebarItem?] = [nil, .home, .inbox, .tasks, .library(nil), .trash, .page(UUID())]
+        for place in places {
+            #expect(StudyRoom.allCases.filter { $0.contains(place) }.count <= 1)
+        }
+    }
+
+    @Test func studyPlaquesCountNotesAndArchive() {
+        var snapshot = SidebarSnapshot.empty
+        snapshot.inboxCount = 3
+        snapshot.trashCount = 2
+        #expect(StudyRoom.notes.count(in: snapshot) == 3)
+        #expect(StudyRoom.archive.count(in: snapshot) == 2)
+        #expect(StudyRoom.desk.count(in: snapshot) == 0)
     }
 
     @Test func paperDateLooksLikeANewspaperHeader() {
