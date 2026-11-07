@@ -164,27 +164,11 @@ struct SidebarView: View {
     }
 
     /// Корзина и настройки внизу, отдельно от разделов.
+    /// В узкой боковой панели надписи не влезают и рвались по слогам («Кор з…»), тогда остаются только значки.
     private var bottomBar: some View {
-        HStack(spacing: 4) {
-            Button {
-                selection = .trash
-            } label: {
-                Label(snapshot.trashCount > 0 ? "Корзина · \(snapshot.trashCount)" : "Корзина", systemImage: "trash")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
-                    .frame(height: 30)
-                    .background(selection == .trash ? Color.accentColor.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .contentShape(Rectangle())
-            }
-            .accessibilityIdentifier("sidebar-trash")
-            Button(action: onSettings) {
-                Label("Настройки", systemImage: "gearshape")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
-                    .frame(height: 30)
-                    .contentShape(Rectangle())
-            }
-            .help("Звуки, данные, копии и синхронизация")
+        ViewThatFits(in: .horizontal) {
+            bottomButtons(compact: false)
+            bottomButtons(compact: true)
         }
         .buttonStyle(.plain)
         .font(.callout)
@@ -192,6 +176,45 @@ struct SidebarView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .overlay(alignment: .top) { Divider() }
+    }
+
+    private var trashTitle: String {
+        snapshot.trashCount > 0 ? "Корзина · \(snapshot.trashCount)" : "Корзина"
+    }
+
+    private func bottomButtons(compact: Bool) -> some View {
+        HStack(spacing: 4) {
+            Button {
+                selection = .trash
+            } label: {
+                bottomLabel(compact ? (snapshot.trashCount > 0 ? "\(snapshot.trashCount)" : nil) : trashTitle, icon: "trash", compact: compact)
+                    .background(selection == .trash ? Color.accentColor.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .accessibilityLabel(trashTitle)
+            .help(trashTitle)
+            .accessibilityIdentifier("sidebar-trash")
+            Button(action: onSettings) {
+                bottomLabel(compact ? nil : "Настройки", icon: "gearshape", compact: compact)
+            }
+            .accessibilityLabel("Настройки")
+            .help("Настройки: тема, звук, данные, копии и синхронизация")
+        }
+    }
+
+    /// Значок и надпись в одну строку. В узком виде вместо надписи только число в корзине.
+    private func bottomLabel(_ title: String?, icon: String, compact: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+            if let title {
+                Text(title)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: compact ? .center : .leading)
+        .padding(.horizontal, 8)
+        .frame(height: 30)
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder
