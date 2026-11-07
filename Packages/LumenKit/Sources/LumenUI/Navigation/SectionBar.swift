@@ -111,7 +111,7 @@ struct SectionBar: View {
     }
 
     /// «Суббота, 7 ноября».
-    static func dateTitle(_ date: Date) -> String {
+    nonisolated static func dateTitle(_ date: Date) -> String {
         let text = date.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Locale(identifier: "ru_RU")))
         return text.prefix(1).uppercased() + text.dropFirst()
     }
