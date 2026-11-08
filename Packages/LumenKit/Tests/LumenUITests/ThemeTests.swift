@@ -1,4 +1,5 @@
 import Foundation
+import LumenCore
 import LumenStorage
 import LumenThemes
 @testable import LumenUI
@@ -123,5 +124,41 @@ struct ZenTests {
         #expect(HomeView.waitingThoughts(11) == "11 мыслей ждут во входящих")
         let evening = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 11, day: 7, hour: 20))!
         #expect(HomeView.zenMoment(evening) == "СУББОТА · ВЕЧЕР")
+    }
+}
+
+struct FolderContrastTests {
+    /// Тёмная папка «Монохрома» сливалась с фоном: теперь каждая папка заметна в любой теме.
+    @Test func everyFolderStandsOutFromTheBackground() {
+        for theme in Theme.all {
+            guard let background = theme.backgroundStops.first else { continue }
+            let minimum = ThemeContrast.luminance(background) > 0.5 ? 1.3 : ThemeContrast.minimumRatio
+            for index in 0..<(Folder.colorCount - 1) {
+                for color in theme.folderCard(index).colors {
+                    let ratio = ThemeContrast.ratio(color, background)
+                    #expect(ratio >= minimum - 0.01, "\(theme.name), папка \(index): контраст \(ratio)")
+                }
+            }
+        }
+    }
+
+    @Test func brightFoldersKeepTheirColor() {
+        // Персиковая папка «Заката» и так видна: её цвет не трогают.
+        let card = Theme.sunset.vividCard(0)
+        #expect(Theme.sunset.folderCard(0).colors == card.colors)
+    }
+
+    @Test func iconPickerTakesOneSymbol() {
+        #expect(IconPicker.firstSymbol("  🚀🔥 ") == "🚀")
+        #expect(IconPicker.firstSymbol("👩‍💻 код") == "👩‍💻")
+        #expect(IconPicker.firstSymbol("   ") == nil)
+    }
+}
+
+struct AppIconTests {
+    @Test func everyThemeButSunsetHasItsOwnAppIcon() {
+        #expect(Theme.sunset.appIconSuffix == nil)
+        let suffixes = Theme.all.compactMap(\.appIconSuffix)
+        #expect(suffixes == ["Paper", "Mono", "Study", "Zen"])
     }
 }

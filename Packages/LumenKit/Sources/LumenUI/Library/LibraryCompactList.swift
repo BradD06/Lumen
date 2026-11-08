@@ -114,7 +114,7 @@ extension LibraryView {
                             onOpenFolder(entry.id)
                         } label: {
                             CompactLibraryRow(title: entry.folder.displayName, caption: entry.itemCount.objectCountText) {
-                                FolderGlyph(color: entry.folder.color)
+                                FolderGlyph(color: entry.folder.color, icon: entry.folder.icon)
                                     .scaleEffect(1.8)
                             }
                         }

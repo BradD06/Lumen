@@ -247,6 +247,13 @@ extension AppDatabase {
             }
         }
 
+        migrator.registerMigration("v10: folder icons") { db in
+            // Свой значок папки (эмодзи). Таблица уже синхронизируется, триггеры видят новый столбец сами.
+            try db.alter(table: "folder") { t in
+                t.add(column: "icon", .text)
+            }
+        }
+
         return migrator
     }
 }

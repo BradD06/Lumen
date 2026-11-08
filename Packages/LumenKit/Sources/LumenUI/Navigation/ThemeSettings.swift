@@ -48,6 +48,10 @@ private struct LumenThemeHost: ViewModifier {
             .background(WindowChrome(color: theme.backgroundStops.first ?? .clear))
             #endif
             .animation(.easeInOut(duration: 0.25), value: themeId)
+            // Значок приложения тоже под тему.
+            .onChange(of: themeId, initial: true) { _, id in
+                AppIconSwitcher.apply(Theme.named(id))
+            }
     }
 }
 

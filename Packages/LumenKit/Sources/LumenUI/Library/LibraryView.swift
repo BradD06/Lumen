@@ -29,6 +29,8 @@ struct LibraryView: View {
     @State var renaming: LibraryItemID?
     @State var renameText = ""
     @State var moving: LibraryItemID?
+    /// Чей значок сейчас выбирают: папки или заметки.
+    @State var pickingIcon: LibraryItemID?
     /// Открытое стеклянное меню: у какого предмета и где на холсте.
     @State var contextMenu: ContextMenuState?
     @State private var contextMenuHeight: CGFloat = 0
@@ -141,6 +143,20 @@ struct LibraryView: View {
             TextField("Название", text: $renameText)
             Button("Готово") { commitRename() }
             Button("Отмена", role: .cancel) { renaming = nil }
+        }
+        .sheet(item: $pickingIcon) { item in
+            NavigationStack {
+                IconPicker(current: icon(of: item)) { icon in
+                    setIcon(icon, for: item)
+                    pickingIcon = nil
+                }
+                .navigationTitle("Значок")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Отмена") { pickingIcon = nil }
+                    }
+                }
+            }
         }
         .sheet(item: $moving) { item in
             MoveToFolderSheet(database: database, item: item, currentFolderId: folderId) {
@@ -426,6 +442,9 @@ struct LibraryView: View {
                 .action(GlassMenuAction(title: "Переименовать", systemImage: "pencil") {
                     startRename(.folder(folder.id), current: folder.name)
                 }),
+                .action(GlassMenuAction(title: "Значок…", systemImage: "face.smiling") {
+                    pickingIcon = .folder(folder.id)
+                }),
                 .action(GlassMenuAction(title: "Переместить в…", systemImage: "arrow.right") {
                     moving = .folder(folder.id)
                 }),
@@ -489,6 +508,9 @@ struct LibraryView: View {
                             try await database.setFavorite(page.id, !page.isFavorite)
                         }
                     }
+                }),
+                .action(GlassMenuAction(title: "Значок…", systemImage: "face.smiling") {
+                    pickingIcon = .page(page.id)
                 }),
                 .action(GlassMenuAction(title: "Переместить в…", systemImage: "arrow.right") {
                     moving = .page(page.id)

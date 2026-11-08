@@ -402,7 +402,7 @@ struct FolderLabel: View {
             Text(folder.displayName)
                 .lineLimit(1)
         } icon: {
-            FolderGlyph(color: folder.color)
+            FolderGlyph(color: folder.color, icon: folder.icon)
         }
     }
 }

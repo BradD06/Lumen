@@ -35,7 +35,7 @@ struct MoveToFolderSheet: View {
                 }
                 ForEach(rows) { row in
                     rowButton(id: row.folder.id, title: row.folder.displayName, depth: row.depth + 1, isBlocked: row.isBlocked) {
-                        FolderGlyph(color: row.folder.color)
+                        FolderGlyph(color: row.folder.color, icon: row.folder.icon)
                     }
                 }
             }

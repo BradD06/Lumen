@@ -7,6 +7,27 @@ import SwiftUI
 extension LibraryView {
     // MARK: Действия
 
+    /// Значок папки или заметки, который сейчас стоит.
+    func icon(of item: LibraryItemID) -> String? {
+        switch item {
+        case .folder(let id): snapshot.folders.first { $0.id == id }?.folder.icon
+        case .page(let id): snapshot.pages.first { $0.id == id }?.page.icon
+        default: nil
+        }
+    }
+
+    func setIcon(_ icon: String?, for item: LibraryItemID) {
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось поменять значок") {
+                switch item {
+                case .folder(let id): try await database.setFolderIcon(id, icon: icon)
+                case .page(let id): try await database.setIcon(id, icon: icon)
+                default: break
+                }
+            }
+        }
+    }
+
     /// Что выбрали в меню «Создать» над холстом: появляется в открытой папке.
     func createHere(_ kind: CreateKind) {
         switch kind {

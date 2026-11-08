@@ -57,7 +57,7 @@ struct PageBreadcrumbs: View {
             Label {
                 Text(folder.displayName)
             } icon: {
-                FolderGlyph(color: folder.color)
+                FolderGlyph(color: folder.color, icon: folder.icon)
             }
         case .page(let page):
             PageLabel(page: page)

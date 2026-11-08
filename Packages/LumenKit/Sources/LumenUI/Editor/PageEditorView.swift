@@ -41,6 +41,7 @@ struct PageEditorView: View {
     /// Формат, в который выгружают страницу из меню «Экспорт».
     @State private var exportRequest: PageExportFormat?
     @State private var isMovingToFolder = false
+    @State private var isPickingIcon = false
     @State private var focusTask: Task<Void, Never>?
     #if os(macOS)
     @State private var keyMonitor: Any?
@@ -61,7 +62,6 @@ struct PageEditorView: View {
     @Environment(\.lumenTheme) private var theme
     private let focusMode = FocusModeState.shared
 
-    private static let icons = ["📝", "📘", "📚", "🎓", "💡", "✅", "🧠", "🌅", "🗂️", "⭐️"]
     private static let coverGradients = ["Персик", "Солнце", "Лаванда", "Лайм", "Небо"]
 
     init(
@@ -604,14 +604,8 @@ struct PageEditorView: View {
                 PageBreadcrumbs(database: model.database, pageId: model.pageId) { model.open($0) }
             }
             HStack(spacing: 8) {
-                Menu {
-                    ForEach(Self.icons, id: \.self) { icon in
-                        Button(icon) { model.setIcon(icon) }
-                    }
-                    if model.page?.icon != nil {
-                        Divider()
-                        Button("Убрать иконку", role: .destructive) { model.setIcon(nil) }
-                    }
+                Button {
+                    isPickingIcon = true
                 } label: {
                     if let icon = model.page?.icon, !icon.isEmpty {
                         Text(icon).font(.system(size: 44))
@@ -621,9 +615,16 @@ struct PageEditorView: View {
                             .foregroundStyle(theme.textSecondary)
                     }
                 }
-                .menuStyle(.button)
                 .buttonStyle(.plain)
                 .fixedSize()
+                .help("Значок заметки: любой эмодзи")
+                .popover(isPresented: $isPickingIcon) {
+                    IconPicker(current: model.page?.icon) { icon in
+                        model.setIcon(icon)
+                        isPickingIcon = false
+                    }
+                    .presentationCompactAdaptation(.popover)
+                }
 
                 coverMenu
 

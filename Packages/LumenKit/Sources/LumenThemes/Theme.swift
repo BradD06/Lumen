@@ -280,3 +280,17 @@ extension Color {
         )
     }
 }
+
+extension Theme {
+    /// Значок приложения под тему: «Paper» даёт `AppIcon-Paper` на iPhone и iPad и `DockIcon-Paper`
+    /// в Dock на Mac. У «Заката» `nil`: это основной значок.
+    public var appIconSuffix: String? {
+        switch id {
+        case Theme.paper.id: "Paper"
+        case Theme.mono.id: "Mono"
+        case Theme.study.id: "Study"
+        case Theme.zen.id: "Zen"
+        default: nil
+        }
+    }
+}

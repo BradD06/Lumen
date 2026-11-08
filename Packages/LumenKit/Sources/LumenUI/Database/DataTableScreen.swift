@@ -19,7 +19,7 @@ struct DataTableScreen: View {
     #endif
     @Environment(\.lumenTheme) private var theme
 
-    private static let icons = ["✅", "📋", "📚", "🎓", "🗓️", "🎯", "💡", "🧠", "📈", "⭐️"]
+    @State private var isPickingIcon = false
 
     init(database: AppDatabase, pageId: UUID, initialViewId: UUID? = nil, onOpenPage: @escaping (UUID) -> Void) {
         _model = State(initialValue: DataTableModel(database: database, pageId: pageId, initialViewId: initialViewId))
@@ -73,21 +73,21 @@ struct DataTableScreen: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 10) {
-            Menu {
-                ForEach(Self.icons, id: \.self) { icon in
-                    Button(icon) { model.setIcon(icon) }
-                }
-                if model.page?.icon != nil {
-                    Divider()
-                    Button("Убрать иконку", role: .destructive) { model.setIcon(nil) }
-                }
+            Button {
+                isPickingIcon = true
             } label: {
                 Text(model.page?.icon ?? "📋").font(.system(size: 36))
             }
-            .menuStyle(.button)
             .buttonStyle(.plain)
-            .menuIndicator(.hidden)
             .fixedSize()
+            .help("Значок базы: любой эмодзи")
+            .popover(isPresented: $isPickingIcon) {
+                IconPicker(current: model.page?.icon) { icon in
+                    model.setIcon(icon)
+                    isPickingIcon = false
+                }
+                .presentationCompactAdaptation(.popover)
+            }
 
             CommitTextField(placeholder: "Без названия", text: model.page?.title ?? "", font: .system(size: 32, weight: .bold)) {
                 model.rename($0)

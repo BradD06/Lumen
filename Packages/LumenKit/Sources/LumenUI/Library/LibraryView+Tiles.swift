@@ -22,7 +22,7 @@ extension LibraryView {
                 isRenaming: renaming == item.id,
                 onCommitRename: commitRename
             ) {
-                FolderArt(color: entry.folder.color, count: entry.itemCount, isTargeted: dropTarget == entry.id)
+                FolderArt(color: entry.folder.color, count: entry.itemCount, icon: entry.folder.icon, isTargeted: dropTarget == entry.id)
             }
             .modifier(TileInteraction(
                 onSelect: { select(item.id) },

@@ -294,7 +294,7 @@ struct InboxTriageView: View {
                         Label {
                             Text(folder.displayName)
                         } icon: {
-                            FolderGlyph(color: folder.color)
+                            FolderGlyph(color: folder.color, icon: folder.icon)
                         }
                         .font(.callout.weight(index == 0 ? .bold : .semibold))
                         .padding(.horizontal, 14)
