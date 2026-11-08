@@ -212,10 +212,10 @@ struct BookSpine: View {
     @ViewBuilder
     private func face(_ style: BookSpineStyle) -> some View {
         if let cover = source.cover, let attachments {
-            // Левый край обложки, той же высоты, что корешок.
+            // Середина обложки той же высоты, что корешок: по краю картинки обычно пусто.
             AttachmentImage(name: cover, attachments: attachments, contentMode: .fill)
                 .frame(width: style.coverWidth, height: style.height)
-                .frame(width: style.width, height: style.height, alignment: .leading)
+                .frame(width: style.width, height: style.height, alignment: .center)
                 .clipped()
         } else {
             LinearGradient(colors: coverCard.colors, startPoint: .top, endPoint: .bottom)
