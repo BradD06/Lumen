@@ -31,6 +31,10 @@ extension AppDatabase {
         guard let row = try Row.fetchOne(db, sql: "SELECT * FROM \(id.table.rawValue) WHERE id = ?", arguments: [id.id]) else {
             return nil
         }
+        return syncRecord(row: row, id: id)
+    }
+
+    static func syncRecord(row: Row, id: SyncRecordID) -> SyncRecord {
         var fields: [String: SyncValue] = [:]
         for column in row.columnNames where column != "id" {
             fields[column] = SyncValue(row[column] as DatabaseValue)
@@ -76,50 +80,55 @@ extension AppDatabase {
         let removedFiles = try await writer.write { db -> [String] in
             try db.execute(sql: "INSERT INTO syncApplying(id) VALUES (1)")
             defer { try? db.execute(sql: "DELETE FROM syncApplying") }
-
-            let encoder = JSONEncoder()
-            for record in saved {
-                try db.execute(
-                    sql: "INSERT OR REPLACE INTO syncIncoming(recordName, payload) VALUES (?, ?)",
-                    arguments: [record.id.recordName, try encoder.encode(record)]
-                )
-            }
-
-            var touchedPages = Set<UUID>()
-            var removedFiles: [String] = []
-            for id in deleted {
-                try db.execute(sql: "DELETE FROM syncIncoming WHERE recordName = ?", arguments: [id.recordName])
-                try db.execute(
-                    sql: "DELETE FROM syncChange WHERE tableName = ? AND recordId = ?",
-                    arguments: [id.table.rawValue, id.id]
-                )
-                switch id.table {
-                case .page:
-                    // Страницы больше нет: из поиска её убирает reindex.
-                    touchedPages.insert(id.id)
-                case .block:
-                    if let pageId = try UUID.fetchOne(db, sql: "SELECT pageId FROM block WHERE id = ?", arguments: [id.id]) {
-                        touchedPages.insert(pageId)
-                    }
-                case .source:
-                    if let source = try Source.fetchOne(db, key: id.id) {
-                        removedFiles += [source.file] + (source.cover.map { [$0] } ?? [])
-                    }
-                case .folder, .highlight, .dataTable:
-                    break
-                }
-                try db.execute(sql: "DELETE FROM \(id.table.rawValue) WHERE id = ?", arguments: [id.id])
-            }
-
-            touchedPages.formUnion(try Self.applyIncoming(db))
-            for pageId in touchedPages {
-                try Self.reindex(db, pageId: pageId)
-            }
-            return removedFiles
+            return try Self.applyRemote(db, saved: saved, deleted: deleted)
         }
         for file in removedFiles {
             attachments.remove(file)
         }
+    }
+
+    /// Приём записей внутри открытой записи в базу. Триггеры журнала к этому моменту должны молчать
+    /// (строка в `syncApplying`). Возвращает файлы удалённых книг: их убирают после записи.
+    static func applyRemote(_ db: Database, saved: [SyncRecord], deleted: [SyncRecordID]) throws -> [String] {
+        let encoder = JSONEncoder()
+        for record in saved {
+            try db.execute(
+                sql: "INSERT OR REPLACE INTO syncIncoming(recordName, payload) VALUES (?, ?)",
+                arguments: [record.id.recordName, try encoder.encode(record)]
+            )
+        }
+
+        var touchedPages = Set<UUID>()
+        var removedFiles: [String] = []
+        for id in deleted {
+            try db.execute(sql: "DELETE FROM syncIncoming WHERE recordName = ?", arguments: [id.recordName])
+            try db.execute(
+                sql: "DELETE FROM syncChange WHERE tableName = ? AND recordId = ?",
+                arguments: [id.table.rawValue, id.id]
+            )
+            switch id.table {
+            case .page:
+                // Страницы больше нет: из поиска её убирает reindex.
+                touchedPages.insert(id.id)
+            case .block:
+                if let pageId = try UUID.fetchOne(db, sql: "SELECT pageId FROM block WHERE id = ?", arguments: [id.id]) {
+                    touchedPages.insert(pageId)
+                }
+            case .source:
+                if let source = try Source.fetchOne(db, key: id.id) {
+                    removedFiles += [source.file] + (source.cover.map { [$0] } ?? [])
+                }
+            case .folder, .highlight, .dataTable, .readingSession:
+                break
+            }
+            try db.execute(sql: "DELETE FROM \(id.table.rawValue) WHERE id = ?", arguments: [id.id])
+        }
+
+        touchedPages.formUnion(try applyIncoming(db))
+        for pageId in touchedPages {
+            try reindex(db, pageId: pageId)
+        }
+        return removedFiles
     }
 
     /// Кладёт в базу всё, что ждёт в `syncIncoming`, пока это получается. Возвращает затронутые страницы.
@@ -160,7 +169,7 @@ extension AppDatabase {
                         try updateLinks(db, block: block)
                         touchedPages.insert(block.pageId)
                     }
-                case .folder, .source, .highlight, .dataTable:
+                case .folder, .source, .highlight, .dataTable, .readingSession:
                     break
                 }
             }

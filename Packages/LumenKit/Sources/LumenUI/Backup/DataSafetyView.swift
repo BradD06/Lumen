@@ -1,5 +1,6 @@
 import LumenCore
 import LumenStorage
+import LumenSync
 import LumenThemes
 import SwiftUI
 import UniformTypeIdentifiers
@@ -16,12 +17,20 @@ struct DataSafetyView: View {
     /// Готовая копия во временной папке, ждёт, куда её перенесут.
     @State private var savedBackup: URL?
     @State private var isMovingBackup = false
-    @State private var isPickingBackup = false
+    @State private var isPickingFile = false
+    /// Одно системное окно выбора на экран (два `fileImporter` рядом в SwiftUI мешают друг другу):
+    /// что в нём выбирают, копию для восстановления или папку синхронизации.
+    @State private var pickerMode: PickerMode = .backup
+    @Environment(FolderSyncController.self) private var folderSync: FolderSyncController?
     /// Копия, которую выбрали для восстановления: перед заменой всех данных переспрашиваем.
     @State private var pendingRestore: PendingRestore?
     @State private var automaticBackups: [AutomaticBackup] = []
     @State private var message: Message?
     @Environment(\.lumenTheme) private var theme
+
+    enum PickerMode {
+        case backup, syncFolder
+    }
 
     struct PendingRestore: Identifiable {
         var url: URL
@@ -39,8 +48,41 @@ struct DataSafetyView: View {
 
     var body: some View {
         List {
-            Section("Синхронизация") {
+            Section {
                 SyncStatusRow()
+                if let folderSync {
+                    if let folderName = folderSync.folderName {
+                        LabeledContent("Папка", value: folderName)
+                        LabeledContent("Другие устройства", value: otherDevicesText(folderSync.otherDevices))
+                        Button {
+                            folderSync.syncNow()
+                        } label: {
+                            Label("Синхронизировать сейчас", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        Button {
+                            pickSyncFolder()
+                        } label: {
+                            Label("Выбрать другую папку…", systemImage: "folder")
+                        }
+                        Button(role: .destructive) {
+                            folderSync.turnOff()
+                        } label: {
+                            Label("Выключить синхронизацию", systemImage: "icloud.slash")
+                        }
+                    } else {
+                        Button {
+                            pickSyncFolder()
+                        } label: {
+                            Label("Выбрать папку в iCloud Drive…", systemImage: "icloud.and.arrow.up")
+                        }
+                    }
+                }
+            } header: {
+                Text("Синхронизация")
+            } footer: {
+                if folderSync != nil {
+                    Text("На Mac, iPhone и iPad выберите одну и ту же папку, проще всего сам iCloud Drive. Lumen создаст в ней папку «Lumen Sync» и будет хранить там правки, книги и картинки. Платный аккаунт не нужен, место берётся из вашего iCloud.")
+                }
             }
 
             Section {
@@ -50,7 +92,8 @@ struct DataSafetyView: View {
                 }
                 .disabled(isWorking)
                 Button {
-                    isPickingBackup = true
+                    pickerMode = .backup
+                    isPickingFile = true
                 } label: {
                     Label("Восстановить из копии…", systemImage: "clock.arrow.circlepath")
                 }
@@ -113,8 +156,15 @@ struct DataSafetyView: View {
             }
             savedBackup = nil
         }
-        .fileImporter(isPresented: $isPickingBackup, allowedContentTypes: [.zip, .data]) { result in
-            if case .success(let url) = result {
+        .fileImporter(
+            isPresented: $isPickingFile,
+            allowedContentTypes: pickerMode == .syncFolder ? [.folder] : [.zip, .data]
+        ) { result in
+            guard case .success(let url) = result else { return }
+            switch pickerMode {
+            case .syncFolder:
+                Task { await folderSync?.choose(url) }
+            case .backup:
                 pendingRestore = PendingRestore(url: url, title: "«\(url.lastPathComponent)»", isSecurityScoped: true)
             }
         }
@@ -138,6 +188,16 @@ struct DataSafetyView: View {
         } message: { message in
             Text(message.text)
         }
+    }
+
+    private func pickSyncFolder() {
+        pickerMode = .syncFolder
+        isPickingFile = true
+    }
+
+    private func otherDevicesText(_ devices: [FolderSyncDevice]) -> String {
+        guard !devices.isEmpty else { return "пока нет" }
+        return devices.map(\.name).joined(separator: ", ")
     }
 
     private var backupFooter: String {

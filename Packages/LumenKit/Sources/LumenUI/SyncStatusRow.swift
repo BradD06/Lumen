@@ -3,7 +3,7 @@ import LumenSync
 import LumenThemes
 import SwiftUI
 
-/// Строка о синхронизации с iCloud. Состояние кладёт в окружение приложение, см. `SyncStatus`.
+/// Строка о синхронизации (через папку iCloud Drive или CloudKit). Состояние кладёт в окружение приложение, см. `SyncStatus`.
 /// Если его нет (превью, тесты), синхронизация считается ненастроенной.
 struct SyncStatusRow: View {
     @Environment(SyncStatus.self) private var status: SyncStatus?
@@ -59,11 +59,11 @@ struct SyncStatusRow: View {
     private func details(_ state: SyncStatus.State) -> String {
         switch state {
         case .notConfigured:
-            "Заметки и книги хранятся только на этом устройстве. iCloud включится в версии с аккаунтом разработчика Apple."
+            "Заметки и книги хранятся только на этом устройстве. Выберите папку в iCloud Drive, и они появятся на других ваших устройствах."
         case .noAccount:
             "Войдите в iCloud в Настройках, и заметки появятся на всех ваших устройствах."
         case .syncing:
-            "Заметки и книги отправляются в iCloud и приходят с других устройств."
+            "Заметки и книги уезжают в iCloud и приходят с других устройств."
         case .upToDate(let date):
             "Последний раз \(date.lumenRelative)"
         case .failed(let message):
