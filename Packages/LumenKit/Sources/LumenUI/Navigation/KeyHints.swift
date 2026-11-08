@@ -13,9 +13,9 @@ final class KeyHintCenter {
     struct Target {
         var frame: CGRect
         var title: String
-        var action: @MainActor () -> Void
+        var action: () -> Void
         /// Меню места (как правый щелчок): ⇧ с буквой.
-        var secondary: (@MainActor () -> Void)?
+        var secondary: (() -> Void)?
         /// Слой: если открыто что-то поверх экрана (витрина книги, меню), подписывается только оно.
         var layer: Int
         /// Видимая часть списка, в котором лежит место: прокрученное за край не подписывается.
@@ -42,11 +42,11 @@ final class KeyHintCenter {
     /// Окно в тех же координатах, что и места: что за его краем, не подписывается.
     @ObservationIgnored var bounds: CGRect = .null
 
-    func register(_ id: UUID, frame: CGRect, title: String, layer: Int, clip: CGRect, action: @escaping @MainActor () -> Void, secondary: (@MainActor () -> Void)?) {
+    func register(_ id: UUID, frame: CGRect, title: String, layer: Int, clip: CGRect, action: @escaping () -> Void, secondary: (() -> Void)?) {
         targets[id] = Target(frame: frame, title: title, action: action, secondary: secondary, layer: layer, clip: clip)
     }
 
-    func updateAction(_ id: UUID, title: String, action: @escaping @MainActor () -> Void, secondary: (@MainActor () -> Void)?) {
+    func updateAction(_ id: UUID, title: String, action: @escaping () -> Void, secondary: (() -> Void)?) {
         targets[id]?.title = title
         targets[id]?.action = action
         targets[id]?.secondary = secondary
@@ -173,8 +173,8 @@ extension View {
     /// `secondary`: меню этого места, открывается ⇧ с буквой.
     func keyHint(
         _ title: String,
-        secondary: (@MainActor () -> Void)? = nil,
-        perform action: @escaping @MainActor () -> Void
+        secondary: (() -> Void)? = nil,
+        perform action: @escaping () -> Void
     ) -> some View {
         modifier(KeyHintModifier(title: title, action: action, secondary: secondary))
     }
@@ -182,8 +182,8 @@ extension View {
 
 private struct KeyHintModifier: ViewModifier {
     let title: String
-    let action: @MainActor () -> Void
-    let secondary: (@MainActor () -> Void)?
+    let action: () -> Void
+    let secondary: (() -> Void)?
 
     @Environment(\.keyHints) private var center
     @Environment(\.keyHintLayer) private var layer
@@ -309,28 +309,36 @@ struct KeyHintOverlay: View {
         guard monitor == nil else { return }
         let center = center
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            MainActor.assumeIsolated { () -> NSEvent? in
-                guard center.isActive else { return event }
-                let flags = event.modifierFlags.intersection([.command, .control, .option])
-                // ⌘J ещё раз: выйти. Остальные сочетания с ⌘ работают как обычно.
-                if !flags.isEmpty {
-                    if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "j" || event.keyCode == 38 {
-                        center.deactivate()
-                        return nil
-                    }
-                    return event
-                }
-                switch event.keyCode {
-                case 53: center.deactivate()
-                case 51: center.deleteBackward()
-                default:
-                    if let character = event.charactersIgnoringModifiers?.first {
-                        center.type(character, shifted: event.modifierFlags.contains(.shift))
-                    }
-                }
-                return nil
+            // NSEvent не Sendable: в главный актор передаём только нужные значения.
+            let keyCode = event.keyCode
+            let flags = event.modifierFlags
+            let characters = event.charactersIgnoringModifiers
+            let handled = MainActor.assumeIsolated {
+                Self.handle(keyCode: keyCode, flags: flags, characters: characters, center: center)
+            }
+            return handled ? nil : event
+        }
+    }
+
+    /// `true`: клавиша съедена режимом подсказок.
+    private static func handle(keyCode: UInt16, flags: NSEvent.ModifierFlags, characters: String?, center: KeyHintCenter) -> Bool {
+        guard center.isActive else { return false }
+        let modifiers = flags.intersection([.command, .control, .option])
+        // ⌘J ещё раз: выйти. Остальные сочетания с ⌘ работают как обычно.
+        if !modifiers.isEmpty {
+            guard modifiers == .command, keyCode == 38 else { return false }
+            center.deactivate()
+            return true
+        }
+        switch keyCode {
+        case 53: center.deactivate()
+        case 51: center.deleteBackward()
+        default:
+            if let character = characters?.first {
+                center.type(character, shifted: flags.contains(.shift))
             }
         }
+        return true
     }
 
     private func removeMonitor() {
