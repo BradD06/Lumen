@@ -40,7 +40,7 @@ struct PDFTextLayoutTests {
     }
 
     @Test func recognisesPageNumbers() {
-        for text in ["12", "— 12 —", "- 7 -", "стр. 15", "Page 3", "xiv", "4 из 120", "[ 9 ]"] {
+        for text in ["12", "— 12 —", "- 7 -", "стр. 15", "Page 3", "xiv", "XIV", "4 из 120", "[ 9 ]"] {
             #expect(PDFTextLayout.isPageNumber(text), "\(text)")
         }
         for text in ["Глава 1", "1945 год был", "I", "Введение"] {
@@ -186,11 +186,106 @@ struct PDFTextLayoutTests {
     }
 
     @Test func longBooksWithoutChaptersAreCutIntoChunks() {
-        let pages = (0..<50).map { page([sentence($0)]) }
+        // Каждая страница это реплика: абзац кончается вместе со страницей.
+        let pages = (0..<50).map { page(["— " + sentence($0)]) }
         let book = PDFTextLayout.build(pages: pages, outline: [])
         #expect(book.sections.count == 3)
         #expect(book.sections[1].title == "Стр. 21–40")
         #expect(!book.sections[1].html.contains("<h1"))
+    }
+
+    @Test func chunkDoesNotCutAParagraphInHalf() {
+        var pages = (0..<50).map { page(["— " + sentence($0)]) }
+        pages[19] = page(["— " + sentence(19) + " Его продол-"])
+        pages[20] = page(["жение на следующей странице."])
+        let book = PDFTextLayout.build(pages: pages, outline: [])
+        #expect(book.sections.count == 3)
+        #expect(book.sections[0].html.contains("Его продолжение на следующей странице."))
+        #expect(!book.sections[1].html.contains("продолжение"))
+    }
+
+    /// Страница с колонтитулом сверху, номером снизу и строками текста по ширине страницы.
+    /// Колонтитул записан после текста, как его часто хранит PDF, хотя на странице он сверху.
+    private func framedPage(header: String?, body: [PDFLine], number: Int?) -> [PDFLine] {
+        var lines = body
+        if let header { lines.append(framed(header, left: 250, right: 390, y: 572, height: 9)) }
+        if let number { lines.append(framed("\(number)", left: 315, right: 325, y: 30, height: 9)) }
+        return lines
+    }
+
+    /// Строки текста сверху вниз, с обычным шагом.
+    private func body(_ texts: [String], indents: [Int: Double] = [:], rights: [Int: Double] = [:]) -> [PDFLine] {
+        texts.enumerated().map { index, text in
+            framed(text, left: indents[index] ?? 50, right: rights[index] ?? 590, y: 540 - Double(index) * 16)
+        }
+    }
+
+    @Test func gluesParagraphsAcrossPagesWithoutRunningLines() {
+        let pages = [
+            framedPage(header: "Тестовая книга", body: body([
+                "Первая строка книги начинается здесь", "вторая строка того же абзаца идёт", "и третья строка, а слово продол-",
+            ]), number: 1),
+            framedPage(header: "Тестовая книга", body: body([
+                "жение стоит уже на новой странице", "дальше идёт полная строка текста", "и последняя строка этой страницы",
+            ]), number: 2),
+            framedPage(header: "Тестовая книга", body: body([
+                "продолжает абзац с маленькой буквы", "а кончается абзац вот здесь.", "Новый абзац идёт до самого конца страницы.",
+            ], rights: [1: 300]), number: 3),
+            framedPage(header: "Тестовая книга", body: body([
+                "Красная строка на новой странице", "начинает новый абзац, как и в книге", "и он идёт до последней строки.",
+            ], indents: [0: 80]), number: 4),
+        ]
+        let html = PDFTextLayout.build(pages: pages, outline: [], frontTitle: "Книга").sections[0].html
+        let paragraphs = visibleText(html.replacingOccurrences(of: "</p>", with: "\n")).split(separator: "\n").map {
+            $0.trimmingCharacters(in: .whitespaces)
+        }
+        #expect(paragraphs == [
+            "Первая строка книги начинается здесь вторая строка того же абзаца идёт и третья строка, а слово продолжение стоит уже на новой странице дальше идёт полная строка текста и последняя строка этой страницы продолжает абзац с маленькой буквы а кончается абзац вот здесь.",
+            "Новый абзац идёт до самого конца страницы.",
+            "Красная строка на новой странице начинает новый абзац, как и в книге и он идёт до последней строки.",
+        ])
+    }
+
+    @Test func gluesTextAcrossPagesWithoutLinePositions() {
+        // Без мест строк: пустая строка и номер внизу страницы не конец абзаца.
+        let pages = (1...4).map { number in
+            page([
+                (number == 1 ? "" : "продолжение ") + sentence(number * 10),
+                String(sentence(number * 10 + 1).dropLast()) + " и",
+                "", "\(number)", "",
+            ])
+        }
+        let html = PDFTextLayout.build(pages: pages, outline: [], frontTitle: "Книга").sections[0].html
+        #expect(html.components(separatedBy: "<p>").count - 1 == 1)
+        #expect(html.contains(" и продолжение \(sentence(20))"))
+        #expect(!html.contains(" 2 "))
+    }
+
+    @Test func removesRunningChapterTitlesButKeepsChapterHeadings() {
+        let pages = (1...5).map { number in
+            page([number == 1 ? "Глава 3" : "Глава 3. Тайна \(number + 40)", sentence(number)])
+        }
+        let stripped = PDFTextLayout.stripRunningLines(pages, bodySize: 0)
+        #expect(stripped[0].map(\.text) == ["Глава 3", sentence(1)])
+        for (index, lines) in stripped.enumerated().dropFirst() {
+            #expect(lines.map(\.text) == [sentence(index + 1)])
+        }
+    }
+
+    @Test func removesRunningTitleOfAShortChapterOnlyOnTheMargin() {
+        let pages = (0..<40).map { number -> [PDFLine] in
+            if (10...12).contains(number) {
+                return framedPage(header: "Короткая глава", body: body([sentence(number), sentence(number + 100), sentence(number + 200)]), number: nil)
+            }
+            if (20...22).contains(number) {
+                // Реплика в первой строке стоит в тексте, а не на поле: это не колонтитул.
+                return body(["— Да.", sentence(number), sentence(number + 100)], rights: [0: 90])
+            }
+            return body([sentence(number), sentence(number + 100), sentence(number + 200)])
+        }
+        let stripped = PDFTextLayout.stripRunningLines(pages, bodySize: 0)
+        #expect(!stripped[11].contains { $0.text == "Короткая глава" })
+        #expect(stripped[21].first?.text == "— Да.")
     }
 
     @Test func indexFindsPagesAndPlaces() {
