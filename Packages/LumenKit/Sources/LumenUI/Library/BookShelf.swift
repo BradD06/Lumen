@@ -12,7 +12,14 @@ struct BookShelf: View {
     var onAdd: () -> Void
 
     @State private var books: [Source] = []
+    /// Книга, которую «взяли с полки»: она выдвинута и повёрнута обложкой.
+    @State private var pulledId: UUID?
+    /// Над какой книгой открыто окно со статистикой.
+    @State private var cardId: UUID?
+    @State private var isOverCard = false
+    @State private var hoverTask: Task<Void, Never>?
     @Environment(\.lumenTheme) private var theme
+    @Environment(\.appActions) private var appActions
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -25,14 +32,7 @@ struct BookShelf: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .bottom, spacing: 3) {
                         ForEach(books) { book in
-                            Button {
-                                onOpen(book.id)
-                            } label: {
-                                BookSpine(source: book)
-                            }
-                            .buttonStyle(SpineButtonStyle())
-                            .help(BookSpineStyle.summary(book))
-                            .accessibilityLabel(BookSpineStyle.summary(book))
+                            shelfBook(book)
                         }
                         addSpine
                         if books.isEmpty {
@@ -44,7 +44,8 @@ struct BookShelf: View {
                         }
                     }
                     .padding(.horizontal, 10)
-                    .padding(.top, 8)
+                    // Место сверху, чтобы вынутая книга не упиралась в край.
+                    .padding(.top, 26)
                 }
                 plank
             }
@@ -52,6 +53,88 @@ struct BookShelf: View {
         .task { await observe() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("bookShelf")
+    }
+
+    /// Книга на полке. Мышь над корешком: книга выдвигается и поворачивается обложкой,
+    /// чуть позже над ней открывается окно со статистикой чтения.
+    /// На iPhone и iPad без мыши то же окно по долгому нажатию.
+    private func shelfBook(_ book: Source) -> some View {
+        Button {
+            onOpen(book.id)
+        } label: {
+            ShelfBook(source: book, attachments: database.attachments, isPulled: pulledId == book.id)
+        }
+        .buttonStyle(SpineButtonStyle())
+        .zIndex(pulledId == book.id ? 1 : 0)
+        .accessibilityLabel(BookSpineStyle.summary(book))
+        .onHover { hovering in hover(book.id, hovering) }
+        #if os(iOS)
+        .simultaneousGesture(LongPressGesture(minimumDuration: 0.4).onEnded { _ in
+            withAnimation(.spring(duration: 0.45, bounce: 0.2)) { pulledId = book.id }
+            cardId = book.id
+        })
+        #endif
+        .popover(isPresented: cardBinding(book.id), arrowEdge: .top) {
+            BookStatsCard(
+                database: database,
+                sourceId: book.id,
+                onOpenBook: {
+                    close()
+                    onOpen(book.id)
+                },
+                onOpenPage: { id in
+                    close()
+                    appActions.open(.page(id))
+                },
+                onOpenDashboard: {
+                    close()
+                    appActions.open(.sourceInfo(book.id))
+                }
+            )
+            .onHover { hovering in
+                isOverCard = hovering
+                if !hovering { scheduleClose() }
+            }
+            .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    private func cardBinding(_ id: UUID) -> Binding<Bool> {
+        Binding {
+            cardId == id
+        } set: { shown in
+            if !shown, cardId == id { close() }
+        }
+    }
+
+    private func hover(_ id: UUID, _ hovering: Bool) {
+        hoverTask?.cancel()
+        if hovering {
+            if cardId != nil, cardId != id { cardId = nil }
+            withAnimation(.spring(duration: 0.45, bounce: 0.2)) { pulledId = id }
+            hoverTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(450))
+                if !Task.isCancelled, pulledId == id { cardId = id }
+            }
+        } else {
+            scheduleClose()
+        }
+    }
+
+    /// Мышь ушла с книги: если она не над окном статистики, книга встаёт обратно.
+    private func scheduleClose() {
+        hoverTask?.cancel()
+        hoverTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(320))
+            if !Task.isCancelled, !isOverCard { close() }
+        }
+    }
+
+    private func close() {
+        hoverTask?.cancel()
+        cardId = nil
+        isOverCard = false
+        withAnimation(.spring(duration: 0.4, bounce: 0.15)) { pulledId = nil }
     }
 
     /// Пустое место на полке с «+»: добавить книгу или файл.
@@ -97,6 +180,31 @@ struct BookShelf: View {
         } catch {
             lumenLog.error("Shelf observation failed: \(String(describing: error), privacy: .public)")
         }
+    }
+}
+
+/// Книга на полке: корешок, а взятая в руки (`isPulled`) выдвигается вверх
+/// и поворачивается обложкой к читателю, как будто её сняли с полки.
+struct ShelfBook: View {
+    let source: Source
+    let attachments: AttachmentStore
+    var isPulled: Bool
+
+    var body: some View {
+        let style = BookSpineStyle(source: source)
+        let coverWidth = style.coverWidth
+        ZStack {
+            BookSpine(source: source)
+                .rotation3DEffect(.degrees(isPulled ? -90 : 0), axis: (x: 0, y: 1, z: 0), anchor: .trailing, perspective: 0.6)
+                .opacity(isPulled ? 0 : 1)
+            SourceCoverArt(source: source, attachments: attachments, width: coverWidth, height: style.height)
+                .rotation3DEffect(.degrees(isPulled ? 0 : 90), axis: (x: 0, y: 1, z: 0), anchor: .leading, perspective: 0.6)
+                .opacity(isPulled ? 1 : 0)
+                .shadow(color: .black.opacity(isPulled ? 0.45 : 0), radius: 10, y: 8)
+        }
+        .frame(width: isPulled ? coverWidth : style.width, height: style.height)
+        .offset(y: isPulled ? -20 : 0)
+        .scaleEffect(isPulled ? 1.04 : 1, anchor: .bottom)
     }
 }
 
@@ -185,6 +293,9 @@ struct BookSpineStyle: Equatable {
         colorIndex = seed / 15 % 5
         ribbonLength = Self.ribbon(progress: source.progress, opened: source.lastOpenedAt != nil, height: height)
     }
+
+    /// Ширина обложки, когда книгу повернули лицом: пропорции обычной книги.
+    var coverWidth: CGFloat { (height * 0.68).rounded() }
 
     /// Сумма байтов id: в отличие от `hashValue` не меняется между запусками.
     static func seed(_ id: UUID) -> Int {

@@ -34,3 +34,34 @@ struct BookShelfTests {
         #expect(BookSpineStyle.summary(book()) == "Мастер и Маргарита, ещё не открывали")
     }
 }
+
+struct BookStatsTextTests {
+    private let calendar = Calendar(identifier: .gregorian)
+
+    private func date(_ day: Int, _ hour: Int, _ minute: Int, month: Int = 11, year: Int = 2026) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
+    }
+
+    @Test func lastReadSaysTodayYesterdayOrTheDate() {
+        let now = date(8, 12, 0)
+        #expect(BookStatsText.lastRead(nil, now: now, calendar: calendar) == "ещё не открывали")
+        #expect(BookStatsText.lastRead(date(8, 9, 5), now: now, calendar: calendar) == "сегодня, 09:05")
+        #expect(BookStatsText.lastRead(date(7, 22, 10), now: now, calendar: calendar) == "вчера, 22:10")
+        #expect(BookStatsText.lastRead(date(5, 18, 0), now: now, calendar: calendar) == "5 ноября")
+        #expect(BookStatsText.lastRead(date(5, 18, 0, year: 2025), now: now, calendar: calendar).hasPrefix("5 ноября 2025"))
+    }
+
+    @Test func excerptCountsAgreeWithTheNumber() {
+        #expect(BookStatsText.excerpts(1) == "1 выписка")
+        #expect(BookStatsText.excerpts(3) == "3 выписки")
+        #expect(BookStatsText.excerpts(5) == "5 выписок")
+        #expect(BookStatsText.excerpts(12) == "12 выписок")
+        #expect(BookStatsText.excerpts(21) == "21 выписка")
+    }
+
+    @Test func pulledBookTurnsToACoverOfBookProportions() {
+        let style = BookSpineStyle(source: Source(title: "Книга", format: .epub, file: "a.epub", originalName: "a.epub"))
+        #expect(style.coverWidth == (style.height * 0.68).rounded())
+        #expect(style.coverWidth > style.width)
+    }
+}
