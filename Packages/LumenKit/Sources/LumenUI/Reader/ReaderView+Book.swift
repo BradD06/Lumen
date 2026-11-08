@@ -71,6 +71,11 @@ extension ReaderView {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 footer
+                    .opacity(showsFooter ? 1 : 0)
+                    // Прозрачная подложка ловит мышь, даже когда сама полоса спрятана.
+                    .background(Color.clear.contentShape(Rectangle()))
+                    .onHover { isFooterHovered = $0 }
+                    .animation(.easeInOut(duration: 0.25), value: showsFooter)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .readerSheet(sheetColors, radius: isCompact ? 30 : ReaderStyle.sheetRadius)
@@ -128,6 +133,14 @@ extension ReaderView {
                     .tint(ReaderStyle.peachDeep)
             }
         }
+    }
+
+    private var showsFooter: Bool {
+        #if os(macOS)
+        progressMode.isVisible(isHovered: isFooterHovered, hasPointer: true)
+        #else
+        progressMode.isVisible(isHovered: isFooterHovered, hasPointer: false)
+        #endif
     }
 
     /// Мягкая полоса внизу листа, под текстом: главы, прогресс и место в книге.

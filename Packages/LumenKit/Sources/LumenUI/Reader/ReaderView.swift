@@ -30,6 +30,9 @@ struct ReaderView: View {
     @State var showsHighlights = false
     @State var isAppearancePresented = false
     @AppStorage("reader.tocOpen") var showsToc = false
+    /// Полоса прогресса под книгой: всегда или только под мышью (настройки, «Что показывать на экране»).
+    @AppStorage(ScreenOptions.readerProgressKey) var progressMode = ReaderProgressMode.defaultMode
+    @State var isFooterHovered = false
     @State private var isTocSheetPresented = false
     @Environment(\.isActivePane) private var isActivePane
     @Environment(\.besidePageId) private var besidePageId

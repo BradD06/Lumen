@@ -44,7 +44,9 @@ struct LibraryView: View {
     @State var favorites: [Page] = []
     @State var trashCount = 0
     @State var isSyncInfoPresented = false
-    @AppStorage("library.snapToGrid") var snapToGrid = false
+    @AppStorage(ScreenOptions.gridKey) var snapToGrid = false
+    /// Меню «Создать» над холстом.
+    @State var isCreateMenuOpen = false
     #if os(iOS)
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     #endif
@@ -146,6 +148,10 @@ struct LibraryView: View {
             }
         }
         .task { await observe() }
+        // Сетку включают в настройках: тогда всё сразу раскладывается по ячейкам.
+        .onChange(of: snapToGrid) { _, isOn in
+            if isOn { arrangeInGrid() }
+        }
         .task(id: usesList && folderId == nil) {
             if usesList && folderId == nil { await observeFavorites() }
         }
@@ -180,36 +186,21 @@ struct LibraryView: View {
                 }
             }
             Spacer(minLength: 0)
-            HStack(spacing: 8) {
-                Button(action: toggleGrid) {
-                    Label(snapToGrid ? "Сетка: вкл" : "Сетка: выкл", systemImage: "square.grid.2x2")
+            // Одна кнопка вместо пяти: что создать, выбирают в меню, а сетка ушла в настройки.
+            Button {
+                isCreateMenuOpen = true
+            } label: {
+                Label("Создать", systemImage: "plus")
+            }
+            .buttonStyle(LibraryButtonStyle(isProminent: true))
+            .help("Заметка, рукописная тетрадь, книга или папка здесь")
+            .accessibilityIdentifier("library-create")
+            .popover(isPresented: $isCreateMenuOpen, arrowEdge: .bottom) {
+                CreateMenuList(kinds: [.note, .notebook, .book, .folder]) { kind in
+                    isCreateMenuOpen = false
+                    createHere(kind)
                 }
-                .buttonStyle(LibraryButtonStyle(isOn: snapToGrid))
-                .help("Выровнять всё по ячейкам и примагничивать к ним")
-
-                Button(action: newPage) {
-                    Label("Заметка", systemImage: "plus")
-                }
-                .buttonStyle(LibraryButtonStyle())
-
-                Button(action: newNotebook) {
-                    Label("От руки", systemImage: "pencil.and.scribble")
-                }
-                .buttonStyle(LibraryButtonStyle())
-                .help("Рукописная заметка, как в Goodnotes: листы, на которых пишут пальцем, Apple Pencil или мышью")
-
-                Button {
-                    isImporting = true
-                } label: {
-                    Label("Книга", systemImage: "book.closed")
-                }
-                .buttonStyle(LibraryButtonStyle())
-                .help("Добавить книгу или файл: EPUB, PDF, FB2, Word, PowerPoint, текст и другие")
-
-                Button(action: newFolder) {
-                    Label("Папка", systemImage: "folder.badge.plus")
-                }
-                .buttonStyle(LibraryButtonStyle(isProminent: true))
+                .presentationCompactAdaptation(.popover)
             }
             .disabled(snapshot.isMissing)
         }

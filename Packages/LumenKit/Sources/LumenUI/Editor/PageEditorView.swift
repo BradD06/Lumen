@@ -52,6 +52,7 @@ struct PageEditorView: View {
     @AppStorage("editor.subpagesPanel") private var remembersSubpages = false
     @State private var showsSubpages = false
     @AppStorage(LumenSounds.enabledKey) private var soundsEnabled = true
+    @AppStorage(ScreenOptions.breadcrumbsKey) private var showsBreadcrumbs = false
     /// Блоки верхнего уровня, видные на экране: по ним подсвечивается заголовок на карте.
     @State private var visibleBlockIds: [UUID] = []
     #if os(iOS)
@@ -599,7 +600,7 @@ struct PageEditorView: View {
                 }
                 .buttonStyle(.plain)
             }
-            if !isEmbedded {
+            if !isEmbedded, showsBreadcrumbs {
                 PageBreadcrumbs(database: model.database, pageId: model.pageId) { model.open($0) }
             }
             HStack(spacing: 8) {

@@ -189,14 +189,16 @@ struct Creator {
 
 /// Список «Создать»: значок, название, пояснение и сочетание клавиш. На Mac и iPad во всплывающем окне.
 struct CreateMenuList: View {
+    /// Библиотека показывает только то, что кладут в папку.
+    var kinds: [CreateKind] = CreateKind.allCases
     var onSelect: (CreateKind) -> Void
 
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(CreateKind.allCases) { kind in
-                if kind == .folder {
+            ForEach(kinds) { kind in
+                if kind == .folder, kinds.count > 1 {
                     Divider().padding(.vertical, 4).padding(.horizontal, 10)
                 }
                 Button {
@@ -480,6 +482,7 @@ struct SettingsSheet: View {
                 } footer: {
                     Text("Меняет цвета, шрифт и светлый или тёмный режим во всём приложении. Вид книги в читалке настраивается отдельно, кнопкой «Аа».")
                 }
+                ScreenOptionsSection()
                 Section("Звук") {
                     Toggle("Звуки при действиях", isOn: $soundsEnabled)
                 }
@@ -503,7 +506,7 @@ struct SettingsSheet: View {
             }
         }
         #if os(macOS)
-        .frame(minWidth: 460, minHeight: 520)
+        .frame(minWidth: 500, minHeight: 640)
         #endif
     }
 }

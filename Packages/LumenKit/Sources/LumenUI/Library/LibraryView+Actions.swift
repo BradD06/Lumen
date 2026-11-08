@@ -7,13 +7,18 @@ import SwiftUI
 extension LibraryView {
     // MARK: Действия
 
-    func toggleGrid() {
-        if snapToGrid {
-            snapToGrid = false
-            LumenSounds.play(.tap)
-            return
+    /// Что выбрали в меню «Создать» над холстом: появляется в открытой папке.
+    func createHere(_ kind: CreateKind) {
+        switch kind {
+        case .notebook: newNotebook()
+        case .book: isImporting = true
+        case .folder: newFolder()
+        default: newPage()
         }
-        snapToGrid = true
+    }
+
+    /// Сетку включили в настройках: раскладываем всё по ячейкам.
+    func arrangeInGrid() {
         LumenSounds.play(.arrange)
         // Включили сетку: раскладываем всё по ячейкам, сначала папки, потом заметки.
         var positions: [LibraryItemID: LibraryPoint?] = [:]

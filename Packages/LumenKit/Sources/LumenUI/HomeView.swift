@@ -21,6 +21,10 @@ struct HomeView: View {
     @State private var isTriaging = false
     @Environment(\.appActions) private var appActions
     @Environment(\.lumenTheme) private var theme
+    @AppStorage(ScreenOptions.homeReadingKey) private var showsReading = true
+    @AppStorage(ScreenOptions.homeTasksKey) private var showsTasks = true
+    @AppStorage(ScreenOptions.homeInboxKey) private var showsInbox = true
+    @AppStorage(ScreenOptions.homeRecentKey) private var showsRecent = true
 
     var body: some View {
         ScrollView {
@@ -41,8 +45,10 @@ struct HomeView: View {
                 if isZen {
                     zenLines
                 } else {
-                    cards
-                    if !snapshot.recent.isEmpty {
+                    if showsReading || showsTasks || showsInbox {
+                        cards
+                    }
+                    if showsRecent, !snapshot.recent.isEmpty {
                         recent
                     }
                 }
@@ -99,15 +105,19 @@ struct HomeView: View {
 
     private var zenLines: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let source = reading.current {
+            if !showsReading {
+                EmptyView()
+            } else if let source = reading.current {
                 zenLine("Продолжить: \(source.displayTitle)", detail: "\(Int((source.progress * 100).rounded()))%") {
                     onOpenSource(source.id)
                 }
             } else {
                 zenLine("Добавить книгу и читать рядом с заметками", action: onShowLibrary)
             }
-            zenLine("Дела на сегодня") { appActions.open(.tasks) }
-            if snapshot.inboxCount > 0 {
+            if showsTasks {
+                zenLine("Дела на сегодня") { appActions.open(.tasks) }
+            }
+            if showsInbox, snapshot.inboxCount > 0 {
                 zenLine(Self.waitingThoughts(snapshot.inboxCount), action: onShowInbox)
             }
             zenLine("Минута тишины перед чтением") { appActions.breathe() }
@@ -193,7 +203,9 @@ struct HomeView: View {
     /// Три главные карточки дня. На узком экране встают друг под другом.
     private var cards: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)], spacing: 16) {
-            if let source = reading.current {
+            if !showsReading {
+                EmptyView()
+            } else if let source = reading.current {
                 Button {
                     onOpenSource(source.id)
                 } label: {
@@ -213,11 +225,15 @@ struct HomeView: View {
                 .buttonStyle(.plain)
             }
 
-            TodayTasksCard(database: database, onOpen: onOpen) {
-                appActions.open(.tasks)
+            if showsTasks {
+                TodayTasksCard(database: database, onOpen: onOpen) {
+                    appActions.open(.tasks)
+                }
             }
 
-            InboxCard(count: snapshot.inboxCount, onOpen: onShowInbox, onTriage: { isTriaging = true }, onNewNote: onNewNote)
+            if showsInbox {
+                InboxCard(count: snapshot.inboxCount, onOpen: onShowInbox, onTriage: { isTriaging = true }, onNewNote: onNewNote)
+            }
         }
     }
 

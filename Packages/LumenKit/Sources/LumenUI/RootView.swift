@@ -47,6 +47,8 @@ public struct RootView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     @Environment(\.lumenTheme) private var theme
+    @AppStorage(ScreenOptions.tabStripKey) private var tabStripMode = TabStripMode.multiple
+    @AppStorage(ScreenOptions.windowButtonsKey) private var showsWindowButtons = ScreenOptions.windowButtonsDefault
 
     public init(database: AppDatabase) {
         self.database = database
@@ -102,6 +104,10 @@ public struct RootView: View {
         }
     }
 
+    private func toggleSplit() {
+        withAnimation(.snappy) { workspace.toggleSplit() }
+    }
+
     private var splitView: some View {
         NavigationSplitView(columnVisibility: visibleColumns) {
             SidebarView(
@@ -141,20 +147,21 @@ public struct RootView: View {
                     }
                 }
                 .toolbar {
-                    ToolbarItemGroup(placement: .navigation) {
-                        Button(action: workspace.goBack) {
-                            Label("Назад", systemImage: "chevron.left")
-                        }
-                        .keyboardShortcut("[", modifiers: .command)
-                        .disabled(!workspace.canGoBack)
-                        .help("Назад (⌘[)")
+                    // Сочетания ⌘[ ⌘] ⌘\ живут в `tabShortcuts`: кнопки можно спрятать в настройках.
+                    if showsWindowButtons {
+                        ToolbarItemGroup(placement: .navigation) {
+                            Button(action: workspace.goBack) {
+                                Label("Назад", systemImage: "chevron.left")
+                            }
+                            .disabled(!workspace.canGoBack)
+                            .help("Назад (⌘[)")
 
-                        Button(action: workspace.goForward) {
-                            Label("Вперёд", systemImage: "chevron.right")
+                            Button(action: workspace.goForward) {
+                                Label("Вперёд", systemImage: "chevron.right")
+                            }
+                            .disabled(!workspace.canGoForward)
+                            .help("Вперёд (⌘])")
                         }
-                        .keyboardShortcut("]", modifiers: .command)
-                        .disabled(!workspace.canGoForward)
-                        .help("Вперёд (⌘])")
                     }
                     ToolbarItemGroup(placement: .primaryAction) {
                         Button {
@@ -179,16 +186,15 @@ public struct RootView: View {
                         }
                         .help("Новая заметка (⌘N). Удерживайте, чтобы выбрать, что создать")
 
-                        Button {
-                            withAnimation(.snappy) { workspace.toggleSplit() }
-                        } label: {
-                            Label(
-                                workspace.isSplit ? "Одна панель" : "Разделить экран",
-                                systemImage: workspace.isSplit ? "rectangle" : "rectangle.split.2x1"
-                            )
+                        if showsWindowButtons {
+                            Button(action: toggleSplit) {
+                                Label(
+                                    workspace.isSplit ? "Одна панель" : "Разделить экран",
+                                    systemImage: workspace.isSplit ? "rectangle" : "rectangle.split.2x1"
+                                )
+                            }
+                            .help(workspace.isSplit ? "Убрать вторую панель (⌘\\)" : "Разделить экран на две панели (⌘\\)")
                         }
-                        .keyboardShortcut("\\", modifiers: .command)
-                        .help(workspace.isSplit ? "Убрать вторую панель (⌘\\)" : "Разделить экран на две панели (⌘\\)")
                     }
                 }
         }
@@ -313,8 +319,9 @@ public struct RootView: View {
     /// Вкладки сверху, под ними одна или две панели.
     private var workspaceDetail: some View {
         VStack(spacing: 0) {
-            if !focusMode.isOn {
+            if !focusMode.isOn, tabStripMode.shows(tabCount: workspace.tabs.count) {
                 WorkspaceTabStrip(database: database, workspace: workspace)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
             panes
                 // Своя вкладка у каждого набора панелей: при переключении экраны создаются заново.
@@ -361,6 +368,14 @@ public struct RootView: View {
         ZStack {
             Button("Новая вкладка") { withAnimation(.snappy) { workspace.newTab() } }
                 .keyboardShortcut("t", modifiers: .command)
+            Button("Назад") { workspace.goBack() }
+                .keyboardShortcut("[", modifiers: .command)
+                .disabled(!workspace.canGoBack)
+            Button("Вперёд") { workspace.goForward() }
+                .keyboardShortcut("]", modifiers: .command)
+                .disabled(!workspace.canGoForward)
+            Button("Разделить экран", action: toggleSplit)
+                .keyboardShortcut("\\", modifiers: .command)
             // ⌘W закрывает вкладку, а последнюю вкладку закрывает вместе с окном, как обычно.
             Button("Закрыть вкладку") { withAnimation(.snappy) { workspace.closeTab(workspace.selectedTabId) } }
                 .keyboardShortcut(workspace.tabs.count > 1 ? KeyboardShortcut("w", modifiers: .command) : nil)

@@ -28,7 +28,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Text and background colors, duplicate (⌘D), full undo and redo (⌘Z / ⇧⌘Z).
 - Inline formatting: **bold**, *italic*, underline, ~~strikethrough~~, `code` and links. Select text and a floating format bar appears (on iPhone and iPad it sits above the keyboard), or use ⌘B, ⌘I, ⌘U, ⇧⌘X, ⌘E and the Format menu on right-click. While you edit a block you see light Markdown-style markers, and the block shows the finished formatting as soon as you leave it.
 - A tidy right-click (two-finger tap) menu on every block: add a block below, turn into, color, copy text, send to today's tasks, move, delete. A `+` next to the drag handle adds a block on the Mac.
-- Breadcrumbs above the title, a "Saved" indicator, a word count, and a focus mode (⇧⌘F) that hides everything except the paragraph you are writing.
+- Breadcrumbs above the title, a "Saved" indicator, a word count (each can be turned off), and a focus mode (⇧⌘F) that hides everything except the paragraph you are writing.
 - Hover over an excerpt to preview the book and the place it came from.
 - On iPhone, a keyboard bar (new block, indent, move, hide keyboard) and block-type chips above it.
 - Subpages and links to any page with `[[` or `@`, plus backlinks at the bottom of every page.
@@ -76,6 +76,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 
 ### 🌅 Design
 - Five themes to pick in Settings: dark "Sunset" with warm gradients, light "Paper" with serif type, red ink and no sidebar (sections run along the top like a newspaper masthead), near-black "Monochrome" with a monospaced font and no sidebar (a command line at the bottom opens ⌘K for everything), dark green and brass "Study" with no sidebar (brass room plaques along the top: Desk, Shelf, Notes, Tasks, Archive; books stand on a shelf as spines, and a ribbon bookmark on each spine shows how far you have read; hover over a book and it slides off the shelf and turns its cover to you; click it and it flies to the middle of the window as a large cover with a translucent panel beside it: reading time, when you last read it, highlights and the notes with its quotes; quotes from books sit in notes like clippings pasted into a notebook), and quiet light "Zen" with no panels at all (only text and air: the whole menu hides in one breathing dot at the bottom, Home asks "What now?" in a few quiet lines, and a one-minute breathing exercise is a click away). A theme changes colors, the font and light or dark mode across the whole app.
+- A calm screen by default: Settings → "What to show on screen" brings back only what you want. The tab bar appears once you open a second tab, the back, forward and split buttons give way to ⌘[, ⌘] and ⌘\, "Saved" shows for a couple of seconds after an edit, and the word count, the page path, the library grid, each Today card, each sidebar section and the book progress bar (always or on hover) can be turned on or off. The library has a single "Create" button.
 - A **Today** screen: a capture field (tick "This is a task" to add it to today's tasks), Continue reading, today's tasks you can check off, the Inbox, and recent pages.
 
 ## Roadmap
