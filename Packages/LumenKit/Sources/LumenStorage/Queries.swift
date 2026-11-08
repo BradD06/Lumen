@@ -401,6 +401,17 @@ public struct TrashSnapshot: Equatable, Sendable {
     }
 }
 
+/// Книги на полке «Кабинета»: что читали недавно, стоит слева, дальше новые, ещё не открытые.
+public enum ShelfQuery {
+    public static func fetch(_ db: Database, limit: Int = 40) throws -> [Source] {
+        try Source
+            .filter(Column("deletedAt") == nil)
+            .order(sql: "lastOpenedAt IS NULL, lastOpenedAt DESC, createdAt DESC, rowid DESC")
+            .limit(limit)
+            .fetchAll(db)
+    }
+}
+
 /// Данные для главного экрана-дашборда.
 public struct HomeSnapshot: Equatable, Sendable {
     public var inboxCount: Int

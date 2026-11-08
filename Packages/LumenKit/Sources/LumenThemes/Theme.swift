@@ -198,7 +198,7 @@ extension Theme {
     public static let study = Theme(
         id: "study",
         name: "Кабинет",
-        caption: "Тёмно-зелёная библиотека: комнаты-таблички сверху, латунь",
+        caption: "Тёмно-зелёная библиотека: комнаты сверху, книжная полка, латунь",
         isDark: true,
         fontDesign: .serif,
         layout: .rooms,

@@ -84,6 +84,14 @@ struct LibraryView: View {
             if !usesList {
                 header
             }
+            // «Кабинет»: в корне библиотеки книги стоят на полке над остальным.
+            if theme.layout == .rooms, folderId == nil, !snapshot.isMissing {
+                BookShelf(database: database, onOpen: { onOpenSource($0) }) {
+                    isImporting = true
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+            }
             if snapshot.isMissing {
                 ContentUnavailableView {
                     Label("Папки больше нет", systemImage: "folder.badge.questionmark")
@@ -164,7 +172,7 @@ struct LibraryView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Назад")
                     }
-                    Text(snapshot.folder?.displayName ?? "Библиотека")
+                    Text(snapshot.folder?.displayName ?? (theme.layout == .rooms ? "Полка" : "Библиотека"))
                         .font(.largeTitle.weight(.bold))
                         .foregroundStyle(theme.textPrimary)
                         .lineLimit(1)

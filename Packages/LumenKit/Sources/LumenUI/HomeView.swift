@@ -26,6 +26,13 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 header
+                if isStudy {
+                    // «Кабинет»: сверху полка с книгами, ниже то, что лежит на столе.
+                    BookShelf(database: database, onOpen: onOpenSource) {
+                        appActions.create(.book)
+                    }
+                    deskLabel
+                }
                 CaptureField { text, asTask in appActions.capture(text, asTask) }
                 cards
                 if !snapshot.recent.isEmpty {
@@ -61,6 +68,17 @@ struct HomeView: View {
                 .foregroundStyle(theme.textPrimary)
         }
         .padding(.top, 8)
+    }
+
+    private var isStudy: Bool { theme.layout == .rooms }
+
+    private var deskLabel: some View {
+        Text("На столе")
+            .font(.caption.weight(.semibold))
+            .textCase(.uppercase)
+            .tracking(1.4)
+            .foregroundStyle(theme.accent.opacity(0.85))
+            .padding(.bottom, -10)
     }
 
     private var greeting: String {

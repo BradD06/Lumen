@@ -38,10 +38,14 @@ struct PhoneRootView: View {
     @State private var isCreating = false
     @State private var isImportingBook = false
     @State private var isSettingsPresented = false
+    @Environment(\.lumenTheme) private var theme
+
+    /// «Кабинет»: вкладки называются как комнаты.
+    private var isStudy: Bool { theme.layout == .rooms }
 
     var body: some View {
         TabView(selection: $tab) {
-            Tab("Сегодня", systemImage: "sun.max", value: PhoneTab.home) {
+            Tab(isStudy ? "Стол" : "Сегодня", systemImage: isStudy ? "lamp.desk" : "sun.max", value: PhoneTab.home) {
                 stack(.home) {
                     HomeView(
                         database: database,
@@ -55,18 +59,18 @@ struct PhoneRootView: View {
                     .overlay(alignment: .bottomTrailing) { createButton }
                 }
             }
-            Tab("Входящие", systemImage: "tray", value: PhoneTab.inbox) {
+            Tab(isStudy ? "Записки" : "Входящие", systemImage: isStudy ? "envelope" : "tray", value: PhoneTab.inbox) {
                 stack(.inbox) {
                     InboxView(database: database, onOpen: { push(.page($0)) }, onNewNote: newQuickNote)
                         .overlay(alignment: .bottomTrailing) { createButton }
                 }
             }
-            Tab("Задачи", systemImage: "checklist", value: PhoneTab.tasks) {
+            Tab(isStudy ? "Дела" : "Задачи", systemImage: "checklist", value: PhoneTab.tasks) {
                 stack(.tasks) {
                     TasksScreen(database: database, onOpenPage: { push(.page($0)) })
                 }
             }
-            Tab("Библиотека", systemImage: "books.vertical", value: PhoneTab.library) {
+            Tab(isStudy ? "Полка" : "Библиотека", systemImage: "books.vertical", value: PhoneTab.library) {
                 stack(.library) {
                     library(folderId: nil)
                 }
