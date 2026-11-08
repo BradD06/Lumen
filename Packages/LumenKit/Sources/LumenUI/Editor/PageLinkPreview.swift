@@ -6,7 +6,7 @@ import SwiftUI
 
 /// Карточка-подсказка у ссылки на страницу: название, когда меняли и начало текста.
 /// На Mac и iPad с курсором всплывает при наведении, на iPhone видна по долгому нажатию.
-struct PagePreviewCard: View {
+struct PageLinkPreview: View {
     let page: Page
     let database: AppDatabase
     /// Кнопки «Открыть» и «Открыть рядом». В превью долгого нажатия их нет:

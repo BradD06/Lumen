@@ -770,7 +770,7 @@ private struct PageLinkBlock: View {
         }
         .popover(isPresented: $isPreviewShown, arrowEdge: .bottom) {
             if let page {
-                PagePreviewCard(
+                PageLinkPreview(
                     page: page,
                     database: database,
                     onOpen: {
@@ -824,7 +824,7 @@ private struct BlockContextMenu<MenuItems: View>: ViewModifier {
             content.contextMenu {
                 menu
             } preview: {
-                PagePreviewCard(page: previewPage, database: database)
+                PageLinkPreview(page: previewPage, database: database)
             }
         } else {
             content.contextMenu { menu }
