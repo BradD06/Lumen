@@ -83,6 +83,8 @@ struct AppActions {
     var capture: @MainActor (_ text: String, _ asTask: Bool) -> Void = { _, _ in }
     var search: @MainActor () -> Void = {}
     var settings: @MainActor () -> Void = {}
+    /// Минута дыхания на весь экран («Дзен»), там, где есть окно, которое её покажет.
+    var breathe: @MainActor () -> Void = {}
 }
 
 extension EnvironmentValues {

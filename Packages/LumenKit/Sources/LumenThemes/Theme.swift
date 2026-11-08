@@ -23,6 +23,8 @@ public struct Theme: Sendable, Equatable, Identifiable {
         case sectionBar
         /// Без боковой панели: сверху латунные таблички-комнаты («Кабинет»).
         case rooms
+        /// Без панелей: только текст, меню прячется в одну дышащую точку внизу («Дзен»).
+        case orb
 
         /// Боковая панель спрятана, навигация в своей строке.
         public var hidesSidebar: Bool { self != .standard }
@@ -226,9 +228,10 @@ extension Theme {
     public static let zen = Theme(
         id: "zen",
         name: "Дзен",
-        caption: "Светлая и тихая: камень, шалфей, много воздуха",
+        caption: "Только текст и воздух: меню в одной дышащей точке внизу",
         isDark: false,
         fontDesign: .serif,
+        layout: .orb,
         backgroundStops: [Color(hex: 0xF4F2ED), Color(hex: 0xF2F0EB), Color(hex: 0xEEEBE4)],
         glow: Color(hex: 0xB9C8B4),
         glowStrength: 0.22,

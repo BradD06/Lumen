@@ -38,6 +38,8 @@ struct PhoneRootView: View {
     @State private var isCreating = false
     @State private var isImportingBook = false
     @State private var isSettingsPresented = false
+    /// Минута дыхания «Дзена» поверх всего.
+    @State private var isBreathing = false
     @Environment(\.lumenTheme) private var theme
 
     /// «Кабинет»: вкладки называются как комнаты.
@@ -89,6 +91,14 @@ struct PhoneRootView: View {
         // Книги из «Файлов», Telegram и «Поделиться», ссылки lumen:// на страницы, книги и цитаты.
         .opensIncomingLinks(database: database, open: openIncoming)
         .environment(\.appActions, appActions)
+        .overlay {
+            if isBreathing {
+                BreathingView {
+                    withAnimation(.easeInOut(duration: 0.6)) { isBreathing = false }
+                }
+                .transition(.opacity)
+            }
+        }
         .sheet(isPresented: $isCreating) {
             CreateSheet(
                 onCapture: { text, asTask in creator.capture(text, asTask: asTask) },
@@ -129,7 +139,8 @@ struct PhoneRootView: View {
             },
             capture: { text, asTask in creator.capture(text, asTask: asTask) },
             search: { tab = .search },
-            settings: { isSettingsPresented = true }
+            settings: { isSettingsPresented = true },
+            breathe: { withAnimation(.easeInOut(duration: 0.6)) { isBreathing = true } }
         )
     }
 

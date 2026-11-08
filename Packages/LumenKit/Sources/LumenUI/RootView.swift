@@ -39,6 +39,8 @@ public struct RootView: View {
     @State private var windowWidth: CGFloat = 0
     private let focusMode = FocusModeState.shared
     /// К какому краю сейчас держат вкладку, и ширина области панелей для расчёта краёв.
+    /// Минута дыхания поверх всего окна.
+    @State private var isBreathing = false
     @State private var tabDropSide: TabDropSide?
     @State private var panesWidth: CGFloat = 0
     #if os(iOS)
@@ -112,6 +114,7 @@ public struct RootView: View {
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
+                .overlay(alignment: .bottom) { zenOrb }
                 .safeAreaInset(edge: .leading, spacing: 0) {
                     if showsRail {
                         IconRail(
@@ -175,6 +178,14 @@ public struct RootView: View {
                         .help(workspace.isSplit ? "Убрать вторую панель (⌘\\)" : "Разделить экран на две панели (⌘\\)")
                     }
                 }
+        }
+        .overlay {
+            if isBreathing {
+                BreathingView {
+                    withAnimation(.easeInOut(duration: 0.6)) { isBreathing = false }
+                }
+                .transition(.opacity)
+            }
         }
         .environment(\.workspaceActions, workspaceActions)
         .environment(\.appActions, appActions(pane: nil))
@@ -454,10 +465,31 @@ public struct RootView: View {
                     onSettings: { isSettingsPresented = true }
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
-            case .standard, .commandLine:
+            case .standard, .commandLine, .orb:
                 EmptyView()
             }
         }
+    }
+
+    /// «Дзен»: вся навигация в одной дышащей точке внизу.
+    @ViewBuilder
+    private var zenOrb: some View {
+        if theme.layout == .orb, !focusMode.isOn {
+            ZenOrb(
+                selection: selection,
+                onSelect: { selection = $0 },
+                onCreate: { newQuickNote() },
+                onSearch: { isSearchPresented = true },
+                onBreathe: startBreathing,
+                onSettings: { isSettingsPresented = true }
+            )
+            .padding(.bottom, 18)
+            .transition(.opacity)
+        }
+    }
+
+    private func startBreathing() {
+        withAnimation(.easeInOut(duration: 0.6)) { isBreathing = true }
     }
 
     /// Тема устроена как командная строка («Монохром»): без сайдбара и полосы значков.
@@ -514,7 +546,8 @@ public struct RootView: View {
             },
             capture: { text, asTask in creator(pane: pane).capture(text, asTask: asTask) },
             search: { isSearchPresented = true },
-            settings: { isSettingsPresented = true }
+            settings: { isSettingsPresented = true },
+            breathe: startBreathing
         )
     }
 
@@ -525,6 +558,14 @@ public struct RootView: View {
     /// Действия ⌘K, которым нужно окно: панели и режим фокуса.
     private var paletteExtras: [PaletteCommand] {
         [
+            PaletteCommand(
+                id: "breathe",
+                title: "Минута дыхания",
+                systemImage: "wind",
+                shortcut: nil,
+                keywords: ["дзен", "тишина", "успокоиться", "пауза", "вдох"],
+                run: startBreathing
+            ),
             PaletteCommand(
                 id: "split",
                 title: workspace.isSplit ? "Убрать вторую панель" : "Разделить экран на две панели",
