@@ -65,3 +65,18 @@ struct BookStatsTextTests {
         #expect(style.coverWidth > style.width)
     }
 }
+
+struct BookShowcaseLayoutTests {
+    @Test func wideWindowPutsCoverAndStatsSideBySide() {
+        let layout = BookShowcaseLayout(size: CGSize(width: 1400, height: 900))
+        #expect(layout.isSideBySide)
+        #expect(layout.coverHeight == 520, "обложка крупная, но не выше 520")
+        #expect(layout.coverWidth == (520 * 0.68).rounded())
+    }
+
+    @Test func narrowWindowStacksThemAndShrinksTheCover() {
+        let layout = BookShowcaseLayout(size: CGSize(width: 420, height: 800))
+        #expect(!layout.isSideBySide)
+        #expect(layout.coverHeight <= 300)
+    }
+}

@@ -109,6 +109,7 @@ struct LibraryView: View {
             }
         }
         .background(ThemedBackground())
+        .bookShowcaseHost(database: database, onOpenBook: onOpenSource)
         .navigationTitle(snapshot.folder?.displayName ?? "Библиотека")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)

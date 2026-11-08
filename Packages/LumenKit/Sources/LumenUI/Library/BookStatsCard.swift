@@ -12,6 +12,8 @@ struct BookStatsCard: View {
     var onOpenBook: () -> Void
     var onOpenPage: (UUID) -> Void
     var onOpenDashboard: () -> Void
+    /// Полупрозрачная панель рядом с крупной обложкой, а не отдельное окошко.
+    var isPanel = false
 
     @State private var snapshot = SourceDashboardSnapshot.empty
     @Environment(\.lumenTheme) private var theme
@@ -32,9 +34,19 @@ struct BookStatsCard: View {
                     .frame(maxWidth: .infinity, minHeight: 120)
             }
         }
-        .padding(16)
-        .frame(width: 310, alignment: .leading)
-        .background(theme.backgroundStops.first ?? .clear)
+        .padding(isPanel ? 22 : 16)
+        .frame(width: isPanel ? 340 : 310, alignment: .leading)
+        .background {
+            if isPanel {
+                let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+                shape.fill(.ultraThinMaterial)
+                    .overlay(shape.fill((theme.backgroundStops.first ?? .clear).opacity(0.55)))
+                    .overlay(shape.strokeBorder(theme.contrast.opacity(0.12), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
+            } else {
+                theme.backgroundStops.first ?? .clear
+            }
+        }
         .environment(\.colorScheme, theme.colorScheme)
         .task { await observe() }
         .accessibilityIdentifier("bookStatsCard")

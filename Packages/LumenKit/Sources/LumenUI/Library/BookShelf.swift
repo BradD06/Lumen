@@ -5,21 +5,17 @@ import LumenThemes
 import SwiftUI
 
 /// Книжная полка «Кабинета»: книги стоят корешками, лента-закладка на корешке
-/// спускается до того места, докуда дочитано. Нажатие открывает книгу, «+» добавляет новую.
+/// спускается до того места, докуда дочитано. Нажатие выносит книгу в центр окна, «+» добавляет новую.
 struct BookShelf: View {
     let database: AppDatabase
     var onOpen: (UUID) -> Void
     var onAdd: () -> Void
 
     @State private var books: [Source] = []
-    /// Книга, которую «взяли с полки»: она выдвинута и повёрнута обложкой.
-    @State private var pulledId: UUID?
-    /// Над какой книгой открыто окно со статистикой.
-    @State private var cardId: UUID?
-    @State private var isOverCard = false
-    @State private var hoverTask: Task<Void, Never>?
+    /// Книга под мышью: она выдвинута и повёрнута обложкой.
+    @State private var hoveredId: UUID?
     @Environment(\.lumenTheme) private var theme
-    @Environment(\.appActions) private var appActions
+    @Environment(\.bookShowcase) private var showcase
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -55,86 +51,43 @@ struct BookShelf: View {
         .accessibilityIdentifier("bookShelf")
     }
 
-    /// Книга на полке. Мышь над корешком: книга выдвигается и поворачивается обложкой,
-    /// чуть позже над ней открывается окно со статистикой чтения.
-    /// На iPhone и iPad без мыши то же окно по долгому нажатию.
+    /// Книга на полке. Мышь над корешком: книга выдвигается и поворачивается обложкой.
+    /// Нажатие выносит её крупно в центр окна, справа окно со статистикой (`BookShowcase`).
+    /// Где витрины нет, нажатие сразу открывает книгу.
+    @ViewBuilder
     private func shelfBook(_ book: Source) -> some View {
+        let isShown = showcase?.selectedId == book.id
         Button {
-            onOpen(book.id)
+            if let showcase {
+                hoveredId = nil
+                showcase.show(book)
+            } else {
+                onOpen(book.id)
+            }
         } label: {
-            ShelfBook(source: book, attachments: database.attachments, isPulled: pulledId == book.id)
+            if isShown, showcase != nil {
+                // Книга сейчас в центре окна: на полке пустое место под неё.
+                Color.clear.frame(width: BookSpineStyle(source: book).width, height: BookSpineStyle(source: book).height)
+            } else if let showcase {
+                ShelfBook(source: book, attachments: database.attachments, isPulled: hoveredId == book.id)
+                    .matchedGeometryEffect(id: book.id, in: showcase.namespace)
+            } else {
+                ShelfBook(source: book, attachments: database.attachments, isPulled: hoveredId == book.id)
+            }
         }
         .buttonStyle(SpineButtonStyle())
-        .zIndex(pulledId == book.id ? 1 : 0)
+        .zIndex(hoveredId == book.id ? 1 : 0)
         .accessibilityLabel(BookSpineStyle.summary(book))
-        .onHover { hovering in hover(book.id, hovering) }
-        #if os(iOS)
-        .simultaneousGesture(LongPressGesture(minimumDuration: 0.4).onEnded { _ in
-            withAnimation(.spring(duration: 0.45, bounce: 0.2)) { pulledId = book.id }
-            cardId = book.id
-        })
-        #endif
-        .popover(isPresented: cardBinding(book.id), arrowEdge: .top) {
-            BookStatsCard(
-                database: database,
-                sourceId: book.id,
-                onOpenBook: {
-                    close()
-                    onOpen(book.id)
-                },
-                onOpenPage: { id in
-                    close()
-                    appActions.open(.page(id))
-                },
-                onOpenDashboard: {
-                    close()
-                    appActions.open(.sourceInfo(book.id))
+        .accessibilityHint("Показать книгу и статистику чтения")
+        .onHover { hovering in
+            withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+                if hovering {
+                    hoveredId = book.id
+                } else if hoveredId == book.id {
+                    hoveredId = nil
                 }
-            )
-            .onHover { hovering in
-                isOverCard = hovering
-                if !hovering { scheduleClose() }
             }
-            .presentationCompactAdaptation(.popover)
         }
-    }
-
-    private func cardBinding(_ id: UUID) -> Binding<Bool> {
-        Binding {
-            cardId == id
-        } set: { shown in
-            if !shown, cardId == id { close() }
-        }
-    }
-
-    private func hover(_ id: UUID, _ hovering: Bool) {
-        hoverTask?.cancel()
-        if hovering {
-            if cardId != nil, cardId != id { cardId = nil }
-            withAnimation(.spring(duration: 0.45, bounce: 0.2)) { pulledId = id }
-            hoverTask = Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(450))
-                if !Task.isCancelled, pulledId == id { cardId = id }
-            }
-        } else {
-            scheduleClose()
-        }
-    }
-
-    /// Мышь ушла с книги: если она не над окном статистики, книга встаёт обратно.
-    private func scheduleClose() {
-        hoverTask?.cancel()
-        hoverTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(320))
-            if !Task.isCancelled, !isOverCard { close() }
-        }
-    }
-
-    private func close() {
-        hoverTask?.cancel()
-        cardId = nil
-        isOverCard = false
-        withAnimation(.spring(duration: 0.4, bounce: 0.15)) { pulledId = nil }
     }
 
     /// Пустое место на полке с «+»: добавить книгу или файл.

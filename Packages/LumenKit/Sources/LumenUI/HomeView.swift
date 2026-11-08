@@ -64,6 +64,8 @@ struct HomeView: View {
         }
         .task { await observePages() }
         .task { await observeReading() }
+        // Книга, вынутая с полки «Кабинета», встаёт посередине экрана.
+        .bookShowcaseHost(database: database, onOpenBook: onOpenSource)
     }
 
     private var header: some View {
