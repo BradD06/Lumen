@@ -550,18 +550,7 @@ public struct RootView: View {
 
     /// Короткое «где я» для командной строки.
     private var locationTitle: String {
-        let place: String
-        switch selection {
-        case .home, nil: place = "сегодня"
-        case .inbox: place = "входящие"
-        case .tasks: place = "задачи"
-        case .library: place = "библиотека"
-        case .trash: place = "корзина"
-        case .page: place = "страница"
-        case .source: place = "книга"
-        case .sourceInfo: place = "о книге"
-        }
-        return "lumen / \(place)"
+        "lumen / \(SidebarItem.commandLinePlace(selection))"
     }
 
     /// Полоса значков вместо сайдбара: только на iPad, когда сайдбар спрятан.
@@ -611,14 +600,7 @@ public struct RootView: View {
     /// Действия ⌘K, которым нужно окно: панели и режим фокуса.
     private var paletteExtras: [PaletteCommand] {
         var list: [PaletteCommand] = [
-            PaletteCommand(
-                id: "breathe",
-                title: "Минута дыхания",
-                systemImage: "wind",
-                shortcut: nil,
-                keywords: ["дзен", "тишина", "успокоиться", "пауза", "вдох"],
-                run: startBreathing
-            ),
+            .breathe(startBreathing),
             PaletteCommand(
                 id: "split",
                 title: workspace.isSplit ? "Убрать вторую панель" : "Разделить экран на две панели",
@@ -697,15 +679,7 @@ public struct RootView: View {
             ))
         }
         list += currentItemCommands
-        list += Theme.all.map { option in
-            PaletteCommand(
-                id: "theme-\(option.id)",
-                title: "Тема: \(option.name)",
-                systemImage: option.id == theme.id ? "checkmark.circle.fill" : "paintpalette",
-                keywords: ["тема", "оформление", "цвет", "вид"],
-                run: { UserDefaults.standard.set(option.id, forKey: Theme.storageKey) }
-            )
-        }
+        list += PaletteCommand.themes(current: theme.id)
         list.append(
             PaletteCommand(
                 id: "triage",

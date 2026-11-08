@@ -8,9 +8,10 @@ import UniformTypeIdentifiers
 import AppKit
 #endif
 
-/// Книжная полка «Кабинета»: книги стоят корешками, лента-закладка на корешке
+/// Книжные полки «Кабинета»: книги стоят корешками, лента-закладка на корешке
 /// спускается до того места, докуда дочитано. Нажатие выносит книгу в центр окна, «+» добавляет новую.
-/// Книги можно перетаскивать в свой порядок, кнопки над полкой сортируют их иначе.
+/// Книги можно перетаскивать в свой порядок и с полки на полку, кнопки сверху сортируют их иначе.
+/// Своя полка это папка библиотеки: книга, поставленная на полку, лежит в её папке.
 struct BookShelf: View {
     static let sortKey = "shelf.sort"
 
@@ -18,18 +19,28 @@ struct BookShelf: View {
     var onOpen: (UUID) -> Void
     var onAdd: () -> Void
 
-    @State private var books: [Source] = []
+    @State private var snapshot = ShelfSnapshot.empty
     /// Книга под мышью: она выдвинута и повёрнута обложкой.
     @State private var hoveredId: UUID?
-    /// Книга, которую тащат по полке.
+    /// Книга, которую тащат по полкам.
     @State private var draggingId: UUID?
-    /// Порядок, пока книгу тащат и пока база не вернула новый.
-    @State private var dragOrder: [UUID]?
+    /// Порядок на полке, над которой сейчас книга, пока её тащат и пока база не вернула новый.
+    @State private var dragOrders: [UUID?: [UUID]] = [:]
+    /// Окно с названием: новая полка или переименование.
+    @State private var naming: ShelfNaming?
+    @State private var shelfName = ""
     @AppStorage(BookShelf.sortKey) private var sort = ShelfSort.recent
     @Environment(\.lumenTheme) private var theme
     @Environment(\.bookShowcase) private var showcase
+    @Environment(\.appActions) private var appActions
+
+    private enum ShelfNaming: Equatable {
+        case new
+        case rename(Folder)
+    }
 
     var body: some View {
+        let groups = snapshot.groups
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
                 ViewThatFits(in: .horizontal) {
@@ -40,60 +51,150 @@ struct BookShelf: View {
                 ShelfSortPicker(sort: sort, onPick: choose)
                     .layoutPriority(1)
             }
+            ForEach(groups) { group in
+                shelfRow(group, titled: groups.count > 1)
+            }
+            newShelfButton
+        }
+        .task { await observe() }
+        .onChange(of: snapshot) {
+            // База вернула новый порядок: дальше полки показывают его.
+            if draggingId == nil { dragOrders = [:] }
+        }
+        .alert(naming == .new ? "Новая полка" : "Название полки", isPresented: Binding(
+            get: { naming != nil },
+            set: { if !$0 { naming = nil } }
+        )) {
+            TextField("Например, «Философия»", text: $shelfName)
+            Button(naming == .new ? "Поставить" : "Готово") { commitName() }
+            Button("Отмена", role: .cancel) { naming = nil }
+        } message: {
+            if naming == .new {
+                Text("Полка это папка в библиотеке: книги, поставленные на неё, лежат в этой папке.")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("bookShelf")
+    }
+
+    /// Одна полка: табличка с названием, корешки и доска.
+    private func shelfRow(_ group: ShelfGroup, titled: Bool) -> some View {
+        let shown = shownBooks(group)
+        return VStack(alignment: .leading, spacing: 4) {
+            if titled {
+                shelfTitle(group)
+            }
             VStack(spacing: 0) {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    let shown = shownBooks
                     HStack(alignment: .bottom, spacing: ShelfLayout.spacing) {
                         ForEach(Array(shown.enumerated()), id: \.element.id) { index, book in
-                            shelfBook(book, index: index, count: shown.count)
+                            shelfBook(book, index: index, count: shown.count, group: group)
                         }
-                        addSpine
-                        if books.isEmpty {
-                            Text("Добавьте первую книгу, и она встанет на полку")
+                        if group.shelf == nil {
+                            addSpine
+                        }
+                        if shown.isEmpty {
+                            Text(emptyText(group))
                                 .font(.callout.italic())
                                 .foregroundStyle(theme.textSecondary)
                                 .padding(.leading, 12)
                                 .padding(.bottom, 16)
                         }
                     }
+                    // Пустая полка тоже принимает книги: высоты хватает, чтобы на неё попасть.
+                    .frame(minHeight: 110, alignment: .bottomLeading)
                     .padding(.horizontal, ShelfLayout.leading)
                     // Место сверху, чтобы вынутая книга не упиралась в край.
-                    .padding(.top, 26)
+                    .padding(.top, titled ? 18 : 26)
                     .onDrop(of: [.text], delegate: ShelfDropDelegate(
                         draggingId: $draggingId,
-                        order: $dragOrder,
+                        order: orderBinding(group.id),
                         shown: shown.map(\.id),
-                        widths: Dictionary(uniqueKeysWithValues: shown.map { ($0.id, BookSpineStyle(source: $0).width) }),
-                        onDrop: arrange
+                        widths: spineWidths,
+                        onDrop: { place($0, on: group) }
                     ))
                 }
                 .keyHintClip()
                 plank
             }
         }
-        .task { await observe() }
-        .onChange(of: books) {
-            // База вернула новый порядок: дальше полка показывает его.
-            if draggingId == nil { dragOrder = nil }
+    }
+
+    private func emptyText(_ group: ShelfGroup) -> String {
+        if group.shelf != nil { return "Пустая полка: перетащите сюда книги" }
+        if snapshot.books.isEmpty { return "Добавьте первую книгу, и она встанет на полку" }
+        return "Здесь встанут книги без своей полки"
+    }
+
+    /// Латунная табличка полки. У своей полки она открывает меню: переименовать, открыть папку, убрать.
+    @ViewBuilder
+    private func shelfTitle(_ group: ShelfGroup) -> some View {
+        if let shelf = group.shelf {
+            Menu {
+                Button("Переименовать", systemImage: "pencil") { startNaming(.rename(shelf)) }
+                Button("Открыть папку полки", systemImage: "folder") { appActions.open(.library(shelf.id)) }
+                Divider()
+                Button("Убрать полку", systemImage: "minus.circle") { unshelve(shelf) }
+            } label: {
+                plaque(shelf.displayName, showsMenu: true)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Полка: переименовать, открыть папку или убрать полку (книги останутся в папке)")
+            .accessibilityLabel("Полка «\(shelf.displayName)»")
+        } else {
+            plaque("Общая полка", showsMenu: false)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("bookShelf")
+    }
+
+    private func plaque(_ title: String, showsMenu: Bool) -> some View {
+        HStack(spacing: 5) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .textCase(.uppercase)
+                .tracking(1.2)
+                .lineLimit(1)
+            if showsMenu {
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.bold))
+                    .opacity(0.7)
+            }
+        }
+        .foregroundStyle(theme.accent)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(theme.accent.opacity(0.12), in: Capsule())
+        .overlay(Capsule().strokeBorder(theme.accent.opacity(0.35), lineWidth: 1))
+        .padding(.leading, ShelfLayout.leading)
+    }
+
+    private var newShelfButton: some View {
+        Button {
+            startNaming(.new)
+        } label: {
+            Label("Новая полка", systemImage: "plus")
+                .font(.callout)
+                .foregroundStyle(theme.accent)
+                .padding(.leading, ShelfLayout.leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Завести полку, чтобы разложить книги по темам")
+        .keyHint("Новая полка") { startNaming(.new) }
+        .accessibilityIdentifier("newShelf")
     }
 
     /// Книга на полке. Мышь над корешком: книга выдвигается и поворачивается обложкой.
     /// Нажатие выносит её крупно в центр окна, справа окно со статистикой (`BookShowcase`).
     /// Где витрины нет, нажатие сразу открывает книгу.
     @ViewBuilder
-    private func shelfBook(_ book: Source, index: Int, count: Int) -> some View {
+    private func shelfBook(_ book: Source, index: Int, count: Int, group: ShelfGroup) -> some View {
         let isShown = showcase?.selectedId == book.id
-        let isDragged = draggingId == book.id && dragOrder != nil
+        let isDragged = draggingId == book.id && dragOrders[group.id] != nil
         Button {
-            if let showcase {
-                hoveredId = nil
-                showcase.show(book)
-            } else {
-                onOpen(book.id)
-            }
+            show(book)
         } label: {
             if isShown, showcase != nil {
                 // Книга сейчас в центре окна: на полке пустое место под неё.
@@ -106,29 +207,32 @@ struct BookShelf: View {
             }
         }
         .buttonStyle(SpineButtonStyle())
-        .keyHint(book.displayTitle) {
-            if let showcase {
-                hoveredId = nil
-                showcase.show(book)
-            } else {
-                onOpen(book.id)
-            }
-        }
+        .keyHint(book.displayTitle) { show(book) }
         // Там, где встанет перетаскиваемая книга, виден её бледный след.
         .opacity(isDragged ? 0.35 : 1)
         .onDrag {
             hoveredId = nil
             draggingId = book.id
-            dragOrder = shownBooks.map(\.id)
+            dragOrders = [group.id: shownBooks(group).map(\.id)]
             return NSItemProvider(object: book.id.uuidString as NSString)
         } preview: {
             BookSpine(source: book, attachments: database.attachments)
         }
         .contextMenu {
-            Button("Поставить левее", systemImage: "arrow.left") { nudge(book.id, by: -1) }
+            Button("Поставить левее", systemImage: "arrow.left") { nudge(book.id, by: -1, in: group) }
                 .disabled(index == 0)
-            Button("Поставить правее", systemImage: "arrow.right") { nudge(book.id, by: 1) }
+            Button("Поставить правее", systemImage: "arrow.right") { nudge(book.id, by: 1, in: group) }
                 .disabled(index == count - 1)
+            let others = snapshot.groups.filter { $0.id != group.id }
+            if !others.isEmpty {
+                Menu("Переставить на полку", systemImage: "books.vertical") {
+                    ForEach(others) { target in
+                        Button(target.shelf?.displayName ?? "Общая полка") {
+                            place(shownBooks(target).map(\.id) + [book.id], on: target)
+                        }
+                    }
+                }
+            }
         }
         .zIndex(hoveredId == book.id ? 1 : 0)
         .accessibilityLabel(BookSpineStyle.summary(book))
@@ -151,6 +255,15 @@ struct BookShelf: View {
         }
     }
 
+    private func show(_ book: Source) {
+        if let showcase {
+            hoveredId = nil
+            showcase.show(book)
+        } else {
+            onOpen(book.id)
+        }
+    }
+
     /// Книгу сейчас тащат. На Mac это видно по зажатой кнопке мыши: если перетаскивание
     /// бросили за полкой, полка об этом не узнаёт, а кнопка уже отпущена.
     private var isDragging: Bool {
@@ -158,7 +271,7 @@ struct BookShelf: View {
         #if os(macOS)
         return NSEvent.pressedMouseButtons != 0
         #else
-        return dragOrder != nil
+        return !dragOrders.isEmpty
         #endif
     }
 
@@ -171,44 +284,104 @@ struct BookShelf: View {
             .foregroundStyle(theme.accent.opacity(0.85))
     }
 
-    /// Книги в том порядке, в каком стоят: пока книгу тащат, в порядке перетаскивания.
-    private var shownBooks: [Source] {
-        let sorted = sort.sorted(books)
-        guard let dragOrder else { return sorted }
-        let byId = Dictionary(books.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let placed = dragOrder.compactMap { byId[$0] }
-        let placedIds = Set(dragOrder)
+    private var spineWidths: [UUID: CGFloat] {
+        Dictionary(snapshot.books.map { ($0.id, BookSpineStyle(source: $0).width) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    private func orderBinding(_ id: UUID?) -> Binding<[UUID]?> {
+        Binding(
+            get: { dragOrders[id] },
+            set: { dragOrders[id] = $0 }
+        )
+    }
+
+    /// Книги полки в том порядке, в каком стоят: пока книгу тащат, в порядке перетаскивания
+    /// (тогда на полке может стоять и книга с другой полки).
+    private func shownBooks(_ group: ShelfGroup) -> [Source] {
+        let sorted = sort.sorted(group.books)
+        guard let order = dragOrders[group.id] else { return sorted }
+        let byId = Dictionary(snapshot.books.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let placed = order.compactMap { byId[$0] }
+        let placedIds = Set(order)
         return placed + sorted.filter { !placedIds.contains($0.id) }
     }
 
     private func choose(_ option: ShelfSort) {
         withAnimation(.snappy) {
-            dragOrder = nil
+            dragOrders = [:]
             sort = option
         }
     }
 
-    /// Книгу поставили на новое место: полка переходит на свой порядок и запоминает его.
-    private func arrange(_ order: [UUID]) {
+    /// Книги встали на полку в порядке `order`: пришедшие с других полок переезжают в её папку,
+    /// полки переходят на свой порядок и запоминают его.
+    private func place(_ order: [UUID], on group: ShelfGroup) {
+        let present = Set(group.books.map(\.id))
+        let arrivals = order.filter { !present.contains($0) }
         withAnimation(.snappy) {
-            dragOrder = order
+            dragOrders = [group.id: order]
             sort = .custom
         }
         Task {
             do {
+                for id in arrivals {
+                    try await database.moveSource(id, toFolder: group.shelf?.id)
+                }
                 try await database.arrangeShelf(order)
             } catch {
-                lumenLog.error("Shelf arrange failed: \(String(describing: error), privacy: .public)")
+                NoticeCenter.shared.report("Не удалось переставить книгу", error)
             }
         }
     }
 
     /// «Левее» и «Правее» из меню книги: то же, что перетащить её на одно место.
-    private func nudge(_ id: UUID, by step: Int) {
-        var order = shownBooks.map(\.id)
+    private func nudge(_ id: UUID, by step: Int, in group: ShelfGroup) {
+        var order = shownBooks(group).map(\.id)
         guard let index = order.firstIndex(of: id), order.indices.contains(index + step) else { return }
         order.swapAt(index, index + step)
-        arrange(order)
+        place(order, on: group)
+    }
+
+    private func startNaming(_ value: ShelfNaming) {
+        if case .rename(let shelf) = value {
+            shelfName = shelf.name
+        } else {
+            shelfName = ""
+        }
+        naming = value
+    }
+
+    private func commitName() {
+        let value = naming
+        naming = nil
+        let name = shelfName.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            do {
+                switch value {
+                case .new:
+                    try await database.createShelf(name: name.isEmpty ? "Новая полка" : name)
+                    LumenSounds.play(.create)
+                case .rename(let shelf):
+                    guard !name.isEmpty else { return }
+                    try await database.renameFolder(shelf.id, name: name)
+                case nil:
+                    break
+                }
+            } catch {
+                NoticeCenter.shared.report("Не удалось сохранить полку", error)
+            }
+        }
+    }
+
+    /// Полка исчезает, папка с книгами остаётся в библиотеке; книги встают на общую полку.
+    private func unshelve(_ shelf: Folder) {
+        Task {
+            do {
+                try await database.setFolderShelf(shelf.id, isShelf: false)
+            } catch {
+                NoticeCenter.shared.report("Не удалось убрать полку", error)
+            }
+        }
     }
 
     /// Пустое место на полке с «+»: добавить книгу или файл.
@@ -247,10 +420,10 @@ struct BookShelf: View {
     }
 
     private func observe() async {
-        let observation = ValueObservation.tracking { db in try ShelfQuery.fetch(db) }
+        let observation = ValueObservation.tracking { db in try ShelfQuery.snapshot(db) }
         do {
             for try await value in observation.values(in: database.reader) {
-                books = value
+                snapshot = value
             }
         } catch {
             lumenLog.error("Shelf observation failed: \(String(describing: error), privacy: .public)")

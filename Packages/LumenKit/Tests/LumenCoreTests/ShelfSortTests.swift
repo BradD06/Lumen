@@ -47,3 +47,14 @@ struct ShelfSortTests {
         #expect(fresh == fresh.sorted() && Set(fresh).count == 3)
     }
 }
+
+struct ShelfGroupTests {
+    @Test func commonShelfComesFirstEvenWhenEmpty() {
+        let shelf = Folder(name: "Полка", isShelf: true)
+        let book = Source(title: "Книга", format: .epub, file: "a.epub", originalName: "a.epub", folderId: shelf.id)
+        let groups = ShelfGroup.make(books: [book], shelves: [shelf])
+        #expect(groups.map(\.id) == [nil, shelf.id])
+        #expect(groups[0].books.isEmpty)
+        #expect(groups[1].books.map(\.id) == [book.id])
+    }
+}

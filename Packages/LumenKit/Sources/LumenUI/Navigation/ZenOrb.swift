@@ -24,6 +24,12 @@ struct ZenOrb: View {
                         orb
                         items(ZenMenuItem.right)
                     }
+                    // iPhone: места сверху, действия под ними, точка внизу.
+                    VStack(spacing: 2) {
+                        HStack(spacing: 0) { items(ZenMenuItem.left) }
+                        HStack(spacing: 0) { items(ZenMenuItem.right) }
+                        orb
+                    }
                     VStack(spacing: 2) {
                         items(ZenMenuItem.left + ZenMenuItem.right)
                         orb

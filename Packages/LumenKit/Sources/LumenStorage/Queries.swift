@@ -424,6 +424,32 @@ public enum ShelfQuery {
             .limit(limit)
             .fetchAll(db)
     }
+
+    /// Все книги и все полки «Кабинета» (полки в том порядке, в каком их завели).
+    public static func snapshot(_ db: Database) throws -> ShelfSnapshot {
+        ShelfSnapshot(
+            books: try fetch(db),
+            shelves: try Folder
+                .filter(Column("isShelf") == true && Column("deletedAt") == nil)
+                .order(Column("createdAt"), Column("name"))
+                .fetchAll(db)
+        )
+    }
+}
+
+/// Книги и полки для «Кабинета».
+public struct ShelfSnapshot: Equatable, Sendable {
+    public var books: [Source]
+    public var shelves: [Folder]
+
+    public static let empty = ShelfSnapshot(books: [], shelves: [])
+
+    public init(books: [Source], shelves: [Folder]) {
+        self.books = books
+        self.shelves = shelves
+    }
+
+    public var groups: [ShelfGroup] { ShelfGroup.make(books: books, shelves: shelves) }
 }
 
 /// Данные для главного экрана-дашборда.

@@ -162,3 +162,19 @@ struct AppIconTests {
         #expect(suffixes == ["Paper", "Mono", "Study", "Zen"])
     }
 }
+
+struct CommandLinePlaceTests {
+    @Test func commandLineSaysWhereYouAre() {
+        #expect(SidebarItem.commandLinePlace(nil) == "сегодня")
+        #expect(SidebarItem.commandLinePlace(.inbox) == "входящие")
+        #expect(SidebarItem.commandLinePlace(.library(UUID())) == "библиотека")
+        #expect(SidebarItem.commandLinePlace(.source(UUID(), highlight: nil)) == "книга")
+    }
+
+    @Test @MainActor func everyThemeCanBePickedFromCommands() {
+        let commands = PaletteCommand.themes(current: Theme.all[0].id)
+        #expect(commands.count == Theme.all.count)
+        #expect(commands.first?.systemImage == "checkmark.circle.fill")
+        #expect(commands.allSatisfy { $0.matches("тема") })
+    }
+}

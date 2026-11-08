@@ -76,3 +76,84 @@ struct CommandLineBar: View {
         .foregroundStyle(theme.textSecondary)
     }
 }
+
+extension SidebarItem {
+    /// Короткое «где я» для командной строки «Монохрома»: «сегодня», «книга».
+    static func commandLinePlace(_ item: SidebarItem?) -> String {
+        switch item {
+        case .home, nil: "сегодня"
+        case .inbox: "входящие"
+        case .tasks: "задачи"
+        case .library: "библиотека"
+        case .trash: "корзина"
+        case .page: "страница"
+        case .source: "книга"
+        case .sourceInfo: "о книге"
+        }
+    }
+}
+
+#if os(iOS)
+
+/// «Монохром» на iPhone: вместо вкладок одна строка внизу, как приглашение терминала.
+/// Нажатие открывает команды и поиск (то же, что ⌘K на Mac), «+» сразу начинает заметку.
+struct PhoneCommandBar: View {
+    let location: String
+    var onOpen: () -> Void
+    var onNewNote: () -> Void
+
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button(action: onOpen) {
+                HStack(spacing: 8) {
+                    Text("›")
+                        .fontWeight(.bold)
+                        .foregroundStyle(theme.accent)
+                    Text(location)
+                        .foregroundStyle(theme.textPrimary)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                    Text("что сделать?")
+                        .foregroundStyle(theme.textSecondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Командная строка, \(location)")
+            .accessibilityHint("Открывает поиск и команды: перейти, создать, найти")
+            .accessibilityIdentifier("commandLineBar")
+
+            Button(action: onNewNote) {
+                Image(systemName: "plus")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(theme.accent)
+                    .frame(width: 40, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Новая заметка")
+        }
+        .font(.system(.callout, design: .monospaced))
+        .padding(.leading, 14)
+        .padding(.trailing, 4)
+        .frame(height: 46)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(theme.menuFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(theme.cardStroke, lineWidth: 1)
+                )
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+        .padding(.bottom, 6)
+    }
+}
+
+#endif
