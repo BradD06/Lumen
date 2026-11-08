@@ -322,6 +322,8 @@ private struct PaneHeaderButton: View {
 /// свои кнопки в панель окна, иначе в разделённом экране они бы задвоились.
 extension EnvironmentValues {
     @Entry var isActivePane = true
+    /// Окно разделено на две панели.
+    @Entry var isSplitScreen = false
     /// Страница во второй панели разделённого экрана, если там открыта страница.
     /// Читалка кладёт в неё выписки и ссылки на места книги.
     @Entry var besidePageId: UUID?

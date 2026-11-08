@@ -3,6 +3,9 @@ import LumenCore
 import LumenStorage
 import LumenThemes
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 import UniformTypeIdentifiers
 
 /// Пункт сайдбара и одновременно то, что показано в основной области.
@@ -101,6 +104,19 @@ public struct RootView: View {
         } set: { newValue in
             guard !theme.layout.hidesSidebar else { return }
             columnVisibility = newValue
+        }
+    }
+
+    /// Переводит клавиши в панель: курсор уходит из текста прежней, а в заметку возвращается туда, где был.
+    private func focusPane(_ index: Int) {
+        guard workspace.isSplit else { return }
+        withAnimation(.snappy) { workspace.focus(pane: index) }
+        #if os(macOS)
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        #endif
+        if case .page(let id) = workspace.selectedTab.panes[index].current,
+           let editor = OpenPageEditors.shared.model(for: id) {
+            editor.focusAgain()
         }
     }
 
@@ -376,6 +392,11 @@ public struct RootView: View {
                 .disabled(!workspace.canGoForward)
             Button("Разделить экран", action: toggleSplit)
                 .keyboardShortcut("\\", modifiers: .command)
+            // Книга и заметка рядом: ⌥⌘← в левую панель, ⌥⌘→ в правую.
+            Button("Левая панель") { focusPane(0) }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+            Button("Правая панель") { focusPane(1) }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
             // ⌘W закрывает вкладку, а последнюю вкладку закрывает вместе с окном, как обычно.
             Button("Закрыть вкладку") { withAnimation(.snappy) { workspace.closeTab(workspace.selectedTabId) } }
                 .keyboardShortcut(workspace.tabs.count > 1 ? KeyboardShortcut("w", modifiers: .command) : nil)
@@ -415,6 +436,7 @@ public struct RootView: View {
             detail(tab.panes[index].current, pane: index)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .environment(\.isActivePane, isActive)
+                .environment(\.isSplitScreen, tab.isSplit)
                 .environment(\.besidePageId, besidePageId(of: index, in: tab))
                 .environment(\.appActions, appActions(pane: index))
                 // Щелчок в панели делает её активной. Без разделения жест выключен.

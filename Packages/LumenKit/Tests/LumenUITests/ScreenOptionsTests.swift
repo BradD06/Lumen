@@ -1,3 +1,6 @@
+#if os(macOS)
+import AppKit
+#endif
 @testable import LumenUI
 import Testing
 
@@ -30,3 +33,24 @@ struct ScreenOptionsTests {
         #expect(ScreenOptions.gridKey == "library.snapToGrid")
     }
 }
+
+#if os(macOS)
+struct ReaderKeysTests {
+    @Test func arrowsTurnPagesOnlyWithoutModifiers() {
+        #expect(ReaderKeys.action(keyCode: 124, flags: [.numericPad, .function]) == .turn(forward: true))
+        #expect(ReaderKeys.action(keyCode: 125, flags: []) == .turn(forward: true))
+        #expect(ReaderKeys.action(keyCode: 123, flags: [.function]) == .turn(forward: false))
+        #expect(ReaderKeys.action(keyCode: 126, flags: []) == .turn(forward: false))
+        // ⇧ со стрелкой расширяет выделение, ⌘ со стрелкой ходит по строке: их не трогаем.
+        #expect(ReaderKeys.action(keyCode: 124, flags: [.shift]) == nil)
+        #expect(ReaderKeys.action(keyCode: 124, flags: [.command]) == nil)
+        #expect(ReaderKeys.action(keyCode: 0, flags: []) == nil)
+    }
+
+    @Test func optionCommandArrowsMoveBetweenBookAndNotes() {
+        #expect(ReaderKeys.action(keyCode: 124, flags: [.command, .option, .function]) == .focusNotes)
+        #expect(ReaderKeys.action(keyCode: 123, flags: [.command, .option]) == .focusBook)
+        #expect(ReaderKeys.action(keyCode: 125, flags: [.command, .option]) == nil)
+    }
+}
+#endif

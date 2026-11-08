@@ -249,6 +249,18 @@ enum ReaderScript {
         window.scrollBy({ top: direction * Math.max(window.innerHeight - 48, 80), behavior: 'smooth' });
       }
 
+      // Стрелки листают на экран (на краю главы следующая глава). На Mac их перехватывает
+      // читалка раньше, здесь они нужны iPad с клавиатурой.
+      window.addEventListener('keydown', (event) => {
+        if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) { return; }
+        const target = event.target;
+        if (target && (target.isContentEditable || /^(input|textarea|select)$/i.test(target.nodeName))) { return; }
+        const direction = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+        if (!direction) { return; }
+        event.preventDefault();
+        turn(direction);
+      });
+
       // Свайп двумя пальцами по трекпаду на Mac: одна страница на жест, инерция после него не листает.
       let wheel = null;
       window.addEventListener('wheel', (event) => {
@@ -299,6 +311,7 @@ enum ReaderScript {
       document.addEventListener('touchcancel', () => { touch = null; }, { passive: true });
 
       window.lumen = {
+        turn: (direction) => turn(direction),
         setStyle: (css) => { style.textContent = css; },
         // Новое оформление, а сверху экрана та же строка, что была.
         restyle: (css) => {

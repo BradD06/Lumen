@@ -49,7 +49,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Read a PDF like an EPUB: the **Text** view reflows it into chapters (from the PDF's bookmarks or its large headings), keeps its pictures in place, drops running headers and page numbers, and lets you pick any font and size. Highlights, excerpts and your reading place carry over between the Text and Original views.
 - Text size goes up to 48 pt in books and documents.
 - Read the Original view of a PDF comfortably on a phone: Lumen trims the white margins so the text is larger at the same width, can read a two-column page column by column (left column fills the screen, then the right one), and remembers your zoom for each book. Scrolling stays straight up and down, without drifting sideways.
-- Turn pages with a swipe: on iPhone and iPad by finger, on a Mac with a two-finger swipe on the trackpad, in books and in PDFs.
+- Turn pages with a swipe: on iPhone and iPad by finger, on a Mac with a two-finger swipe on the trackpad, in books and in PDFs. Or with the arrow keys ← → ↑ ↓ (a zoomed PDF page scrolls first, then turns). ⌥⌘← and ⌥⌘→ move the keyboard between the book and the note beside it.
 - A dashboard for every book with reading time and progress.
 - `lumen://` links to a page, a book, a quote or a place in a book. Paste one into any app, and tapping it opens Lumen right there.
 
@@ -67,7 +67,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 
 ### 🗂️ Library and workspace
 - A visual library for pages, notebooks, books and folders. Notes made from a book stay right next to it. Give any folder, note or database its own emoji icon (pick one or type any), and folders always stand out from the background in every theme.
-- Browser-style back and forward, tabs (⌘T, ⌘1…9) and split screen on Mac and iPad. Drag a tab to one side of the window to open it next to another one.
+- Browser-style back and forward, tabs (⌘T, ⌘1…9, ⌃Tab and ⌃⇧Tab to the next and previous tab) and split screen on Mac and iPad (⌥⌘← and ⌥⌘→ jump between the two halves). Drag a tab to one side of the window to open it next to another one.
 - Favorites, an Inbox for quick notes, and a trash you can restore from.
 - Sort the Inbox one note at a time: swipe, pick one of three suggested folders, turn a note into a task, keep it or delete it.
 - A sidebar with search on top, Today, Inbox, Tasks, Library, Recent and folders, and Trash and Settings at the bottom. On iPad in portrait, an icon rail with labels keeps everything one tap away.

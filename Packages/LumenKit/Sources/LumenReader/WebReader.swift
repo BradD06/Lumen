@@ -112,6 +112,11 @@ public final class WebReaderController: NSObject {
         webView.evaluateJavaScript("window.lumen && window.lumen.reveal('\(id.uuidString)')")
     }
 
+    /// Экран вперёд или назад; за краем главы читалка получает `turn` и открывает соседнюю.
+    public func turn(forward: Bool) {
+        webView.evaluateJavaScript("window.lumen && window.lumen.turn(\(forward ? 1 : -1))")
+    }
+
     public func scroll(to progression: Double) {
         webView.evaluateJavaScript("window.lumen && window.lumen.scrollTo(\(progression))")
     }

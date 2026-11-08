@@ -35,6 +35,11 @@ struct ReaderView: View {
     @State var isFooterHovered = false
     @State private var isTocSheetPresented = false
     @Environment(\.isActivePane) private var isActivePane
+    @Environment(\.isSplitScreen) private var isSplitScreen
+    #if os(macOS)
+    /// Стрелки листают книгу, ⌥⌘← → переходят между книгой и заметками сбоку.
+    @State private var keys = ReaderKeys()
+    #endif
     @Environment(\.besidePageId) private var besidePageId
     @State var dragStartFraction: Double?
     /// Доля заметок, пока тянут ручку. В настройки она уходит, когда ручку отпустили:
@@ -103,6 +108,9 @@ struct ReaderView: View {
             .onChange(of: isWide) { _, wide in
                 if wide { isNotesSheetPresented = false }
             }
+            #if os(macOS)
+            .onChange(of: showsNotesPane, initial: true) { _, shown in keys.hasNotesBeside = shown }
+            #endif
         }
         .fontDesign(.rounded)
         .background(ThemedBackground())
@@ -143,6 +151,12 @@ struct ReaderView: View {
         }
         .task { await model.observeHighlights() }
         .onAppear { OpenReaders.shared.register(model, id: model.sourceId) }
+        #if os(macOS)
+        .onAppear { keys.install(model: model) }
+        .onDisappear { keys.remove() }
+        .onChange(of: isActivePane, initial: true) { _, active in keys.isActive = active }
+        .onChange(of: isSplitScreen, initial: true) { _, split in keys.isSplitScreen = split }
+        #endif
         .onChange(of: besidePageId, initial: true) { _, id in model.besidePageId = id }
         .onChange(of: appearance) { _, appearance in
             model.web.setAppearance(appearance)
