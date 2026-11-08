@@ -109,3 +109,33 @@ extension SortKey {
         return run
     }
 }
+
+/// Одна полка «Кабинета» и книги на ней. `shelf == nil`: общая полка, на ней всё,
+/// что не стоит на своих полках.
+public struct ShelfGroup: Identifiable, Equatable, Sendable {
+    public var shelf: Folder?
+    public var books: [Source]
+
+    public var id: UUID? { shelf?.id }
+
+    public init(shelf: Folder?, books: [Source]) {
+        self.shelf = shelf
+        self.books = books
+    }
+
+    /// Общая полка первой, дальше свои полки по порядку. Книга стоит на полке своей папки;
+    /// книги из обычных папок и из корня библиотеки на общей. Порядок книг сохраняется.
+    public static func make(books: [Source], shelves: [Folder]) -> [ShelfGroup] {
+        let shelfIds = Set(shelves.map(\.id))
+        var byShelf: [UUID: [Source]] = [:]
+        var loose: [Source] = []
+        for book in books {
+            if let folderId = book.folderId, shelfIds.contains(folderId) {
+                byShelf[folderId, default: []].append(book)
+            } else {
+                loose.append(book)
+            }
+        }
+        return [ShelfGroup(shelf: nil, books: loose)] + shelves.map { ShelfGroup(shelf: $0, books: byShelf[$0.id] ?? []) }
+    }
+}

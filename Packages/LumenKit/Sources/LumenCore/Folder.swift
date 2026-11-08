@@ -14,6 +14,8 @@ public struct Folder: Identifiable, Hashable, Codable, Sendable {
     public var color: Int
     /// Свой значок папки: эмодзи. `nil`: обычная папка без значка.
     public var icon: String?
+    /// Папка стоит полкой в «Кабинете»: её книги видны на отдельной полке.
+    public var isShelf: Bool
     /// Место на холсте родителя. `nil`: папку ещё не двигали, приложение само найдёт свободное место.
     public var canvasX: Double?
     public var canvasY: Double?
@@ -28,6 +30,7 @@ public struct Folder: Identifiable, Hashable, Codable, Sendable {
         name: String = "",
         color: Int = 0,
         icon: String? = nil,
+        isShelf: Bool = false,
         position: LibraryPoint? = nil,
         createdAt: Date = Date(),
         updatedAt: Date? = nil,
@@ -38,6 +41,7 @@ public struct Folder: Identifiable, Hashable, Codable, Sendable {
         self.name = name
         self.color = color
         self.icon = icon
+        self.isShelf = isShelf
         self.canvasX = position?.x
         self.canvasY = position?.y
         self.createdAt = createdAt

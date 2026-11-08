@@ -38,6 +38,18 @@ struct CommandPalette: View {
     @State private var selected = 0
     @FocusState private var isFieldFocused: Bool
     @Environment(\.lumenTheme) private var theme
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
+    /// iPhone: окно на весь экран, без подсказок клавиш, которых там нет.
+    private var isCompact: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
 
     /// Строка списка: что-то открыть или что-то сделать.
     private struct Row: Identifiable {
@@ -59,11 +71,13 @@ struct CommandPalette: View {
             field
             Divider()
             list
-            Divider()
-            footer
+            if !isCompact {
+                Divider()
+                footer
+            }
         }
-        .frame(width: 640)
-        .frame(minHeight: 300, idealHeight: 460, maxHeight: 560)
+        .frame(width: isCompact ? nil : 640)
+        .frame(minHeight: 300, idealHeight: 460, maxHeight: isCompact ? .infinity : 560)
         .background(ThemedBackground())
         .task { await loadRecent() }
         .task(id: query) { await runSearch() }
@@ -171,10 +185,10 @@ struct CommandPalette: View {
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(1)
             }
-            if case .command(let command) = row.kind, let shortcut = command.shortcut {
+            if !isCompact, case .command(let command) = row.kind, let shortcut = command.shortcut {
                 ShortcutHint(text: shortcut)
             }
-            if isSelected {
+            if isSelected, !isCompact {
                 ShortcutHint(text: "↵")
             }
         }
@@ -306,6 +320,32 @@ extension PaletteCommand {
         }
         list.append(PaletteCommand(id: "settings", title: "Настройки", systemImage: "gearshape", keywords: ["звук", "копия", "данные", "синхронизация"], run: actions.settings))
         return list + extra
+    }
+}
+
+extension PaletteCommand {
+    /// «Минута дыхания» из «Дзена».
+    static func breathe(_ run: @escaping @MainActor () -> Void) -> PaletteCommand {
+        PaletteCommand(
+            id: "breathe",
+            title: "Минута дыхания",
+            systemImage: "wind",
+            keywords: ["дзен", "тишина", "успокоиться", "пауза", "вдох"],
+            run: run
+        )
+    }
+
+    /// «Тема: Закат» и остальные: сменить оформление, не открывая настроек.
+    static func themes(current: String) -> [PaletteCommand] {
+        Theme.all.map { option in
+            PaletteCommand(
+                id: "theme-\(option.id)",
+                title: "Тема: \(option.name)",
+                systemImage: option.id == current ? "checkmark.circle.fill" : "paintpalette",
+                keywords: ["тема", "оформление", "цвет", "вид"],
+                run: { UserDefaults.standard.set(option.id, forKey: Theme.storageKey) }
+            )
+        }
     }
 }
 

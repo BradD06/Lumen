@@ -267,6 +267,13 @@ extension AppDatabase {
             try Self.createSyncClock(db)
         }
 
+        migrator.registerMigration("v12: shelves") { db in
+            // Папка-полка «Кабинета». Таблица уже синхронизируется, триггеры видят новый столбец сами.
+            try db.alter(table: "folder") { t in
+                t.add(column: "isShelf", .boolean).notNull().defaults(to: false)
+            }
+        }
+
         return migrator
     }
 }

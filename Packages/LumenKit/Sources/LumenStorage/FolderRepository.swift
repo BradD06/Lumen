@@ -19,6 +19,23 @@ extension AppDatabase {
         }
     }
 
+    /// Новая полка «Кабинета»: папка в корне библиотеки, книги из которой стоят на своей полке.
+    @discardableResult
+    public func createShelf(name: String) async throws -> Folder {
+        try await writer.write { db in
+            let folder = Folder(name: name, isShelf: true)
+            try folder.insert(db)
+            return folder
+        }
+    }
+
+    /// Делает папку полкой или убирает полку. Книги остаются в папке.
+    public func setFolderShelf(_ id: UUID, isShelf: Bool) async throws {
+        try await writer.write { db in
+            try Self.updateFolder(db, id) { $0.isShelf = isShelf }
+        }
+    }
+
     public func folder(_ id: UUID) async throws -> Folder? {
         try await reader.read { db in try Folder.fetchOne(db, key: id) }
     }
