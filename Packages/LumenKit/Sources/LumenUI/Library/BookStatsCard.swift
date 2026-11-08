@@ -158,6 +158,7 @@ struct BookStatsCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .keyHint(page.displayTitle) { onOpenPage(page.id) }
     }
 
     private var buttons: some View {
@@ -170,6 +171,7 @@ struct BookStatsCard: View {
                     .frame(height: 32)
                     .background(theme.accent, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
+            .keyHint("Читать", perform: onOpenBook)
             Button(action: onOpenDashboard) {
                 Text("О книге")
                     .font(.callout.weight(.medium))
@@ -178,6 +180,7 @@ struct BookStatsCard: View {
                     .frame(height: 32)
                     .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(theme.accent.opacity(0.6)))
             }
+            .keyHint("О книге", perform: onOpenDashboard)
         }
         .buttonStyle(.plain)
         .padding(.top, 2)

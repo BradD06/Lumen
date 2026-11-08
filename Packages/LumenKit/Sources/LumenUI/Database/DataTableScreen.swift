@@ -41,6 +41,7 @@ struct DataTableScreen: View {
             .frame(maxWidth: model.view?.layout == .list ? 820 : .infinity, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
+        .keyHintClip()
         .background(ThemedBackground())
         .navigationTitle(model.page?.displayTitle ?? "")
         .task { await model.observe() }
@@ -81,6 +82,7 @@ struct DataTableScreen: View {
             .buttonStyle(.plain)
             .fixedSize()
             .help("Значок базы: любой эмодзи")
+            .keyHint("Значок") { isPickingIcon = true }
             .popover(isPresented: $isPickingIcon) {
                 IconPicker(current: model.page?.icon) { icon in
                     model.setIcon(icon)
@@ -117,6 +119,10 @@ struct DataTableScreen: View {
                             }
                     }
                     .buttonStyle(.plain)
+                    .keyHint(view.name) {
+                        LumenSounds.play(.tap)
+                        withAnimation(.snappy) { model.selectedViewId = view.id }
+                    }
                     .contextMenu {
                         Button {
                             newName = view.name
@@ -159,6 +165,7 @@ struct DataTableScreen: View {
                 .help("Новое представление")
             }
         }
+        .keyHintClip()
     }
 
     // MARK: Фильтры, сортировки, настройки

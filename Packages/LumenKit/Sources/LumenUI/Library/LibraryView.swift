@@ -193,6 +193,7 @@ struct LibraryView: View {
                                 .background(theme.cardFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
                         .buttonStyle(.plain)
+                        .keyHint("Назад") { onOpenFolder(snapshot.path.last?.id) }
                         .accessibilityLabel("Назад")
                     }
                     Text(snapshot.folder?.displayName ?? (theme.layout == .rooms ? "Полка" : "Библиотека"))
@@ -210,6 +211,7 @@ struct LibraryView: View {
             }
             .buttonStyle(LibraryButtonStyle(isProminent: true))
             .help("Заметка, рукописная тетрадь, книга или папка здесь")
+            .keyHint("Создать") { isCreateMenuOpen = true }
             .accessibilityIdentifier("library-create")
             .popover(isPresented: $isCreateMenuOpen, arrowEdge: .bottom) {
                 CreateMenuList(kinds: [.note, .notebook, .book, .folder]) { kind in
@@ -232,10 +234,12 @@ struct LibraryView: View {
             } else {
                 Button("Библиотека") { onOpenFolder(nil) }
                     .buttonStyle(.plain)
+                    .keyHint("Библиотека") { onOpenFolder(nil) }
                 ForEach(snapshot.path) { folder in
                     Image(systemName: "chevron.right").font(.caption2.weight(.bold))
                     Button(folder.displayName) { onOpenFolder(folder.id) }
                         .buttonStyle(.plain)
+                        .keyHint(folder.displayName) { onOpenFolder(folder.id) }
                 }
             }
         }
@@ -300,6 +304,7 @@ struct LibraryView: View {
                     return true
                 } isTargeted: { isDropTargeted = $0 }
             }
+            .keyHintClip()
             .scrollIndicators(.automatic)
             .overlay {
                 if hasLoaded && items.isEmpty && importingCount == 0 {

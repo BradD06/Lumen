@@ -8,6 +8,7 @@ struct IconPicker: View {
     var onPick: (String?) -> Void
 
     @State private var custom = ""
+    @FocusState private var isTypingCustom: Bool
     @Environment(\.lumenTheme) private var theme
 
     static let groups: [(title: String, icons: [String])] = [
@@ -22,7 +23,9 @@ struct IconPicker: View {
             HStack(spacing: 8) {
                 TextField("Свой эмодзи", text: $custom)
                     .textFieldStyle(.roundedBorder)
+                    .focused($isTypingCustom)
                     .onSubmit(pickCustom)
+                    .keyHint("Свой эмодзи") { isTypingCustom = true }
                     .onChange(of: custom) { _, value in
                         // Достаточно одного символа: вставили или выбрали, и значок готов.
                         if let first = Self.firstSymbol(value), first != value { custom = first }
@@ -31,6 +34,7 @@ struct IconPicker: View {
                     .disabled(Self.firstSymbol(custom) == nil)
                 if current != nil {
                     Button("Убрать", role: .destructive) { onPick(nil) }
+                        .keyHint("Убрать значок") { onPick(nil) }
                 }
             }
             ScrollView {
@@ -54,6 +58,7 @@ struct IconPicker: View {
                                         .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
+                                .keyHint(icon) { onPick(icon) }
                                 .accessibilityLabel(icon)
                             }
                         }
@@ -63,6 +68,8 @@ struct IconPicker: View {
         }
         .padding(14)
         .frame(width: 340, height: 380)
+        // Окошко открыто поверх: ⌘J в нём подписывает значки.
+        .keyHintHost()
     }
 
     private func pickCustom() {

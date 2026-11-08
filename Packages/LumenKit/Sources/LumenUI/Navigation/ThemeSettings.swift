@@ -85,6 +85,7 @@ struct ThemePicker: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .keyHint("Тема: \(theme.name)") { themeId = theme.id }
             .accessibilityIdentifier("theme.\(theme.id)")
             .accessibilityAddTraits(isSelected ? .isSelected : [])
         }

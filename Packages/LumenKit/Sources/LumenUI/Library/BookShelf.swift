@@ -67,6 +67,7 @@ struct BookShelf: View {
                         onDrop: arrange
                     ))
                 }
+                .keyHintClip()
                 plank
             }
         }
@@ -105,6 +106,14 @@ struct BookShelf: View {
             }
         }
         .buttonStyle(SpineButtonStyle())
+        .keyHint(book.displayTitle) {
+            if let showcase {
+                hoveredId = nil
+                showcase.show(book)
+            } else {
+                onOpen(book.id)
+            }
+        }
         // Там, где встанет перетаскиваемая книга, виден её бледный след.
         .opacity(isDragged ? 0.35 : 1)
         .onDrag {
@@ -218,6 +227,7 @@ struct BookShelf: View {
         .buttonStyle(.plain)
         .padding(.leading, 6)
         .help("Поставить на полку книгу или файл")
+        .keyHint("Добавить книгу", perform: onAdd)
         .accessibilityLabel("Добавить книгу")
     }
 
@@ -536,6 +546,7 @@ struct ShelfSortPicker: View {
         .buttonStyle(.plain)
         .fixedSize()
         .help(option.hint)
+        .keyHint("Порядок: \(option.title)") { onPick(option) }
         .accessibilityAddTraits(isOn ? .isSelected : [])
         .accessibilityIdentifier("shelf-sort-\(option.rawValue)")
     }

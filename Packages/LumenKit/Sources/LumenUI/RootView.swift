@@ -44,6 +44,10 @@ public struct RootView: View {
     /// К какому краю сейчас держат вкладку, и ширина области панелей для расчёта краёв.
     /// Минута дыхания поверх всего окна.
     @State private var isBreathing = false
+    /// ⌘J: буквы на всём, что можно нажать.
+    @State private var keyHints = KeyHintCenter()
+    /// «Переместить в папку…» из ⌘K.
+    @State private var paletteMove: PaletteMove?
     @State private var tabDropSide: TabDropSide?
     @State private var panesWidth: CGFloat = 0
     #if os(iOS)
@@ -222,6 +226,7 @@ public struct RootView: View {
                 .transition(.opacity)
             }
         }
+        .keyHintHost(keyHints)
         .environment(\.workspaceActions, workspaceActions)
         .environment(\.appActions, appActions(pane: nil))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
@@ -248,6 +253,11 @@ public struct RootView: View {
         }
         .sheet(isPresented: $isSettingsPresented) {
             SettingsSheet(database: database) { isSettingsPresented = false }
+        }
+        .sheet(item: $paletteMove) { move in
+            MoveToFolderSheet(database: database, item: move.item, currentFolderId: move.folderId) {
+                paletteMove = nil
+            }
         }
         .fileImporter(
             isPresented: $isImportingBook,
@@ -600,7 +610,7 @@ public struct RootView: View {
 
     /// Действия ⌘K, которым нужно окно: панели и режим фокуса.
     private var paletteExtras: [PaletteCommand] {
-        [
+        var list: [PaletteCommand] = [
             PaletteCommand(
                 id: "breathe",
                 title: "Минута дыхания",
@@ -626,13 +636,184 @@ public struct RootView: View {
                 run: { focusMode.toggle() }
             ),
             PaletteCommand(
+                id: "key-hints",
+                title: "Нажать на экране без мыши",
+                systemImage: "keyboard",
+                shortcut: "⌘J",
+                keywords: ["клавиатура", "буквы", "подсказки", "мышь", "кнопка"],
+                run: showKeyHintsSoon
+            ),
+            PaletteCommand(
+                id: "new-tab",
+                title: "Новая вкладка",
+                systemImage: "plus.square.on.square",
+                shortcut: "⌘T",
+                keywords: ["вкладки"],
+                run: { withAnimation(.snappy) { workspace.newTab() } }
+            ),
+            PaletteCommand(
+                id: "next-tab",
+                title: "Следующая вкладка",
+                systemImage: "arrow.right.square",
+                shortcut: "⌃⇥",
+                keywords: ["вкладки", "переключить"],
+                run: { workspace.selectNextTab() }
+            ),
+            PaletteCommand(
+                id: "back",
+                title: "Назад",
+                systemImage: "chevron.left",
+                shortcut: "⌘[",
+                keywords: ["вернуться", "история"],
+                run: { workspace.goBack() }
+            ),
+            PaletteCommand(
+                id: "forward",
+                title: "Вперёд",
+                systemImage: "chevron.right",
+                shortcut: "⌘]",
+                keywords: ["история"],
+                run: { workspace.goForward() }
+            ),
+        ]
+        if workspace.tabs.count > 1 {
+            list.append(PaletteCommand(
+                id: "close-tab",
+                title: "Закрыть вкладку",
+                systemImage: "xmark.square",
+                shortcut: "⌘W",
+                keywords: ["вкладки"],
+                run: { withAnimation(.snappy) { workspace.closeTab(workspace.selectedTabId) } }
+            ))
+        }
+        if workspace.isSplit {
+            list.append(PaletteCommand(
+                id: "other-pane",
+                title: "Перейти в соседнюю панель",
+                systemImage: "rectangle.righthalf.inset.filled",
+                shortcut: "⌥⌘→",
+                keywords: ["панели", "рядом", "переключить"],
+                run: { focusPane(workspace.selectedTab.focusedPane == 0 ? 1 : 0) }
+            ))
+        }
+        list += currentItemCommands
+        list += Theme.all.map { option in
+            PaletteCommand(
+                id: "theme-\(option.id)",
+                title: "Тема: \(option.name)",
+                systemImage: option.id == theme.id ? "checkmark.circle.fill" : "paintpalette",
+                keywords: ["тема", "оформление", "цвет", "вид"],
+                run: { UserDefaults.standard.set(option.id, forKey: Theme.storageKey) }
+            )
+        }
+        list.append(
+            PaletteCommand(
                 id: "triage",
                 title: "Разобрать входящие",
                 systemImage: "rectangle.stack",
                 keywords: ["входящие", "по одной"],
                 run: { selection = .inbox }
-            ),
-        ]
+            )
+        )
+        return list
+    }
+
+    /// Что можно сделать с открытой заметкой или книгой: то же, что в меню «Ещё», но с клавиатуры.
+    private var currentItemCommands: [PaletteCommand] {
+        let pane = workspace.selectedTab.focusedPane
+        switch workspace.current {
+        case .page(let id):
+            let editor = OpenPageEditors.shared.model(for: id)
+            var list: [PaletteCommand] = []
+            if let editor {
+                let isFavorite = editor.page?.isFavorite == true
+                list.append(PaletteCommand(
+                    id: "page-favorite",
+                    title: isFavorite ? "Заметка: убрать из избранного" : "Заметка: в избранное",
+                    systemImage: isFavorite ? "star.slash" : "star",
+                    keywords: ["избранное", "звезда"],
+                    run: { editor.toggleFavorite() }
+                ))
+            }
+            list.append(PaletteCommand(
+                id: "page-move",
+                title: "Заметка: переместить в папку…",
+                systemImage: "folder",
+                keywords: ["папка", "перенести", "переместить", "разложить"],
+                run: { moveSoon(.page(id)) }
+            ))
+            list.append(PaletteCommand(
+                id: "page-link",
+                title: "Заметка: скопировать ссылку",
+                systemImage: "link",
+                keywords: ["ссылка", "поделиться"],
+                run: { copyLink(.page(id)) }
+            ))
+            if let editor {
+                list.append(PaletteCommand(
+                    id: "page-trash",
+                    title: "Заметка: удалить",
+                    systemImage: "trash",
+                    keywords: ["корзина", "стереть"],
+                    run: {
+                        Task {
+                            await editor.trash()
+                            closeScreen(pane: pane, fallback: .home)
+                        }
+                    }
+                ))
+            }
+            return list
+        case .source(let id, _):
+            return [
+                PaletteCommand(
+                    id: "source-info",
+                    title: "Книга: о книге",
+                    systemImage: "chart.bar",
+                    shortcut: "⌥⌘I",
+                    keywords: ["прогресс", "статистика", "время"],
+                    run: { workspace.open(.sourceInfo(id)) }
+                ),
+                PaletteCommand(
+                    id: "source-move",
+                    title: "Книга: переместить в папку…",
+                    systemImage: "folder",
+                    keywords: ["папка", "перенести", "переместить"],
+                    run: { moveSoon(.source(id)) }
+                ),
+                PaletteCommand(
+                    id: "source-link",
+                    title: "Книга: скопировать ссылку",
+                    systemImage: "link",
+                    keywords: ["ссылка", "поделиться"],
+                    run: { copyLink(.source(id)) }
+                ),
+            ]
+        default:
+            return []
+        }
+    }
+
+    /// Окно папок открывается, когда палитра уже закрылась: два листа сразу не показать.
+    private func moveSoon(_ item: LibraryItemID) {
+        Task {
+            var folderId: UUID?
+            switch item {
+            case .page(let id): folderId = try? await database.page(id)?.folderId
+            case .source(let id): folderId = try? await database.source(id)?.folderId
+            case .folder: folderId = nil
+            }
+            try? await Task.sleep(for: .milliseconds(350))
+            paletteMove = PaletteMove(item: item, folderId: folderId)
+        }
+    }
+
+    /// Из ⌘K: сначала закрывается палитра, потом на экране появляются буквы.
+    private func showKeyHintsSoon() {
+        Task {
+            try? await Task.sleep(for: .milliseconds(350))
+            keyHints.activate()
+        }
     }
 
     /// Главный сценарий: «+» и сразу пишешь, заметка попадает во «Входящие».
@@ -686,4 +867,11 @@ public struct RootView: View {
 
 #Preview {
     RootView(database: .preview())
+}
+
+/// Что переносят в папку из ⌘K и где оно лежит сейчас.
+private struct PaletteMove: Identifiable {
+    var item: LibraryItemID
+    var folderId: UUID?
+    var id: LibraryItemID { item }
 }

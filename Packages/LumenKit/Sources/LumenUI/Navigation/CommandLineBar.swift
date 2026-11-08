@@ -2,7 +2,8 @@ import LumenThemes
 import SwiftUI
 
 /// Командная строка внизу окна для тем без боковой панели («Монохром»).
-/// Нажатие или ⌘K открывает палитру: перейти, создать, найти. Справа подсказки главных клавиш.
+/// Нажатие или ⌘K открывает палитру: перейти, создать, найти. ⌘J ставит буквы на всё, что можно нажать.
+/// Справа подсказки главных клавиш.
 struct CommandLineBar: View {
     /// Где сейчас: «lumen / входящие», чтобы без сайдбара было видно, куда попал.
     let location: String
@@ -43,6 +44,7 @@ struct CommandLineBar: View {
         .padding(.horizontal, 12)
         .padding(.top, 6)
         .padding(.bottom, 10)
+        .keyHint("Командная строка", perform: onOpen)
         .accessibilityLabel("Командная строка")
         .accessibilityHint("Открывает поиск и команды, как ⌘K")
         .accessibilityIdentifier("commandLineBar")
@@ -51,6 +53,7 @@ struct CommandLineBar: View {
     private func hints(full: Bool) -> some View {
         HStack(spacing: 14) {
             Text(location).foregroundStyle(theme.textPrimary)
+            hint("⌘J", "нажать")
             if full {
                 hint("⌘N", "заметка")
                 hint("⇧⌘N", "задача")

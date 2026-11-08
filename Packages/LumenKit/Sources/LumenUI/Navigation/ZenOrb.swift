@@ -69,6 +69,7 @@ struct ZenOrb: View {
         .animation(.easeOut(duration: 0.2), value: isHovered)
         .keyboardShortcut(isOpen ? .cancelAction : nil)
         .help(isOpen ? "Спрятать меню" : "Меню: перейти, создать, найти")
+        .keyHint(isOpen ? "Спрятать меню" : "Меню") { isOpen.toggle() }
         .accessibilityLabel(isOpen ? "Спрятать меню" : "Меню")
     }
 
@@ -94,6 +95,10 @@ struct ZenOrb: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .keyHint(item.title) {
+                isOpen = false
+                run(item)
+            }
             .accessibilityAddTraits(isCurrent ? .isSelected : [])
             .accessibilityIdentifier("zen.\(item.rawValue)")
         }

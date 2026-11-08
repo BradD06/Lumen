@@ -303,6 +303,7 @@ extension ReaderView {
             cropsMargins: isPDF ? Binding(get: { model.cropsMargins }, set: { model.cropsMargins = $0 }) : nil,
             splitsColumns: isPDF ? Binding(get: { model.splitsColumns }, set: { model.splitsColumns = $0 }) : nil
         )
+        .keyHintHost()
         .presentationDetents([.height(isWebContent ? 340 : (isPDF ? 270 : 190))])
         .presentationCornerRadius(34)
         .presentationCompactAdaptation(.sheet)
@@ -311,6 +312,7 @@ extension ReaderView {
     var highlightsList: some View {
         HighlightsList(model: model) { showsHighlights = false }
             .frame(minWidth: 320, minHeight: 360)
+            .keyHintHost()
             .presentationCornerRadius(34)
             .presentationCompactAdaptation(.sheet)
     }

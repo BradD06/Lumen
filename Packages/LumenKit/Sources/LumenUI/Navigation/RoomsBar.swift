@@ -64,6 +64,7 @@ struct RoomsBar: View {
             }
             .accessibilityLabel("Найти в кабинете")
             .help("Поиск и команды (⌘K)")
+            .keyHint("Найти", perform: onSearch)
             Button(action: onSettings) {
                 Image(systemName: "gearshape")
                     .font(.callout)
@@ -73,6 +74,7 @@ struct RoomsBar: View {
             }
             .accessibilityLabel("Настройки")
             .help("Настройки: тема, звук, данные, копии и синхронизация")
+            .keyHint("Настройки", perform: onSettings)
         }
         .buttonStyle(.plain)
     }
@@ -121,6 +123,7 @@ struct RoomsBar: View {
             }
             .contentShape(shape)
         }
+        .keyHint(room.title) { onSelect(room.item) }
         .accessibilityLabel(count > 0 ? "\(room.title), \(count)" : room.title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("room.\(room.rawValue)")

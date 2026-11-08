@@ -58,6 +58,8 @@ private struct BookShowcaseHost: ViewModifier {
                             appActions.open(.sourceInfo(book.id))
                         }
                     )
+                    // Пока книга в центре, ⌘J подписывает только витрину.
+                    .environment(\.keyHintLayer, 1)
                 }
             }
     }
@@ -116,6 +118,7 @@ struct BookShowcase: View {
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
+                .keyHint("Вернуть книгу на полку", perform: onClose)
                 .padding(20)
                 .opacity(appeared ? 1 : 0)
                 .accessibilityLabel("Вернуть книгу на полку")
@@ -137,6 +140,7 @@ struct BookShowcase: View {
         .matchedGeometryEffect(id: book.id, in: namespace)
         .rotation3DEffect(.degrees(appeared ? 0 : 35), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
         .help("Читать")
+        .keyHint("Читать", perform: onOpenBook)
         .accessibilityLabel("Читать «\(book.displayTitle)»")
     }
 

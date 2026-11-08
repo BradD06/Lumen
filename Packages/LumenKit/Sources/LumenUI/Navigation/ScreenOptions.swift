@@ -133,7 +133,9 @@ struct ScreenOptionsSection: View {
             Picker("Вкладки", selection: $tabStrip) {
                 ForEach(TabStripMode.allCases) { Text($0.title).tag($0) }
             }
+            .keyHint("Вкладки") { tabStrip = tabStrip.cycled }
             Toggle("Кнопки «Назад», «Вперёд» и «Разделить экран»", isOn: $windowButtons)
+                .keyHint("Кнопки «Назад», «Вперёд» и «Разделить экран»") { windowButtons.toggle() }
         } header: {
             Text("Окно")
         } footer: {
@@ -144,23 +146,32 @@ struct ScreenOptionsSection: View {
             Picker("«Сохранено»", selection: $saveStatus) {
                 ForEach(SaveStatusMode.allCases) { Text($0.title).tag($0) }
             }
+            .keyHint("«Сохранено»") { saveStatus = saveStatus.cycled }
             Toggle("Счётчик слов в углу", isOn: $wordCount)
+                .keyHint("Счётчик слов в углу") { wordCount.toggle() }
             Toggle("Путь над заметкой", isOn: $breadcrumbs)
+                .keyHint("Путь над заметкой") { breadcrumbs.toggle() }
         }
 
         Section("Экран «Сегодня»") {
             Toggle("Продолжить чтение", isOn: $homeReading)
+                .keyHint("Продолжить чтение") { homeReading.toggle() }
             Toggle("Задачи на сегодня", isOn: $homeTasks)
+                .keyHint("Задачи на сегодня") { homeTasks.toggle() }
             Toggle("Входящие", isOn: $homeInbox)
+                .keyHint("Входящие") { homeInbox.toggle() }
             Toggle("Недавние заметки", isOn: $homeRecent)
+                .keyHint("Недавние заметки") { homeRecent.toggle() }
         }
 
         Section {
             Toggle("Сетка: раскладывать по ячейкам", isOn: $snapToGrid)
+                .keyHint("Сетка: раскладывать по ячейкам") { snapToGrid.toggle() }
             #if os(macOS)
             Picker("Полоса прогресса в книге", selection: $readerProgress) {
                 ForEach(ReaderProgressMode.allCases) { Text($0.title).tag($0) }
             }
+            .keyHint("Полоса прогресса в книге") { readerProgress = readerProgress.cycled }
             #endif
         } header: {
             Text("Библиотека и книги")
@@ -170,13 +181,26 @@ struct ScreenOptionsSection: View {
 
         Section {
             Toggle("Недавние", isOn: $sidebarRecent)
+                .keyHint("Недавние") { sidebarRecent.toggle() }
             Toggle("Избранное", isOn: $sidebarFavorites)
+                .keyHint("Избранное") { sidebarFavorites.toggle() }
             Toggle("Базы данных", isOn: $sidebarDatabases)
+                .keyHint("Базы данных") { sidebarDatabases.toggle() }
             Toggle("Папки", isOn: $sidebarFolders)
+                .keyHint("Папки") { sidebarFolders.toggle() }
         } header: {
             Text("Боковая панель")
         } footer: {
             Text("Видна только в теме «Закат». «Сегодня», «Входящие», «Задачи» и «Библиотека» остаются всегда.")
         }
+    }
+}
+
+extension CaseIterable where Self: Equatable {
+    /// Следующий вариант по кругу: так буква ⌘J переключает выбор в настройках.
+    var cycled: Self {
+        let all = Array(Self.allCases)
+        guard let index = all.firstIndex(of: self) else { return self }
+        return all[(index + 1) % all.count]
     }
 }

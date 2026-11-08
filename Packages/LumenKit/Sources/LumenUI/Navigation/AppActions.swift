@@ -197,7 +197,7 @@ struct CreateMenuList: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(kinds) { kind in
+            ForEach(Array(kinds.enumerated()), id: \.element) { index, kind in
                 if kind == .folder, kinds.count > 1 {
                     Divider().padding(.vertical, 4).padding(.horizontal, 10)
                 }
@@ -218,12 +218,15 @@ struct CreateMenuList: View {
                         if let hint = kind.shortcutHint {
                             ShortcutHint(text: hint)
                         }
+                        // Цифра выбирает строку без мыши, пока окно открыто.
+                        ShortcutHint(text: "\(index + 1)")
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(MenuRowButtonStyle())
+                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [])
                 .accessibilityIdentifier("create-\(kind.rawValue)")
             }
         }
@@ -368,6 +371,7 @@ struct CaptureField: View {
                 .focused($isFocused)
                 .submitLabel(.done)
                 .onSubmit(save)
+                .keyHint("Записать мысль") { isFocused = true }
                 .accessibilityIdentifier("capture-field")
             Toggle(isOn: $isTask) {
                 Label("Это задача", systemImage: "checkmark.square")
@@ -377,6 +381,7 @@ struct CaptureField: View {
             .buttonStyle(.bordered)
             .tint(isTask ? theme.vividCard(3).colors.last : theme.textSecondary)
             .help("Сохранить как задачу на сегодня")
+            .keyHint("Это задача") { isTask.toggle() }
             if !text.isEmpty {
                 Button(action: save) {
                     Image(systemName: "arrow.up.circle.fill")
@@ -485,6 +490,7 @@ struct SettingsSheet: View {
                 ScreenOptionsSection()
                 Section("Звук") {
                     Toggle("Звуки при действиях", isOn: $soundsEnabled)
+                        .keyHint("Звуки") { soundsEnabled.toggle() }
                 }
                 Section {
                     NavigationLink {
@@ -508,5 +514,6 @@ struct SettingsSheet: View {
         #if os(macOS)
         .frame(minWidth: 500, minHeight: 640)
         #endif
+        .keyHintHost()
     }
 }

@@ -194,6 +194,7 @@ struct ReaderAppearancePanel: View {
         caption("Размер")
         HStack(spacing: 12) {
             Text("А").font(.system(size: 13, design: .serif))
+                .keyHint("Мельче") { fontSize = max(fontSize - 1, ReaderAppearance.fontSizes.lowerBound) }
             Slider(
                 value: Binding(
                     get: { Double(fontSize) },
@@ -204,6 +205,7 @@ struct ReaderAppearancePanel: View {
             )
             .tint(ReaderStyle.peach)
             Text("А").font(.system(size: 21, design: .serif))
+                .keyHint("Крупнее") { fontSize = min(fontSize + 1, ReaderAppearance.fontSizes.upperBound) }
         }
         .foregroundStyle(theme.textPrimary)
         HStack(spacing: 8) {
@@ -225,6 +227,7 @@ struct ReaderAppearancePanel: View {
                         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .keyHint(typeface.title) { typefaceRaw = typeface.rawValue }
                 .accessibilityAddTraits(isOn ? .isSelected : [])
             }
         }
@@ -248,6 +251,7 @@ struct ReaderAppearancePanel: View {
                 .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
+        .keyHint(title) { isOn.wrappedValue.toggle() }
         .accessibilityAddTraits(isOn.wrappedValue ? .isSelected : [])
     }
 
@@ -287,6 +291,7 @@ struct ReaderAppearancePanel: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .keyHint("Тема: \(palette.title)") { paletteRaw = palette.rawValue }
         .accessibilityLabel("Тема: \(palette.title)")
         .accessibilityAddTraits(isOn ? .isSelected : [])
     }

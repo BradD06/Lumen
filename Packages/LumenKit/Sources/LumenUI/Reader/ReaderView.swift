@@ -263,7 +263,8 @@ struct ReaderView: View {
                     } label: {
                         Label("Оформление", systemImage: "textformat.size")
                     }
-                    .help("Тема страницы, размер и шрифт")
+                    .keyboardShortcut("a", modifiers: [.command, .option])
+                    .help("Тема страницы, размер и шрифт (⌥⌘A)")
                     .popover(isPresented: $isAppearancePresented) { appearancePanel }
                 }
                 Button {
@@ -271,13 +272,16 @@ struct ReaderView: View {
                 } label: {
                     Label("Выделения", systemImage: "highlighter")
                 }
+                .keyboardShortcut("l", modifiers: [.command, .option])
+                .help("Выделения в этой книге (⌥⌘L)")
                 .popover(isPresented: $showsHighlights) { highlightsList }
                 Button {
                     toggleNotes()
                 } label: {
                     Label("Заметки", systemImage: "sidebar.right")
                 }
-                .help("Заметки рядом с книгой")
+                .keyboardShortcut("n", modifiers: [.command, .option])
+                .help("Заметки рядом с книгой (⌥⌘N)")
             }
             Button {
                 Task {
@@ -287,7 +291,8 @@ struct ReaderView: View {
             } label: {
                 Label("О книге", systemImage: "chart.bar")
             }
-            .help("Прогресс, время чтения и все заметки по книге")
+            .keyboardShortcut("i", modifiers: [.command, .option])
+            .help("Прогресс, время чтения и все заметки по книге (⌥⌘I)")
         }
     }
 

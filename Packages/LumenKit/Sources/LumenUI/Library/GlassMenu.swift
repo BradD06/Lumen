@@ -66,6 +66,8 @@ struct GlassMenu: View {
         .clipShape(shape)
         .shadow(color: .black.opacity(theme.isDark ? 0.75 : 0.22), radius: 25, y: 12)
         .environment(\.colorScheme, theme.colorScheme)
+        // Пока меню открыто, ⌘J подписывает только его строки.
+        .environment(\.keyHintLayer, 1)
         .focusable()
         .focusEffectDisabled()
         .focused($isFocused)
@@ -122,6 +124,7 @@ struct GlassMenu: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .keyHint(action.title) { choose(action) }
             .onHover { inside in
                 if inside { highlighted = index } else if highlighted == index { highlighted = nil }
             }
@@ -148,6 +151,10 @@ struct GlassMenu: View {
                         FolderSwatch(color: color, isSelected: color == selected)
                     }
                     .buttonStyle(.plain)
+                    .keyHint(FolderPalette.name(color)) {
+                        LumenSounds.play(.tap)
+                        onPick(color)
+                    }
                     .accessibilityLabel(FolderPalette.name(color) + (color == selected ? ", выбран" : ""))
                 }
             }

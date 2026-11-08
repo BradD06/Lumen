@@ -57,6 +57,7 @@ struct HomeView: View {
             .frame(maxWidth: 1080, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
+        .keyHintClip()
         .background(ThemedBackground())
         .navigationTitle("Сегодня")
         #if os(iOS)
@@ -149,6 +150,7 @@ struct HomeView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .keyHint(title, perform: action)
     }
 
     /// «СУББОТА · ВЕЧЕР».
@@ -212,6 +214,7 @@ struct HomeView: View {
                     ContinueReadingCard(source: source, attachments: database.attachments, caption: readingCaption)
                 }
                 .buttonStyle(.plain)
+                .keyHint(source.displayTitle) { onOpenSource(source.id) }
                 .accessibilityIdentifier("home-continue")
             } else {
                 Button(action: onShowLibrary) {
@@ -223,6 +226,7 @@ struct HomeView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .keyHint("Библиотека", perform: onShowLibrary)
             }
 
             if showsTasks {
@@ -267,6 +271,7 @@ struct HomeView: View {
                 Spacer()
                 Button("Вся библиотека ›", action: onShowLibrary)
                     .buttonStyle(.plain)
+                    .keyHint("Вся библиотека", perform: onShowLibrary)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(theme.accent)
             }
@@ -278,6 +283,7 @@ struct HomeView: View {
                         PagePreviewCard(preview: preview)
                     }
                     .buttonStyle(.plain)
+                    .keyHint(preview.page.displayTitle) { onOpen(preview.page.id) }
                 }
             }
         }
@@ -329,6 +335,7 @@ private struct TodayTasksCard: View {
                 Spacer()
                 Button(counter, action: onShowAll)
                     .buttonStyle(.plain)
+                    .keyHint("Все задачи", perform: onShowAll)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(theme.textSecondary)
                     .help("Открыть все задачи")
@@ -354,6 +361,7 @@ private struct TodayTasksCard: View {
                     .onSubmit(add)
                     .accessibilityIdentifier("home-add-task")
             }
+            .keyHint("Добавить задачу") { isAdding = true }
             .padding(.top, 4)
         }
         .foregroundStyle(theme.textPrimary)
@@ -375,6 +383,7 @@ private struct TodayTasksCard: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .keyHint(done ? "Вернуть в работу" : "Отметить выполненной") { toggle(row) }
             .accessibilityLabel(done ? "Вернуть в работу" : "Отметить выполненной")
             Button {
                 onOpen(row.id)
@@ -388,6 +397,7 @@ private struct TodayTasksCard: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .keyHint(row.title.isEmpty ? "Без названия" : row.title) { onOpen(row.id) }
             if let due = dueLabel(row) {
                 Text(due)
                     .font(.caption.weight(.semibold))
@@ -508,13 +518,16 @@ private struct InboxCard: View {
                 if count > 0 {
                     Button("Разобрать по одной", action: onTriage)
                         .buttonStyle(DarkPillButtonStyle(foreground: theme.vividCard(2).colors.first ?? .white))
+                        .keyHint("Разобрать по одной", perform: onTriage)
                         .accessibilityIdentifier("home-triage")
                 } else {
                     Button("Записать мысль", action: onNewNote)
                         .buttonStyle(DarkPillButtonStyle(foreground: theme.vividCard(2).colors.first ?? .white))
+                        .keyHint("Записать мысль", perform: onNewNote)
                 }
                 Button("Открыть", action: onOpen)
                     .buttonStyle(.plain)
+                    .keyHint("Открыть входящие", perform: onOpen)
                     .font(.subheadline.weight(.semibold))
                     .opacity(0.8)
             }

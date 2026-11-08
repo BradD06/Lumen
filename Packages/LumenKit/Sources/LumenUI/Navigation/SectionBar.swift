@@ -71,12 +71,14 @@ struct SectionBar: View {
             .foregroundStyle(selection == .trash ? theme.accent : theme.textSecondary)
             .accessibilityLabel(counts.trashCount > 0 ? "Корзина, \(counts.trashCount)" : "Корзина")
             .help("Корзина")
+            .keyHint("Корзина") { onSelect(.trash) }
             Button(action: onSettings) {
                 Image(systemName: "gearshape")
             }
             .foregroundStyle(theme.textSecondary)
             .accessibilityLabel("Настройки")
             .help("Настройки: тема, звук, данные, копии и синхронизация")
+            .keyHint("Настройки", perform: onSettings)
         }
         .buttonStyle(.plain)
         .padding(.vertical, 8)
@@ -107,6 +109,7 @@ struct SectionBar: View {
             .contentShape(Rectangle())
         }
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .keyHint(section.title) { onSelect(section.item) }
         .accessibilityIdentifier("section.\(section.rawValue)")
     }
 
