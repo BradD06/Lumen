@@ -91,8 +91,19 @@ public struct RootView: View {
         }
     }
 
+    /// Темы «Бумага», «Монохром», «Кабинет» и «Дзен» держат всё на экране сами:
+    /// сайдбар у них всегда закрыт, и открыть его нельзя (ни кнопкой, ни жестом с края).
+    private var visibleColumns: Binding<NavigationSplitViewVisibility> {
+        Binding {
+            theme.layout.hidesSidebar ? .detailOnly : columnVisibility
+        } set: { newValue in
+            guard !theme.layout.hidesSidebar else { return }
+            columnVisibility = newValue
+        }
+    }
+
     private var splitView: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        NavigationSplitView(columnVisibility: visibleColumns) {
             SidebarView(
                 database: database,
                 selection: Binding { selection } set: { selection = $0 },
@@ -103,6 +114,8 @@ public struct RootView: View {
                 onCreate: create,
                 onSettings: { isSettingsPresented = true }
             )
+            // В темах со своей навигацией сайдбара нет совсем, и кнопки, открывающей его, тоже.
+            .toolbar(removing: theme.layout.hidesSidebar ? .sidebarToggle : nil)
         } detail: {
             workspaceDetail
                 .themedToolbar()
@@ -192,14 +205,7 @@ public struct RootView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
         .onChange(of: focusMode.isOn) { _, isOn in
             withAnimation(.easeInOut(duration: 0.3)) {
-                columnVisibility = isOn || theme.layout.hidesSidebar ? .detailOnly : .automatic
-            }
-        }
-        // Тема без сайдбара прячет его сразу при выборе и при запуске; сайдбар можно открыть кнопкой.
-        .onChange(of: theme.layout, initial: true) { _, _ in
-            guard !focusMode.isOn else { return }
-            withAnimation(.easeInOut(duration: 0.3)) {
-                columnVisibility = theme.layout.hidesSidebar ? .detailOnly : .automatic
+                columnVisibility = isOn ? .detailOnly : .automatic
             }
         }
         .task(id: workspace.referencedItems) { await removeMissingItems() }
