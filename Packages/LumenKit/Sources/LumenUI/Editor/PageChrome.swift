@@ -57,7 +57,7 @@ struct PageBreadcrumbs: View {
             Label {
                 Text(folder.displayName)
             } icon: {
-                FolderGlyph(color: folder.color)
+                FolderGlyph(color: folder.color, icon: folder.icon)
             }
         case .page(let page):
             PageLabel(page: page)
@@ -109,11 +109,38 @@ private struct CrumbButtonStyle: ButtonStyle {
 }
 
 /// «Сохранено» или «Сохраняется…»: видно, что правки записались.
+/// По умолчанию надпись видна, только пока идёт запись, и пару секунд после.
 struct SaveStatusLabel: View {
     let hasUnsavedChanges: Bool
     @Environment(\.lumenTheme) private var theme
+    @AppStorage(ScreenOptions.saveStatusKey) private var mode = SaveStatusMode.briefly
+    /// Правку только что записали: «Сохранено» ещё видно.
+    @State private var justSaved = false
 
     var body: some View {
+        label
+            .opacity(isVisible ? 1 : 0)
+            .animation(.easeInOut(duration: 0.3), value: isVisible)
+            .task(id: hasUnsavedChanges) {
+                guard !hasUnsavedChanges else {
+                    justSaved = true
+                    return
+                }
+                try? await Task.sleep(for: SaveStatusMode.briefDuration)
+                guard !Task.isCancelled else { return }
+                justSaved = false
+            }
+    }
+
+    private var isVisible: Bool {
+        switch mode {
+        case .always: true
+        case .briefly: hasUnsavedChanges || justSaved
+        case .never: false
+        }
+    }
+
+    private var label: some View {
         Label {
             Text(hasUnsavedChanges ? "Сохраняется…" : "Сохранено")
         } icon: {
@@ -127,20 +154,23 @@ struct SaveStatusLabel: View {
     }
 }
 
-/// Капсула в углу страницы: сколько слов и кнопка режима фокуса.
+/// Капсула в углу страницы: сколько слов (если включено в настройках) и кнопка режима фокуса.
 struct WordCountCapsule: View {
     let words: Int
     let isFocusMode: Bool
     var onToggleFocus: () -> Void
 
     @Environment(\.lumenTheme) private var theme
+    @AppStorage(ScreenOptions.wordCountKey) private var showsCount = false
 
     var body: some View {
         HStack(spacing: 6) {
-            Text("\(words) \(Self.wordsNoun(words)) · \(Self.minutes(words))")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(theme.textSecondary)
-                .padding(.horizontal, 8)
+            if showsCount {
+                Text("\(words) \(Self.wordsNoun(words)) · \(Self.minutes(words))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(theme.textSecondary)
+                    .padding(.horizontal, 8)
+            }
             Button(action: onToggleFocus) {
                 Label(isFocusMode ? "Выйти из фокуса" : "Фокус", systemImage: "viewfinder")
                     .font(.caption.weight(.semibold))

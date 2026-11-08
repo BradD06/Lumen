@@ -94,6 +94,15 @@ struct FolderRepositoryTests {
         #expect(changed.color == Folder.colorCount - 1)
     }
 
+    @Test func folderIconIsSetAndCleared() async throws {
+        let folder = try await db.createFolder(name: "Книги")
+        #expect(folder.icon == nil)
+        try await db.setFolderIcon(folder.id, icon: " 📚 ")
+        #expect(try await db.folder(folder.id)?.icon == "📚")
+        try await db.setFolderIcon(folder.id, icon: "  ")
+        #expect(try await db.folder(folder.id)?.icon == nil)
+    }
+
     @Test func trashAndRestoreFolderWithContents() async throws {
         let study = try await db.createFolder(name: "Учёба")
         let math = try await db.createFolder(name: "Матанализ", parentId: study.id)

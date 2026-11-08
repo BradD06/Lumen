@@ -9,6 +9,31 @@ extension View {
     }
 }
 
+extension View {
+    /// Верхняя полоса окна (заголовок, кнопки) в цвет темы, а не системная серая.
+    func themedToolbar() -> some View {
+        modifier(ThemedToolbar())
+    }
+}
+
+private struct ThemedToolbar: ViewModifier {
+    @Environment(\.lumenTheme) private var theme
+
+    func body(content: Content) -> some View {
+        let fill = theme.backgroundStops.first ?? .clear
+        #if os(macOS)
+        content
+            .toolbarBackground(fill, for: .windowToolbar)
+            .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+            .toolbarColorScheme(theme.colorScheme, for: .windowToolbar)
+        #else
+        content
+            .toolbarBackground(fill, for: .navigationBar, .tabBar)
+            .toolbarColorScheme(theme.colorScheme, for: .navigationBar, .tabBar)
+        #endif
+    }
+}
+
 private struct LumenThemeHost: ViewModifier {
     @AppStorage(Theme.storageKey) private var themeId = Theme.sunset.id
 
@@ -19,7 +44,14 @@ private struct LumenThemeHost: ViewModifier {
             .fontDesign(theme.fontDesign)
             .tint(theme.accent)
             .preferredColorScheme(theme.colorScheme)
+            #if os(macOS)
+            .background(WindowChrome(color: theme.backgroundStops.first ?? .clear))
+            #endif
             .animation(.easeInOut(duration: 0.25), value: themeId)
+            // Значок приложения тоже под тему.
+            .onChange(of: themeId, initial: true) { _, id in
+                AppIconSwitcher.apply(Theme.named(id))
+            }
     }
 }
 
@@ -53,6 +85,7 @@ struct ThemePicker: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .keyHint("Тема: \(theme.name)") { themeId = theme.id }
             .accessibilityIdentifier("theme.\(theme.id)")
             .accessibilityAddTraits(isSelected ? .isSelected : [])
         }

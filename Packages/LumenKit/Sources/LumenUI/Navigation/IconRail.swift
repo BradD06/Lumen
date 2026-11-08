@@ -105,6 +105,7 @@ struct IconRail: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .keyHint(title, perform: action)
         .accessibilityLabel(badge > 0 ? "\(title), \(badge)" : title)
     }
 }

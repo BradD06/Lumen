@@ -10,6 +10,15 @@ extension PageEditorModel {
         focusRequest = blocks.first { $0.type.hasText }?.id ?? blocks.first?.id
     }
 
+    /// Вернуть курсор в заметку (⌥⌘← / ⌥⌘→): туда, где он был, иначе в конец текста.
+    func focusAgain() {
+        if let id = lastFocusedBlockId, findBlock(id) != nil {
+            focusRequest = id
+        } else {
+            focusEnd()
+        }
+    }
+
     /// Нажатие на пустое место под блоками: фокус в последний пустой абзац или новый абзац в конце.
     func focusEnd() {
         let topLevel = children(of: nil)

@@ -9,3 +9,10 @@
 Готовые PNG лежат в `App/Assets.xcassets/AppIcon.appiconset`. Чтобы перерисовать,
 откройте SVG в браузере или любом редакторе и экспортируйте в нужные размеры
 (iOS: 1024; macOS: 16, 32, 64, 128, 256, 512, 1024).
+
+## Значки под темы
+
+Тот же рисунок в цветах тем: `lumen-icon-<paper|mono|study|zen>-ios.svg` и `-mac.svg`.
+PNG лежат в `App/Assets.xcassets`: `AppIcon-<Тема>.appiconset` (запасные значки iPhone и iPad,
+перечислены в `project.yml`) и `DockIcon-<Тема>.imageset` (значок в Dock на Mac, его ставит
+`AppIconSwitcher` при смене темы).

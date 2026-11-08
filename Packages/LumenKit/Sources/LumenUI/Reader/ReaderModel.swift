@@ -1064,3 +1064,14 @@ private extension Highlight {
             && locator.rects?.first?.page == other.rects?.first?.page
     }
 }
+
+extension ReaderModel {
+    /// Стрелки на клавиатуре: экран текста (на краю главы соседняя глава) или страница PDF.
+    func turnPage(forward: Bool) {
+        switch content {
+        case .web: web.turn(forward: forward)
+        case .pdf: pdf.step(forward: forward)
+        default: break
+        }
+    }
+}

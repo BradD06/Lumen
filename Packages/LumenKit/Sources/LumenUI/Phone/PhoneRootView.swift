@@ -38,10 +38,16 @@ struct PhoneRootView: View {
     @State private var isCreating = false
     @State private var isImportingBook = false
     @State private var isSettingsPresented = false
+    /// Минута дыхания «Дзена» поверх всего.
+    @State private var isBreathing = false
+    @Environment(\.lumenTheme) private var theme
+
+    /// «Кабинет»: вкладки называются как комнаты.
+    private var isStudy: Bool { theme.layout == .rooms }
 
     var body: some View {
         TabView(selection: $tab) {
-            Tab("Сегодня", systemImage: "sun.max", value: PhoneTab.home) {
+            Tab(isStudy ? "Стол" : "Сегодня", systemImage: isStudy ? "lamp.desk" : "sun.max", value: PhoneTab.home) {
                 stack(.home) {
                     HomeView(
                         database: database,
@@ -55,18 +61,18 @@ struct PhoneRootView: View {
                     .overlay(alignment: .bottomTrailing) { createButton }
                 }
             }
-            Tab("Входящие", systemImage: "tray", value: PhoneTab.inbox) {
+            Tab(isStudy ? "Записки" : "Входящие", systemImage: isStudy ? "envelope" : "tray", value: PhoneTab.inbox) {
                 stack(.inbox) {
                     InboxView(database: database, onOpen: { push(.page($0)) }, onNewNote: newQuickNote)
                         .overlay(alignment: .bottomTrailing) { createButton }
                 }
             }
-            Tab("Задачи", systemImage: "checklist", value: PhoneTab.tasks) {
+            Tab(isStudy ? "Дела" : "Задачи", systemImage: "checklist", value: PhoneTab.tasks) {
                 stack(.tasks) {
                     TasksScreen(database: database, onOpenPage: { push(.page($0)) })
                 }
             }
-            Tab("Библиотека", systemImage: "books.vertical", value: PhoneTab.library) {
+            Tab(isStudy ? "Полка" : "Библиотека", systemImage: "books.vertical", value: PhoneTab.library) {
                 stack(.library) {
                     library(folderId: nil)
                 }
@@ -85,6 +91,14 @@ struct PhoneRootView: View {
         // Книги из «Файлов», Telegram и «Поделиться», ссылки lumen:// на страницы, книги и цитаты.
         .opensIncomingLinks(database: database, open: openIncoming)
         .environment(\.appActions, appActions)
+        .overlay {
+            if isBreathing {
+                BreathingView {
+                    withAnimation(.easeInOut(duration: 0.6)) { isBreathing = false }
+                }
+                .transition(.opacity)
+            }
+        }
         .sheet(isPresented: $isCreating) {
             CreateSheet(
                 onCapture: { text, asTask in creator.capture(text, asTask: asTask) },
@@ -125,7 +139,8 @@ struct PhoneRootView: View {
             },
             capture: { text, asTask in creator.capture(text, asTask: asTask) },
             search: { tab = .search },
-            settings: { isSettingsPresented = true }
+            settings: { isSettingsPresented = true },
+            breathe: { withAnimation(.easeInOut(duration: 0.6)) { isBreathing = true } }
         )
     }
 
@@ -149,8 +164,10 @@ struct PhoneRootView: View {
     private func stack<Root: View>(_ tab: PhoneTab, @ViewBuilder root: () -> Root) -> some View {
         NavigationStack(path: path(for: tab)) {
             root()
+                .themedToolbar()
                 .navigationDestination(for: PhoneRoute.self) { route in
                     destination(route)
+                        .themedToolbar()
                 }
         }
     }

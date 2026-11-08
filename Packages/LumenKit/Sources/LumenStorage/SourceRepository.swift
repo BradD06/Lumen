@@ -75,6 +75,22 @@ extension AppDatabase {
         }
     }
 
+    /// Свой порядок книг на полке: `ids` слева направо. Ключ меняется только у тех книг,
+    /// что встали не по порядку, обычно у одной передвинутой. Время изменения не трогает.
+    public func arrangeShelf(_ ids: [UUID]) async throws {
+        try await writer.write { db in
+            let sources = try Source.fetchAll(db, keys: ids)
+            let byId = Dictionary(sources.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            let present = ids.filter { byId[$0] != nil }
+            let keys = SortKey.rearranged(present.map { byId[$0]?.shelfOrder })
+            for (id, key) in zip(present, keys) {
+                guard var source = byId[id], source.shelfOrder != key else { continue }
+                source.shelfOrder = key
+                try source.update(db)
+            }
+        }
+    }
+
     /// Запоминает, где остановились, и сколько прочитано. Время изменения не трогает:
     /// чтение не правка, а время последнего открытия обновляет само.
     public func saveReadingPosition(_ id: UUID, locator: SourceLocator, progress: Double) async throws {

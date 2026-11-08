@@ -83,6 +83,8 @@ struct AppActions {
     var capture: @MainActor (_ text: String, _ asTask: Bool) -> Void = { _, _ in }
     var search: @MainActor () -> Void = {}
     var settings: @MainActor () -> Void = {}
+    /// Минута дыхания на весь экран («Дзен»), там, где есть окно, которое её покажет.
+    var breathe: @MainActor () -> Void = {}
 }
 
 extension EnvironmentValues {
@@ -187,14 +189,16 @@ struct Creator {
 
 /// Список «Создать»: значок, название, пояснение и сочетание клавиш. На Mac и iPad во всплывающем окне.
 struct CreateMenuList: View {
+    /// Библиотека показывает только то, что кладут в папку.
+    var kinds: [CreateKind] = CreateKind.allCases
     var onSelect: (CreateKind) -> Void
 
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(CreateKind.allCases) { kind in
-                if kind == .folder {
+            ForEach(Array(kinds.enumerated()), id: \.element) { index, kind in
+                if kind == .folder, kinds.count > 1 {
                     Divider().padding(.vertical, 4).padding(.horizontal, 10)
                 }
                 Button {
@@ -214,12 +218,15 @@ struct CreateMenuList: View {
                         if let hint = kind.shortcutHint {
                             ShortcutHint(text: hint)
                         }
+                        // Цифра выбирает строку без мыши, пока окно открыто.
+                        ShortcutHint(text: "\(index + 1)")
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(MenuRowButtonStyle())
+                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [])
                 .accessibilityIdentifier("create-\(kind.rawValue)")
             }
         }
@@ -364,6 +371,7 @@ struct CaptureField: View {
                 .focused($isFocused)
                 .submitLabel(.done)
                 .onSubmit(save)
+                .keyHint("Записать мысль") { isFocused = true }
                 .accessibilityIdentifier("capture-field")
             Toggle(isOn: $isTask) {
                 Label("Это задача", systemImage: "checkmark.square")
@@ -373,6 +381,7 @@ struct CaptureField: View {
             .buttonStyle(.bordered)
             .tint(isTask ? theme.vividCard(3).colors.last : theme.textSecondary)
             .help("Сохранить как задачу на сегодня")
+            .keyHint("Это задача") { isTask.toggle() }
             if !text.isEmpty {
                 Button(action: save) {
                     Image(systemName: "arrow.up.circle.fill")
@@ -478,8 +487,10 @@ struct SettingsSheet: View {
                 } footer: {
                     Text("Меняет цвета, шрифт и светлый или тёмный режим во всём приложении. Вид книги в читалке настраивается отдельно, кнопкой «Аа».")
                 }
+                ScreenOptionsSection()
                 Section("Звук") {
                     Toggle("Звуки при действиях", isOn: $soundsEnabled)
+                        .keyHint("Звуки") { soundsEnabled.toggle() }
                 }
                 Section {
                     NavigationLink {
@@ -501,7 +512,8 @@ struct SettingsSheet: View {
             }
         }
         #if os(macOS)
-        .frame(minWidth: 460, minHeight: 520)
+        .frame(minWidth: 500, minHeight: 640)
         #endif
+        .keyHintHost()
     }
 }

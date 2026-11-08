@@ -3,6 +3,9 @@ import LumenCore
 import LumenStorage
 import LumenThemes
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 import UniformTypeIdentifiers
 
 /// Пункт сайдбара и одновременно то, что показано в основной области.
@@ -39,12 +42,20 @@ public struct RootView: View {
     @State private var windowWidth: CGFloat = 0
     private let focusMode = FocusModeState.shared
     /// К какому краю сейчас держат вкладку, и ширина области панелей для расчёта краёв.
+    /// Минута дыхания поверх всего окна.
+    @State private var isBreathing = false
+    /// ⌘J: буквы на всём, что можно нажать.
+    @State private var keyHints = KeyHintCenter()
+    /// «Переместить в папку…» из ⌘K.
+    @State private var paletteMove: PaletteMove?
     @State private var tabDropSide: TabDropSide?
     @State private var panesWidth: CGFloat = 0
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     @Environment(\.lumenTheme) private var theme
+    @AppStorage(ScreenOptions.tabStripKey) private var tabStripMode = TabStripMode.multiple
+    @AppStorage(ScreenOptions.windowButtonsKey) private var showsWindowButtons = ScreenOptions.windowButtonsDefault
 
     public init(database: AppDatabase) {
         self.database = database
@@ -89,8 +100,36 @@ public struct RootView: View {
         }
     }
 
+    /// Темы «Бумага», «Монохром», «Кабинет» и «Дзен» держат всё на экране сами:
+    /// сайдбар у них всегда закрыт, и открыть его нельзя (ни кнопкой, ни жестом с края).
+    private var visibleColumns: Binding<NavigationSplitViewVisibility> {
+        Binding {
+            theme.layout.hidesSidebar ? .detailOnly : columnVisibility
+        } set: { newValue in
+            guard !theme.layout.hidesSidebar else { return }
+            columnVisibility = newValue
+        }
+    }
+
+    /// Переводит клавиши в панель: курсор уходит из текста прежней, а в заметку возвращается туда, где был.
+    private func focusPane(_ index: Int) {
+        guard workspace.isSplit else { return }
+        withAnimation(.snappy) { workspace.focus(pane: index) }
+        #if os(macOS)
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        #endif
+        if case .page(let id) = workspace.selectedTab.panes[index].current,
+           let editor = OpenPageEditors.shared.model(for: id) {
+            editor.focusAgain()
+        }
+    }
+
+    private func toggleSplit() {
+        withAnimation(.snappy) { workspace.toggleSplit() }
+    }
+
     private var splitView: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        NavigationSplitView(columnVisibility: visibleColumns) {
             SidebarView(
                 database: database,
                 selection: Binding { selection } set: { selection = $0 },
@@ -101,8 +140,11 @@ public struct RootView: View {
                 onCreate: create,
                 onSettings: { isSettingsPresented = true }
             )
+            // В темах со своей навигацией сайдбара нет совсем, и кнопки, открывающей его, тоже.
+            .toolbar(removing: theme.layout.hidesSidebar ? .sidebarToggle : nil)
         } detail: {
             workspaceDetail
+                .themedToolbar()
                 .safeAreaInset(edge: .top, spacing: 0) { topBar }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     // «Монохром»: вместо сайдбара командная строка, до всего дотягиваются через ⌘K.
@@ -111,6 +153,7 @@ public struct RootView: View {
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
+                .overlay(alignment: .bottom) { zenOrb }
                 .safeAreaInset(edge: .leading, spacing: 0) {
                     if showsRail {
                         IconRail(
@@ -124,20 +167,21 @@ public struct RootView: View {
                     }
                 }
                 .toolbar {
-                    ToolbarItemGroup(placement: .navigation) {
-                        Button(action: workspace.goBack) {
-                            Label("Назад", systemImage: "chevron.left")
-                        }
-                        .keyboardShortcut("[", modifiers: .command)
-                        .disabled(!workspace.canGoBack)
-                        .help("Назад (⌘[)")
+                    // Сочетания ⌘[ ⌘] ⌘\ живут в `tabShortcuts`: кнопки можно спрятать в настройках.
+                    if showsWindowButtons {
+                        ToolbarItemGroup(placement: .navigation) {
+                            Button(action: workspace.goBack) {
+                                Label("Назад", systemImage: "chevron.left")
+                            }
+                            .disabled(!workspace.canGoBack)
+                            .help("Назад (⌘[)")
 
-                        Button(action: workspace.goForward) {
-                            Label("Вперёд", systemImage: "chevron.right")
+                            Button(action: workspace.goForward) {
+                                Label("Вперёд", systemImage: "chevron.right")
+                            }
+                            .disabled(!workspace.canGoForward)
+                            .help("Вперёд (⌘])")
                         }
-                        .keyboardShortcut("]", modifiers: .command)
-                        .disabled(!workspace.canGoForward)
-                        .help("Вперёд (⌘])")
                     }
                     ToolbarItemGroup(placement: .primaryAction) {
                         Button {
@@ -162,32 +206,33 @@ public struct RootView: View {
                         }
                         .help("Новая заметка (⌘N). Удерживайте, чтобы выбрать, что создать")
 
-                        Button {
-                            withAnimation(.snappy) { workspace.toggleSplit() }
-                        } label: {
-                            Label(
-                                workspace.isSplit ? "Одна панель" : "Разделить экран",
-                                systemImage: workspace.isSplit ? "rectangle" : "rectangle.split.2x1"
-                            )
+                        if showsWindowButtons {
+                            Button(action: toggleSplit) {
+                                Label(
+                                    workspace.isSplit ? "Одна панель" : "Разделить экран",
+                                    systemImage: workspace.isSplit ? "rectangle" : "rectangle.split.2x1"
+                                )
+                            }
+                            .help(workspace.isSplit ? "Убрать вторую панель (⌘\\)" : "Разделить экран на две панели (⌘\\)")
                         }
-                        .keyboardShortcut("\\", modifiers: .command)
-                        .help(workspace.isSplit ? "Убрать вторую панель (⌘\\)" : "Разделить экран на две панели (⌘\\)")
                     }
                 }
         }
+        .overlay {
+            if isBreathing {
+                BreathingView {
+                    withAnimation(.easeInOut(duration: 0.6)) { isBreathing = false }
+                }
+                .transition(.opacity)
+            }
+        }
+        .keyHintHost(keyHints)
         .environment(\.workspaceActions, workspaceActions)
         .environment(\.appActions, appActions(pane: nil))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
         .onChange(of: focusMode.isOn) { _, isOn in
             withAnimation(.easeInOut(duration: 0.3)) {
-                columnVisibility = isOn || theme.layout.hidesSidebar ? .detailOnly : .automatic
-            }
-        }
-        // Тема без сайдбара прячет его сразу при выборе и при запуске; сайдбар можно открыть кнопкой.
-        .onChange(of: theme.layout, initial: true) { _, _ in
-            guard !focusMode.isOn else { return }
-            withAnimation(.easeInOut(duration: 0.3)) {
-                columnVisibility = theme.layout.hidesSidebar ? .detailOnly : .automatic
+                columnVisibility = isOn ? .detailOnly : .automatic
             }
         }
         .task(id: workspace.referencedItems) { await removeMissingItems() }
@@ -208,6 +253,11 @@ public struct RootView: View {
         }
         .sheet(isPresented: $isSettingsPresented) {
             SettingsSheet(database: database) { isSettingsPresented = false }
+        }
+        .sheet(item: $paletteMove) { move in
+            MoveToFolderSheet(database: database, item: move.item, currentFolderId: move.folderId) {
+                paletteMove = nil
+            }
         }
         .fileImporter(
             isPresented: $isImportingBook,
@@ -295,8 +345,9 @@ public struct RootView: View {
     /// Вкладки сверху, под ними одна или две панели.
     private var workspaceDetail: some View {
         VStack(spacing: 0) {
-            if !focusMode.isOn {
+            if !focusMode.isOn, tabStripMode.shows(tabCount: workspace.tabs.count) {
                 WorkspaceTabStrip(database: database, workspace: workspace)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
             panes
                 // Своя вкладка у каждого набора панелей: при переключении экраны создаются заново.
@@ -343,6 +394,19 @@ public struct RootView: View {
         ZStack {
             Button("Новая вкладка") { withAnimation(.snappy) { workspace.newTab() } }
                 .keyboardShortcut("t", modifiers: .command)
+            Button("Назад") { workspace.goBack() }
+                .keyboardShortcut("[", modifiers: .command)
+                .disabled(!workspace.canGoBack)
+            Button("Вперёд") { workspace.goForward() }
+                .keyboardShortcut("]", modifiers: .command)
+                .disabled(!workspace.canGoForward)
+            Button("Разделить экран", action: toggleSplit)
+                .keyboardShortcut("\\", modifiers: .command)
+            // Книга и заметка рядом: ⌥⌘← в левую панель, ⌥⌘→ в правую.
+            Button("Левая панель") { focusPane(0) }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+            Button("Правая панель") { focusPane(1) }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
             // ⌘W закрывает вкладку, а последнюю вкладку закрывает вместе с окном, как обычно.
             Button("Закрыть вкладку") { withAnimation(.snappy) { workspace.closeTab(workspace.selectedTabId) } }
                 .keyboardShortcut(workspace.tabs.count > 1 ? KeyboardShortcut("w", modifiers: .command) : nil)
@@ -382,6 +446,7 @@ public struct RootView: View {
             detail(tab.panes[index].current, pane: index)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .environment(\.isActivePane, isActive)
+                .environment(\.isSplitScreen, tab.isSplit)
                 .environment(\.besidePageId, besidePageId(of: index, in: tab))
                 .environment(\.appActions, appActions(pane: index))
                 // Щелчок в панели делает её активной. Без разделения жест выключен.
@@ -453,10 +518,31 @@ public struct RootView: View {
                     onSettings: { isSettingsPresented = true }
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
-            case .standard, .commandLine:
+            case .standard, .commandLine, .orb:
                 EmptyView()
             }
         }
+    }
+
+    /// «Дзен»: вся навигация в одной дышащей точке внизу.
+    @ViewBuilder
+    private var zenOrb: some View {
+        if theme.layout == .orb, !focusMode.isOn {
+            ZenOrb(
+                selection: selection,
+                onSelect: { selection = $0 },
+                onCreate: { newQuickNote() },
+                onSearch: { isSearchPresented = true },
+                onBreathe: startBreathing,
+                onSettings: { isSettingsPresented = true }
+            )
+            .padding(.bottom, 18)
+            .transition(.opacity)
+        }
+    }
+
+    private func startBreathing() {
+        withAnimation(.easeInOut(duration: 0.6)) { isBreathing = true }
     }
 
     /// Тема устроена как командная строка («Монохром»): без сайдбара и полосы значков.
@@ -513,7 +599,8 @@ public struct RootView: View {
             },
             capture: { text, asTask in creator(pane: pane).capture(text, asTask: asTask) },
             search: { isSearchPresented = true },
-            settings: { isSettingsPresented = true }
+            settings: { isSettingsPresented = true },
+            breathe: startBreathing
         )
     }
 
@@ -523,7 +610,15 @@ public struct RootView: View {
 
     /// Действия ⌘K, которым нужно окно: панели и режим фокуса.
     private var paletteExtras: [PaletteCommand] {
-        [
+        var list: [PaletteCommand] = [
+            PaletteCommand(
+                id: "breathe",
+                title: "Минута дыхания",
+                systemImage: "wind",
+                shortcut: nil,
+                keywords: ["дзен", "тишина", "успокоиться", "пауза", "вдох"],
+                run: startBreathing
+            ),
             PaletteCommand(
                 id: "split",
                 title: workspace.isSplit ? "Убрать вторую панель" : "Разделить экран на две панели",
@@ -541,13 +636,184 @@ public struct RootView: View {
                 run: { focusMode.toggle() }
             ),
             PaletteCommand(
+                id: "key-hints",
+                title: "Нажать на экране без мыши",
+                systemImage: "keyboard",
+                shortcut: "⌘J",
+                keywords: ["клавиатура", "буквы", "подсказки", "мышь", "кнопка"],
+                run: showKeyHintsSoon
+            ),
+            PaletteCommand(
+                id: "new-tab",
+                title: "Новая вкладка",
+                systemImage: "plus.square.on.square",
+                shortcut: "⌘T",
+                keywords: ["вкладки"],
+                run: { withAnimation(.snappy) { workspace.newTab() } }
+            ),
+            PaletteCommand(
+                id: "next-tab",
+                title: "Следующая вкладка",
+                systemImage: "arrow.right.square",
+                shortcut: "⌃⇥",
+                keywords: ["вкладки", "переключить"],
+                run: { workspace.selectNextTab() }
+            ),
+            PaletteCommand(
+                id: "back",
+                title: "Назад",
+                systemImage: "chevron.left",
+                shortcut: "⌘[",
+                keywords: ["вернуться", "история"],
+                run: { workspace.goBack() }
+            ),
+            PaletteCommand(
+                id: "forward",
+                title: "Вперёд",
+                systemImage: "chevron.right",
+                shortcut: "⌘]",
+                keywords: ["история"],
+                run: { workspace.goForward() }
+            ),
+        ]
+        if workspace.tabs.count > 1 {
+            list.append(PaletteCommand(
+                id: "close-tab",
+                title: "Закрыть вкладку",
+                systemImage: "xmark.square",
+                shortcut: "⌘W",
+                keywords: ["вкладки"],
+                run: { withAnimation(.snappy) { workspace.closeTab(workspace.selectedTabId) } }
+            ))
+        }
+        if workspace.isSplit {
+            list.append(PaletteCommand(
+                id: "other-pane",
+                title: "Перейти в соседнюю панель",
+                systemImage: "rectangle.righthalf.inset.filled",
+                shortcut: "⌥⌘→",
+                keywords: ["панели", "рядом", "переключить"],
+                run: { focusPane(workspace.selectedTab.focusedPane == 0 ? 1 : 0) }
+            ))
+        }
+        list += currentItemCommands
+        list += Theme.all.map { option in
+            PaletteCommand(
+                id: "theme-\(option.id)",
+                title: "Тема: \(option.name)",
+                systemImage: option.id == theme.id ? "checkmark.circle.fill" : "paintpalette",
+                keywords: ["тема", "оформление", "цвет", "вид"],
+                run: { UserDefaults.standard.set(option.id, forKey: Theme.storageKey) }
+            )
+        }
+        list.append(
+            PaletteCommand(
                 id: "triage",
                 title: "Разобрать входящие",
                 systemImage: "rectangle.stack",
                 keywords: ["входящие", "по одной"],
                 run: { selection = .inbox }
-            ),
-        ]
+            )
+        )
+        return list
+    }
+
+    /// Что можно сделать с открытой заметкой или книгой: то же, что в меню «Ещё», но с клавиатуры.
+    private var currentItemCommands: [PaletteCommand] {
+        let pane = workspace.selectedTab.focusedPane
+        switch workspace.current {
+        case .page(let id):
+            let editor = OpenPageEditors.shared.model(for: id)
+            var list: [PaletteCommand] = []
+            if let editor {
+                let isFavorite = editor.page?.isFavorite == true
+                list.append(PaletteCommand(
+                    id: "page-favorite",
+                    title: isFavorite ? "Заметка: убрать из избранного" : "Заметка: в избранное",
+                    systemImage: isFavorite ? "star.slash" : "star",
+                    keywords: ["избранное", "звезда"],
+                    run: { editor.toggleFavorite() }
+                ))
+            }
+            list.append(PaletteCommand(
+                id: "page-move",
+                title: "Заметка: переместить в папку…",
+                systemImage: "folder",
+                keywords: ["папка", "перенести", "переместить", "разложить"],
+                run: { moveSoon(.page(id)) }
+            ))
+            list.append(PaletteCommand(
+                id: "page-link",
+                title: "Заметка: скопировать ссылку",
+                systemImage: "link",
+                keywords: ["ссылка", "поделиться"],
+                run: { copyLink(.page(id)) }
+            ))
+            if let editor {
+                list.append(PaletteCommand(
+                    id: "page-trash",
+                    title: "Заметка: удалить",
+                    systemImage: "trash",
+                    keywords: ["корзина", "стереть"],
+                    run: {
+                        Task {
+                            await editor.trash()
+                            closeScreen(pane: pane, fallback: .home)
+                        }
+                    }
+                ))
+            }
+            return list
+        case .source(let id, _):
+            return [
+                PaletteCommand(
+                    id: "source-info",
+                    title: "Книга: о книге",
+                    systemImage: "chart.bar",
+                    shortcut: "⌥⌘I",
+                    keywords: ["прогресс", "статистика", "время"],
+                    run: { workspace.open(.sourceInfo(id)) }
+                ),
+                PaletteCommand(
+                    id: "source-move",
+                    title: "Книга: переместить в папку…",
+                    systemImage: "folder",
+                    keywords: ["папка", "перенести", "переместить"],
+                    run: { moveSoon(.source(id)) }
+                ),
+                PaletteCommand(
+                    id: "source-link",
+                    title: "Книга: скопировать ссылку",
+                    systemImage: "link",
+                    keywords: ["ссылка", "поделиться"],
+                    run: { copyLink(.source(id)) }
+                ),
+            ]
+        default:
+            return []
+        }
+    }
+
+    /// Окно папок открывается, когда палитра уже закрылась: два листа сразу не показать.
+    private func moveSoon(_ item: LibraryItemID) {
+        Task {
+            var folderId: UUID?
+            switch item {
+            case .page(let id): folderId = try? await database.page(id)?.folderId
+            case .source(let id): folderId = try? await database.source(id)?.folderId
+            case .folder: folderId = nil
+            }
+            try? await Task.sleep(for: .milliseconds(350))
+            paletteMove = PaletteMove(item: item, folderId: folderId)
+        }
+    }
+
+    /// Из ⌘K: сначала закрывается палитра, потом на экране появляются буквы.
+    private func showKeyHintsSoon() {
+        Task {
+            try? await Task.sleep(for: .milliseconds(350))
+            keyHints.activate()
+        }
     }
 
     /// Главный сценарий: «+» и сразу пишешь, заметка попадает во «Входящие».
@@ -601,4 +867,11 @@ public struct RootView: View {
 
 #Preview {
     RootView(database: .preview())
+}
+
+/// Что переносят в папку из ⌘K и где оно лежит сейчас.
+private struct PaletteMove: Identifiable {
+    var item: LibraryItemID
+    var folderId: UUID?
+    var id: LibraryItemID { item }
 }

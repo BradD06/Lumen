@@ -130,6 +130,9 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Lumen
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Значки под темы (AppIcon-Paper и другие). На Mac вместо них картинки DockIcon-* для Dock.
+        "ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES[sdk=iphone*]": "AppIcon-Paper AppIcon-Mono AppIcon-Study AppIcon-Zen"
+        "ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS[sdk=iphone*]": YES
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES

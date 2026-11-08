@@ -25,6 +25,7 @@ struct InboxView: View {
                     PagePreviewCard(preview: note)
                 }
                 .buttonStyle(.plain)
+                .keyHint(note.page.displayTitle, secondary: { filing = note }) { onOpen(note.page.id) }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
@@ -46,6 +47,7 @@ struct InboxView: View {
                 }
             }
         }
+        .keyHintClip()
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .frame(maxWidth: 800)
@@ -59,6 +61,7 @@ struct InboxView: View {
                 } actions: {
                     Button("Новая заметка", action: onNewNote)
                         .buttonStyle(.borderedProminent)
+                        .keyHint("Новая заметка", perform: onNewNote)
                 }
             }
         }
@@ -175,6 +178,7 @@ struct InboxTriageView: View {
                     } actions: {
                         Button("Готово") { dismiss() }
                             .buttonStyle(.borderedProminent)
+                            .keyHint("Готово") { dismiss() }
                     }
                 }
             }
@@ -193,6 +197,7 @@ struct InboxTriageView: View {
         #if os(macOS)
         .frame(minWidth: 520, minHeight: 640)
         #endif
+        .keyHintHost()
         .sheet(item: $choosingFolderFor) { note in
             MoveToFolderSheet(database: database, item: .page(note.page.id), currentFolderId: nil, isFromInbox: true) {
                 choosingFolderFor = nil
@@ -253,6 +258,7 @@ struct InboxTriageView: View {
                 Spacer()
                 Button("Открыть заметку") { onOpen(note.page.id) }
                     .buttonStyle(.plain)
+                    .keyHint("Открыть заметку") { onOpen(note.page.id) }
                     .foregroundStyle(theme.accent)
                 Spacer()
                 Text(folders.first.map { "в «\($0.displayName)» →" } ?? "оставить →")
@@ -294,7 +300,7 @@ struct InboxTriageView: View {
                         Label {
                             Text(folder.displayName)
                         } icon: {
-                            FolderGlyph(color: folder.color)
+                            FolderGlyph(color: folder.color, icon: folder.icon)
                         }
                         .font(.callout.weight(index == 0 ? .bold : .semibold))
                         .padding(.horizontal, 14)
@@ -304,6 +310,7 @@ struct InboxTriageView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(theme.textPrimary)
+                    .keyHint(folder.displayName) { file(note, into: folder) }
                 }
                 Button {
                     choosingFolderFor = note
@@ -317,6 +324,7 @@ struct InboxTriageView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.textSecondary)
+                .keyHint("Другая папка") { choosingFolderFor = note }
             }
         }
     }
@@ -344,6 +352,7 @@ struct InboxTriageView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .keyHint(title, perform: action)
     }
 
     // MARK: Действия
@@ -459,6 +468,7 @@ struct TrashView: View {
                 }
             }
         }
+        .keyHintClip()
         .scrollContentBackground(.hidden)
         .overlay {
             if trash.isEmpty {
@@ -521,6 +531,7 @@ struct TrashView: View {
             Spacer()
             Button("Восстановить") { restore(entry.item) }
                 .buttonStyle(.bordered)
+                .keyHint("Восстановить «\(entry.title)»") { restore(entry.item) }
             Button {
                 deleting = entry
             } label: {
@@ -529,6 +540,7 @@ struct TrashView: View {
             .buttonStyle(.borderless)
             .foregroundStyle(theme.textSecondary)
             .help("Удалить навсегда")
+            .keyHint("Удалить навсегда") { deleting = entry }
         }
         .listRowBackground(Color.clear)
         .contextMenu {

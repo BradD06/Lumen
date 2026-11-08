@@ -1,4 +1,5 @@
 import Foundation
+import LumenCore
 import LumenStorage
 import LumenThemes
 @testable import LumenUI
@@ -39,7 +40,7 @@ struct ThemeLayoutTests {
         #expect(Theme.mono.layout == .commandLine)
         #expect(Theme.paper.layout == .sectionBar)
         #expect(Theme.study.layout == .rooms)
-        #expect(Theme.all.filter { $0.layout.hidesSidebar }.map(\.id) == ["paper", "mono", "study"])
+        #expect(Theme.all.filter { $0.layout.hidesSidebar }.map(\.id) == ["paper", "mono", "study", "zen"])
         #expect(!Theme.sunset.layout.hidesSidebar)
     }
 
@@ -85,5 +86,79 @@ struct ThemeLayoutTests {
         components.hour = 12
         let date = Calendar(identifier: .gregorian).date(from: components)!
         #expect(SectionBar.dateTitle(date) == "Суббота, 7 ноября")
+    }
+}
+
+struct ZenTests {
+    @Test func zenHidesEverythingButTheOrb() {
+        #expect(Theme.zen.layout == .orb)
+        #expect(Theme.zen.layout.hidesSidebar)
+        #expect(ZenMenuItem.left + ZenMenuItem.right == ZenMenuItem.allCases)
+        #expect(ZenMenuItem.now.isCurrent(nil))
+        #expect(ZenMenuItem.books.isCurrent(.library(UUID())))
+        #expect(!ZenMenuItem.allCases.contains { $0.isCurrent(.page(UUID())) })
+    }
+
+    @Test func breathingFollowsFourTwoSix() {
+        #expect(BreathCycle.length == 12)
+        #expect(BreathCycle.session == 60)
+        #expect(BreathCycle.state(at: 0).phase == .inhale)
+        #expect(BreathCycle.state(at: 0).fullness == 0)
+        #expect(BreathCycle.state(at: 2).fullness == 0.5)
+        #expect(BreathCycle.state(at: 5) == (.hold, 1))
+        #expect(BreathCycle.state(at: 9).phase == .exhale)
+        #expect(BreathCycle.state(at: 9).fullness == 0.5)
+        // Второй круг повторяет первый.
+        #expect(BreathCycle.state(at: 14).fullness == BreathCycle.state(at: 2).fullness)
+    }
+
+    @Test func breathingCountsDownTheMinute() {
+        #expect(BreathingView.remaining(60) == "осталось 1:00")
+        #expect(BreathingView.remaining(41.2) == "осталось 0:42")
+        #expect(BreathingView.remaining(-3) == "осталось 0:00")
+    }
+
+    @Test func zenHomeSpeaksQuietly() {
+        #expect(HomeView.waitingThoughts(1) == "1 мысль ждёт во входящих")
+        #expect(HomeView.waitingThoughts(3) == "3 мысли ждут во входящих")
+        #expect(HomeView.waitingThoughts(11) == "11 мыслей ждут во входящих")
+        let evening = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 11, day: 7, hour: 20))!
+        #expect(HomeView.zenMoment(evening) == "СУББОТА · ВЕЧЕР")
+    }
+}
+
+struct FolderContrastTests {
+    /// Тёмная папка «Монохрома» сливалась с фоном: теперь каждая папка заметна в любой теме.
+    @Test func everyFolderStandsOutFromTheBackground() {
+        for theme in Theme.all {
+            guard let background = theme.backgroundStops.first else { continue }
+            let minimum = ThemeContrast.luminance(background) > 0.5 ? 1.3 : ThemeContrast.minimumRatio
+            for index in 0..<(Folder.colorCount - 1) {
+                for color in theme.folderCard(index).colors {
+                    let ratio = ThemeContrast.ratio(color, background)
+                    #expect(ratio >= minimum - 0.01, "\(theme.name), папка \(index): контраст \(ratio)")
+                }
+            }
+        }
+    }
+
+    @Test func brightFoldersKeepTheirColor() {
+        // Персиковая папка «Заката» и так видна: её цвет не трогают.
+        let card = Theme.sunset.vividCard(0)
+        #expect(Theme.sunset.folderCard(0).colors == card.colors)
+    }
+
+    @Test func iconPickerTakesOneSymbol() {
+        #expect(IconPicker.firstSymbol("  🚀🔥 ") == "🚀")
+        #expect(IconPicker.firstSymbol("👩‍💻 код") == "👩‍💻")
+        #expect(IconPicker.firstSymbol("   ") == nil)
+    }
+}
+
+struct AppIconTests {
+    @Test func everyThemeButSunsetHasItsOwnAppIcon() {
+        #expect(Theme.sunset.appIconSuffix == nil)
+        let suffixes = Theme.all.compactMap(\.appIconSuffix)
+        #expect(suffixes == ["Paper", "Mono", "Study", "Zen"])
     }
 }
