@@ -23,6 +23,8 @@ public struct Theme: Sendable, Equatable, Identifiable {
         case sectionBar
         /// Без боковой панели: сверху латунные таблички-комнаты («Кабинет»).
         case rooms
+        /// Без панелей: только текст, меню прячется в одну дышащую точку внизу («Дзен»).
+        case orb
 
         /// Боковая панель спрятана, навигация в своей строке.
         public var hidesSidebar: Bool { self != .standard }
@@ -198,7 +200,7 @@ extension Theme {
     public static let study = Theme(
         id: "study",
         name: "Кабинет",
-        caption: "Тёмно-зелёная библиотека: комнаты-таблички сверху, латунь",
+        caption: "Тёмно-зелёная библиотека: комнаты сверху, книжная полка, латунь",
         isDark: true,
         fontDesign: .serif,
         layout: .rooms,
@@ -226,9 +228,10 @@ extension Theme {
     public static let zen = Theme(
         id: "zen",
         name: "Дзен",
-        caption: "Светлая и тихая: камень, шалфей, много воздуха",
+        caption: "Только текст и воздух: меню в одной дышащей точке внизу",
         isDark: false,
         fontDesign: .serif,
+        layout: .orb,
         backgroundStops: [Color(hex: 0xF4F2ED), Color(hex: 0xF2F0EB), Color(hex: 0xEEEBE4)],
         glow: Color(hex: 0xB9C8B4),
         glowStrength: 0.22,
@@ -275,5 +278,19 @@ extension Color {
             blue: Double(hex & 0xFF) / 255,
             opacity: opacity
         )
+    }
+}
+
+extension Theme {
+    /// Значок приложения под тему: «Paper» даёт `AppIcon-Paper` на iPhone и iPad и `DockIcon-Paper`
+    /// в Dock на Mac. У «Заката» `nil`: это основной значок.
+    public var appIconSuffix: String? {
+        switch id {
+        case Theme.paper.id: "Paper"
+        case Theme.mono.id: "Mono"
+        case Theme.study.id: "Study"
+        case Theme.zen.id: "Zen"
+        default: nil
+        }
     }
 }

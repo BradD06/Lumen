@@ -67,6 +67,7 @@ struct DataTableGrid: View {
                         .padding(.horizontal, 8)
                 }
                 .buttonStyle(.plain)
+                .keyHint("Новая строка") { Task { await model.addRow() } }
             }
             .padding(.bottom, 8)
         }
@@ -109,6 +110,10 @@ private struct RowTitleCell: View {
             }
             .buttonStyle(.plain)
             .help("Открыть как страницу")
+            .keyHint(row.page.displayTitle) {
+                LumenSounds.play(.navigate)
+                onOpen(row.id)
+            }
         }
         .padding(.horizontal, 10)
         .frame(height: 38)
@@ -134,6 +139,7 @@ struct DoneButton: View {
         }
         .buttonStyle(.plain)
         .help(isDone ? "Вернуть в работу" : "Отметить выполненным")
+        .keyHint(isDone ? "Вернуть в работу" : "Отметить выполненным") { model.toggleDone(row) }
     }
 }
 
@@ -255,6 +261,10 @@ struct DataRowCard: View {
             LumenSounds.play(.navigate)
             onOpen(row.id)
         }
+        .keyHint(row.page.displayTitle) {
+            LumenSounds.play(.navigate)
+            onOpen(row.id)
+        }
         .contextMenu { RowMenu(model: model, row: row, onOpen: onOpen) }
     }
 }
@@ -278,6 +288,7 @@ struct NewRowField: View {
                 .focused($isFocused)
                 .onSubmit(add)
         }
+        .keyHint("Новая запись") { isFocused = true }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
     }

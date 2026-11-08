@@ -36,6 +36,11 @@ extension LibraryView {
             Label("Цвет", systemImage: "paintpalette")
         }
         Button {
+            pickingIcon = .folder(folder.id)
+        } label: {
+            Label("Значок…", systemImage: "face.smiling")
+        }
+        Button {
             moving = .folder(folder.id)
         } label: {
             Label("Переместить в…", systemImage: "arrow.right.doc.on.clipboard")
@@ -93,6 +98,11 @@ extension LibraryView {
             } else {
                 Label("В избранное", systemImage: "star")
             }
+        }
+        Button {
+            pickingIcon = .page(page.id)
+        } label: {
+            Label("Значок…", systemImage: "face.smiling")
         }
         Button {
             moving = .page(page.id)

@@ -35,6 +35,20 @@ extension AppDatabase {
         }
     }
 
+    /// Свой значок папки. Пустая строка убирает значок.
+    public func setFolderIcon(_ id: UUID, icon: String?) async throws {
+        let icon = Self.cleanIcon(icon)
+        try await writer.write { db in
+            try Self.updateFolder(db, id) { $0.icon = icon }
+        }
+    }
+
+    /// Значок без пробелов по краям; пустой значит «без значка».
+    static func cleanIcon(_ icon: String?) -> String? {
+        guard let trimmed = icon?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
     /// Кладёт папку в другую папку (`nil` = корень библиотеки). На новом месте она встаёт в свободную ячейку.
     public func moveFolder(_ id: UUID, toParent parentId: UUID?) async throws {
         try await writer.write { db in
@@ -61,6 +75,20 @@ extension AppDatabase {
                 page.position = nil
                 page.databaseId = nil
                 page.properties = nil
+            }
+        }
+    }
+
+    /// Возвращает страницу во «Входящие», например когда разбор отменили.
+    public func returnToInbox(_ id: UUID) async throws {
+        try await writer.write { db in
+            try Self.updatePage(db, id) { page in
+                page.parentId = nil
+                page.folderId = nil
+                page.position = nil
+                page.databaseId = nil
+                page.properties = nil
+                page.inInbox = true
             }
         }
     }

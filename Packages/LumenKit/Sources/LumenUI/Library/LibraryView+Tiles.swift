@@ -22,7 +22,7 @@ extension LibraryView {
                 isRenaming: renaming == item.id,
                 onCommitRename: commitRename
             ) {
-                FolderArt(color: entry.folder.color, count: entry.itemCount, isTargeted: dropTarget == entry.id)
+                FolderArt(color: entry.folder.color, count: entry.itemCount, icon: entry.folder.icon, isTargeted: dropTarget == entry.id)
             }
             .modifier(TileInteraction(
                 onSelect: { select(item.id) },
@@ -35,6 +35,10 @@ extension LibraryView {
             .modifier(LibraryTileMenu(onSecondaryClick: { openContextMenu(for: item, at: $0) }) {
                 folderMenu(entry.folder)
             })
+            .keyHint(entry.folder.displayName, secondary: { openContextMenu(for: item, at: CGPoint(x: 60, y: 60)) }) {
+                LumenSounds.play(.navigate)
+                onOpenFolder(entry.id)
+            }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Папка \(entry.folder.displayName), \(entry.itemCount.objectCountText)")
             .accessibilityAction(named: "Открыть") { onOpenFolder(entry.id) }
@@ -62,6 +66,7 @@ extension LibraryView {
             .modifier(LibraryTileMenu(onSecondaryClick: { openContextMenu(for: item, at: $0) }) {
                 pageMenu(entry)
             })
+            .keyHint(entry.page.displayTitle, secondary: { openContextMenu(for: item, at: CGPoint(x: 60, y: 60)) }) { onOpenPage(entry.id) }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Заметка \(entry.page.displayTitle)")
             .accessibilityAction(named: "Открыть") { onOpenPage(entry.id) }
@@ -92,6 +97,7 @@ extension LibraryView {
             .modifier(LibraryTileMenu(onSecondaryClick: { openContextMenu(for: item, at: $0) }) {
                 sourceMenu(entry.source)
             })
+            .keyHint(entry.source.displayTitle, secondary: { openContextMenu(for: item, at: CGPoint(x: 60, y: 60)) }) { openSource(entry.id) }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(entry.source.format.isBook ? "Книга" : "Файл") \(entry.source.displayTitle)")
             .accessibilityAction(named: "Открыть") { openSource(entry.id) }

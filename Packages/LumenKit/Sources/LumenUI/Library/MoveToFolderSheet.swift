@@ -35,10 +35,11 @@ struct MoveToFolderSheet: View {
                 }
                 ForEach(rows) { row in
                     rowButton(id: row.folder.id, title: row.folder.displayName, depth: row.depth + 1, isBlocked: row.isBlocked) {
-                        FolderGlyph(color: row.folder.color)
+                        FolderGlyph(color: row.folder.color, icon: row.folder.icon)
                     }
                 }
             }
+            .keyHintClip()
             .scrollContentBackground(.hidden)
             .background(ThemedBackground())
             .navigationTitle("Переместить в…")
@@ -55,6 +56,7 @@ struct MoveToFolderSheet: View {
         #if os(macOS)
         .frame(minWidth: 380, minHeight: 420)
         #endif
+        .keyHintHost()
         .task { await observe() }
     }
 
@@ -99,6 +101,12 @@ struct MoveToFolderSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // С клавиатуры буква сразу переносит сюда.
+        .keyHint(title) {
+            guard !isBlocked else { return }
+            target = .some(id)
+            move()
+        }
         .disabled(isBlocked)
         .opacity(isBlocked ? 0.45 : 1)
         .listRowBackground(target == .some(id) ? theme.accent.opacity(0.28) : Color.clear)

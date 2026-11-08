@@ -332,6 +332,19 @@ public enum InboxQuery {
     }
 }
 
+/// Карточка-подсказка у ссылки на страницу: сама страница и начало её текста.
+public enum PagePreviewQuery {
+    /// `nil`, если страницы нет или она в корзине.
+    public static func fetch(_ db: Database, pageId: UUID) throws -> PagePreview? {
+        try previews(db, sql: """
+            SELECT page.*, pageSearch.body AS excerpt
+            FROM page
+            LEFT JOIN pageSearch ON pageSearch.pageId = \(uuidText("page.id"))
+            WHERE page.id = ? AND page.deletedAt IS NULL
+            """, arguments: [pageId]).first
+    }
+}
+
 /// Страницы, которые нужны открытому редактору: все живые страницы для выбора ссылки
 /// и подписей блоков-ссылок, и страницы, которые ссылаются на открытую.
 public struct PageLinksSnapshot: Equatable, Sendable {
@@ -398,6 +411,18 @@ public struct TrashSnapshot: Equatable, Sendable {
             ORDER BY source.deletedAt DESC
             """)
         return TrashSnapshot(folders: folders, pages: pages, sources: sources)
+    }
+}
+
+/// Книги на полке «Кабинета»: что читали недавно, стоит слева, дальше новые, ещё не открытые.
+/// Другой порядок (свой, по названию и т. д.) накладывает `ShelfSort`.
+public enum ShelfQuery {
+    public static func fetch(_ db: Database, limit: Int = 500) throws -> [Source] {
+        try Source
+            .filter(Column("deletedAt") == nil)
+            .order(sql: "lastOpenedAt IS NULL, lastOpenedAt DESC, createdAt DESC, rowid DESC")
+            .limit(limit)
+            .fetchAll(db)
     }
 }
 

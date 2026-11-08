@@ -247,6 +247,20 @@ extension AppDatabase {
             }
         }
 
+        migrator.registerMigration("v10: folder icons") { db in
+            // Свой значок папки (эмодзи). Таблица уже синхронизируется, триггеры видят новый столбец сами.
+            try db.alter(table: "folder") { t in
+                t.add(column: "icon", .text)
+            }
+        }
+
+        migrator.registerMigration("v11: shelf order") { db in
+            // Свой порядок книг на полке «Кабинета». Таблица уже синхронизируется.
+            try db.alter(table: "source") { t in
+                t.add(column: "shelfOrder", .text)
+            }
+        }
+
         // Синхронизация через папку в iCloud Drive: часы правок и время чтения в журнале.
         migrator.registerMigration("sync: folder clock, reading sessions") { db in
             try Self.createSyncTriggers(db, table: SyncTable.readingSession.rawValue)
