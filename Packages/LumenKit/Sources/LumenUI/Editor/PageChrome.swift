@@ -159,6 +159,10 @@ struct WordCountCapsule: View {
     let words: Int
     let isFocusMode: Bool
     var onToggleFocus: () -> Void
+    /// Таймер учёбы: запускается в режиме фокуса, идёт, пока его не остановят.
+    var timerEnd: Date?
+    var onStartTimer: () -> Void = {}
+    var onStopTimer: () -> Void = {}
 
     @Environment(\.lumenTheme) private var theme
     @AppStorage(ScreenOptions.wordCountKey) private var showsCount = false
@@ -170,6 +174,36 @@ struct WordCountCapsule: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(theme.textSecondary)
                     .padding(.horizontal, 8)
+            }
+            if let timerEnd {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Button(action: onStopTimer) {
+                        Label(FocusModeState.remaining(until: timerEnd, now: context.date), systemImage: "timer")
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .padding(.horizontal, 10)
+                            .frame(height: 28)
+                            .background(theme.accent.opacity(0.28), in: Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.textPrimary)
+                    .keyHint("Остановить таймер", perform: onStopTimer)
+                    .help("Остановить таймер учёбы")
+                    .accessibilityLabel("Таймер учёбы, осталось \(FocusModeState.remaining(until: timerEnd, now: context.date)). Остановить")
+                }
+            } else if isFocusMode {
+                Button(action: onStartTimer) {
+                    Label("\(FocusModeState.studyMinutes) мин", systemImage: "timer")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .frame(height: 28)
+                        .background(theme.textPrimary.opacity(0.1), in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.textPrimary)
+                .keyHint("Таймер учёбы", perform: onStartTimer)
+                .help("Таймер учёбы на \(FocusModeState.studyMinutes) минут: по окончании напомнит о перерыве")
             }
             Button(action: onToggleFocus) {
                 Label(isFocusMode ? "Выйти из фокуса" : "Фокус", systemImage: "viewfinder")

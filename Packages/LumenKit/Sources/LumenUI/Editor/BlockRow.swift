@@ -28,6 +28,7 @@ struct BlockRow: View {
     /// не прыгал, если та же разметка собирается из фрагментов чуть иначе.
     @State private var editingSource: String?
     @Environment(\.lumenTheme) private var theme
+    @Environment(\.workspaceActions) private var workspaceActions
     private let focusMode = FocusModeState.shared
 
     var body: some View {
@@ -75,7 +76,7 @@ struct BlockRow: View {
             of: [.lumenBlock],
             delegate: BlockDropDelegate(targetId: block.id, size: size, model: model)
         )
-        .contextMenu { menu }
+        .modifier(BlockContextMenu(previewPage: linkedPage, database: model.database, menu: menu))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("row-\(block.text)")
     }
@@ -84,6 +85,21 @@ struct BlockRow: View {
     /// потом перемещение, удаление в самом низу.
     @ViewBuilder
     private var menu: some View {
+        if let page = linkedPage {
+            Button {
+                model.open(page.id)
+            } label: {
+                Label("Открыть страницу", systemImage: "arrow.up.right")
+            }
+            if let workspaceActions {
+                Button {
+                    workspaceActions.openBeside(.page(page.id))
+                } label: {
+                    Label("Открыть рядом", systemImage: "rectangle.split.2x1")
+                }
+            }
+            Divider()
+        }
         Button {
             model.addBlock(below: block.id)
         } label: {
@@ -195,6 +211,12 @@ struct BlockRow: View {
         } label: {
             Label("Удалить блок", systemImage: "trash")
         }
+    }
+
+    /// Страница, на которую ведёт блок-ссылка, если она жива.
+    private var linkedPage: Page? {
+        guard block.type == .page else { return nil }
+        return model.linkedPage(block.content.pageId)
     }
 
     /// Что оформляет меню блока: выделенный текст, а без выделения весь текст блока.
@@ -384,7 +406,7 @@ struct BlockRow: View {
             }
 
         case .page:
-            PageLinkBlock(page: model.linkedPage(block.content.pageId)) {
+            PageLinkBlock(page: linkedPage, database: model.database) {
                 if let pageId = block.content.pageId {
                     model.open(pageId)
                 }
@@ -699,11 +721,18 @@ extension UTType {
     static let lumenBlock = UTType(exportedAs: "app.lumen.block")
 }
 
-/// Блок-ссылка на другую страницу или подстраницу.
+/// Блок-ссылка на другую страницу или подстраницу. Курсор задержался на ссылке:
+/// всплывает карточка с началом страницы и кнопками «Открыть» и «Открыть рядом».
 private struct PageLinkBlock: View {
     let page: Page?
+    let database: AppDatabase
     var onOpen: () -> Void
 
+    @State private var isPreviewShown = false
+    /// Курсор над самой карточкой: пока он там, карточка не закрывается.
+    @State private var isCardHovered = false
+    @State private var hoverTask: Task<Void, Never>?
+    @Environment(\.workspaceActions) private var workspaceActions
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
@@ -727,6 +756,82 @@ private struct PageLinkBlock: View {
         }
         .buttonStyle(.plain)
         .disabled(page == nil)
+        .onHover { hovering in
+            guard page != nil else { return }
+            hoverTask?.cancel()
+            if hovering {
+                hoverTask = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(600))
+                    if !Task.isCancelled { isPreviewShown = true }
+                }
+            } else {
+                closeSoon()
+            }
+        }
+        .popover(isPresented: $isPreviewShown, arrowEdge: .bottom) {
+            if let page {
+                PageLinkPreview(
+                    page: page,
+                    database: database,
+                    onOpen: {
+                        isPreviewShown = false
+                        onOpen()
+                    },
+                    onOpenBeside: openBesideAction(page)
+                )
+                .onHover { hovering in
+                    isCardHovered = hovering
+                    if hovering {
+                        hoverTask?.cancel()
+                    } else {
+                        closeSoon()
+                    }
+                }
+                .presentationCompactAdaptation(.popover)
+            }
+        }
+    }
+
+    /// «Открыть рядом» есть там, где окно умеет делиться на две панели.
+    private func openBesideAction(_ page: Page) -> (() -> Void)? {
+        guard let workspaceActions else { return nil }
+        return {
+            isPreviewShown = false
+            workspaceActions.openBeside(.page(page.id))
+        }
+    }
+
+    /// Курсор ушёл со ссылки: даём время дойти до карточки, иначе закрываем.
+    private func closeSoon() {
+        hoverTask?.cancel()
+        hoverTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            if !Task.isCancelled, !isCardHovered { isPreviewShown = false }
+        }
+    }
+}
+
+/// Меню блока по правой кнопке или долгому нажатию. У ссылки на страницу на iPhone и iPad
+/// долгое нажатие показывает над меню карточку с началом этой страницы.
+private struct BlockContextMenu<MenuItems: View>: ViewModifier {
+    let previewPage: Page?
+    let database: AppDatabase
+    let menu: MenuItems
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        if let previewPage {
+            content.contextMenu {
+                menu
+            } preview: {
+                PageLinkPreview(page: previewPage, database: database)
+            }
+        } else {
+            content.contextMenu { menu }
+        }
+        #else
+        content.contextMenu { menu }
+        #endif
     }
 }
 

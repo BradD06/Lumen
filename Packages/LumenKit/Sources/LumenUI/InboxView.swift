@@ -156,6 +156,8 @@ struct InboxTriageView: View {
     @State private var isLoaded = false
     @State private var drag: CGSize = .zero
     @State private var choosingFolderFor: PagePreview?
+    /// Последний шаг разбора: его можно отменить кнопкой «Вернуть» или ⌘Z.
+    @State private var lastStep: TriageStep?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lumenTheme) private var theme
 
@@ -179,6 +181,9 @@ struct InboxTriageView: View {
                         Button("Готово") { dismiss() }
                             .buttonStyle(.borderedProminent)
                             .keyHint("Готово") { dismiss() }
+                        if lastStep != nil {
+                            undoButton
+                        }
                     }
                 }
             }
@@ -224,9 +229,15 @@ struct InboxTriageView: View {
     private var progress: some View {
         let position = min(handled + 1, max(total, 1))
         return VStack(alignment: .leading, spacing: 8) {
-            Text("\(position) из \(max(total, position))")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(theme.textSecondary)
+            HStack {
+                Text("\(position) из \(max(total, position))")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(theme.textSecondary)
+                Spacer()
+                if lastStep != nil {
+                    undoButton
+                }
+            }
             HStack(spacing: 6) {
                 ForEach(0..<max(total, position), id: \.self) { index in
                     Capsule()
@@ -285,6 +296,24 @@ struct InboxTriageView: View {
         )
         .id(note.id)
         .transition(.asymmetric(insertion: .scale(scale: 0.95).combined(with: .opacity), removal: .opacity))
+    }
+
+    /// «Вернуть»: отменяет последний шаг, заметка снова первая в стопке.
+    private var undoButton: some View {
+        Button(action: undoLastStep) {
+            Label("Вернуть", systemImage: "arrow.uturn.backward")
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(theme.textPrimary.opacity(0.1), in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(theme.textPrimary)
+        .keyboardShortcut("z", modifiers: .command)
+        .keyHint("Вернуть", perform: undoLastStep)
+        .help("Отменить последний шаг (⌘Z)")
+        .accessibilityIdentifier("triage-undo")
     }
 
     private func folderChoices(_ note: PagePreview) -> some View {
@@ -360,6 +389,7 @@ struct InboxTriageView: View {
     private func file(_ note: PagePreview, into folder: Folder) {
         LumenSounds.play(.dropIntoFolder)
         handled += 1
+        lastStep = .filed(note.page.id)
         let database = database
         Task {
             await NoticeCenter.shared.attempt("Не удалось переложить заметку") {
@@ -371,12 +401,50 @@ struct InboxTriageView: View {
     private func keep(_ note: PagePreview) {
         LumenSounds.play(.tap)
         handled += 1
+        lastStep = .kept(note.page.id)
         withAnimation(.snappy) { _ = skipped.insert(note.id) }
     }
 
     private func delete(_ note: PagePreview) {
         handled += 1
+        lastStep = .deleted(note.page.id)
         NoticeCenter.shared.moveToTrash(.page(note.page.id), in: database)
+    }
+
+    /// Отменяет последний шаг. Отменить можно один шаг, как в «Почте».
+    private func undoLastStep() {
+        guard let step = lastStep else { return }
+        lastStep = nil
+        handled = max(0, handled - 1)
+        LumenSounds.play(.restore)
+        let database = database
+        switch step {
+        case .kept(let id):
+            withAnimation(.snappy) { _ = skipped.remove(id) }
+        case .filed(let id):
+            Task {
+                await NoticeCenter.shared.attempt("Не удалось вернуть заметку") {
+                    try await database.returnToInbox(id)
+                }
+            }
+        case .deleted(let id):
+            Task {
+                await NoticeCenter.shared.attempt("Не удалось вернуть заметку") {
+                    try await database.restorePage(id)
+                }
+            }
+        case .madeTask(let noteId, let rowId, let noteTrashed):
+            Task {
+                await NoticeCenter.shared.attempt("Не удалось вернуть заметку") {
+                    if let rowId { try await database.trashPage(rowId) }
+                    if noteTrashed {
+                        try await database.restorePage(noteId)
+                    } else {
+                        try await database.returnToInbox(noteId)
+                    }
+                }
+            }
+        }
     }
 
     /// Задача на сегодня с названием заметки. Если в заметке есть текст, она остаётся
@@ -387,9 +455,14 @@ struct InboxTriageView: View {
         let database = database
         let title = note.page.displayTitle
         let hasBody = !note.excerpt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        lastStep = .madeTask(note: note.page.id, row: nil, noteTrashed: !hasBody)
         Task {
             let done = await NoticeCenter.shared.attempt("Не удалось сделать задачу") {
                 let row = try await Creator.addTodayTask(title: title, in: database)
+                // Задача уже есть: отмена уберёт и её.
+                if case .madeTask(let noteId, let existing, let trashed) = lastStep, existing == nil, noteId == note.page.id {
+                    lastStep = .madeTask(note: noteId, row: row.id, noteTrashed: trashed)
+                }
                 if hasBody {
                     let table = try await database.tasksDataTable()
                     if let material = table.firstProperty(of: [.page]) {
@@ -420,6 +493,16 @@ struct InboxTriageView: View {
     private func loadFolders() async {
         folders = (try? await database.reader.read { db in try SuggestedFoldersQuery.fetch(db) }) ?? []
     }
+}
+
+/// Шаг разбора «Входящих», который можно отменить.
+private enum TriageStep {
+    case filed(UUID)
+    case kept(UUID)
+    case deleted(UUID)
+    /// Заметка стала задачей. `row` появится, когда задача запишется в базу.
+    /// Пустая заметка при этом уходит в корзину (`noteTrashed`).
+    case madeTask(note: UUID, row: UUID?, noteTrashed: Bool)
 }
 
 /// Корзина: восстановить папку, страницу или книгу, удалить одну вещь или всё навсегда.
