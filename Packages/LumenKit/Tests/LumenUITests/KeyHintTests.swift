@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 @testable import LumenUI
 import Testing
 
