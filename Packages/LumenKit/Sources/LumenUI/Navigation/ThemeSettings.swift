@@ -44,6 +44,9 @@ private struct LumenThemeHost: ViewModifier {
             .fontDesign(theme.fontDesign)
             .tint(theme.accent)
             .preferredColorScheme(theme.colorScheme)
+            #if os(macOS)
+            .background(WindowChrome(color: theme.backgroundStops.first ?? .clear))
+            #endif
             .animation(.easeInOut(duration: 0.25), value: themeId)
     }
 }
