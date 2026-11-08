@@ -147,7 +147,7 @@ struct ShelfBook: View {
         let style = BookSpineStyle(source: source)
         let coverWidth = style.coverWidth
         ZStack {
-            BookSpine(source: source)
+            BookSpine(source: source, attachments: attachments)
                 .rotation3DEffect(.degrees(isPulled ? -90 : 0), axis: (x: 0, y: 1, z: 0), anchor: .trailing, perspective: 0.6)
                 .opacity(isPulled ? 0 : 1)
             SourceCoverArt(source: source, attachments: attachments, width: coverWidth, height: style.height)
@@ -161,19 +161,27 @@ struct ShelfBook: View {
     }
 }
 
-/// Корешок книги: цвет, высота и толщина у каждой книги свои, но всегда одни и те же.
+/// Корешок книги: высота и толщина у каждой книги свои, но всегда одни и те же.
+/// Если у книги есть картинка обложки, корешок сделан из её края, как у настоящей книги;
+/// без картинки он того же цвета, что и нарисованная обложка.
 struct BookSpine: View {
     let source: Source
+    var attachments: AttachmentStore?
 
     @Environment(\.lumenTheme) private var theme
 
+    private var hasCoverImage: Bool { source.cover != nil && attachments != nil }
+
     var body: some View {
         let style = BookSpineStyle(source: source)
-        let color = theme.vividCard(style.colorIndex).colors.first ?? theme.accent
         let shape = RoundedRectangle(cornerRadius: 3, style: .continuous)
         ZStack(alignment: .top) {
+            face(style)
+                .frame(width: style.width, height: style.height)
+                .clipShape(shape)
+            // Скруглённый переплёт: края темнее середины.
             shape.fill(LinearGradient(
-                colors: [color.mix(with: .black, by: 0.35), color.mix(with: .black, by: 0.1), color.mix(with: .black, by: 0.3)],
+                colors: [.black.opacity(0.45), .white.opacity(0.08), .black.opacity(0.12), .black.opacity(0.4)],
                 startPoint: .leading, endPoint: .trailing
             ))
             // Латунные полоски сверху и снизу, как тиснение на переплёте.
@@ -183,14 +191,7 @@ struct BookSpine: View {
                 band
             }
             .padding(.vertical, 10)
-            Text(source.displayTitle)
-                .font(.system(size: 11, weight: .semibold, design: .serif))
-                .foregroundStyle(theme.accent.mix(with: .white, by: 0.35))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(width: style.height - 44)
-                .rotationEffect(.degrees(90))
-                .frame(width: style.width, height: style.height)
+            title(style)
             if let length = style.ribbonLength {
                 RibbonShape()
                     .fill(LinearGradient(
@@ -206,6 +207,37 @@ struct BookSpine: View {
         }
         .frame(width: style.width, height: style.height)
         .shadow(color: .black.opacity(0.3), radius: 2, x: 1, y: 1)
+    }
+
+    @ViewBuilder
+    private func face(_ style: BookSpineStyle) -> some View {
+        if let cover = source.cover, let attachments {
+            // Левый край обложки, той же высоты, что корешок.
+            AttachmentImage(name: cover, attachments: attachments, contentMode: .fill)
+                .frame(width: style.coverWidth, height: style.height)
+                .frame(width: style.width, height: style.height, alignment: .leading)
+                .clipped()
+        } else {
+            LinearGradient(colors: coverCard.colors, startPoint: .top, endPoint: .bottom)
+        }
+    }
+
+    /// Те же цвета, что у нарисованной обложки (`SourceCoverArt`): повернул книгу, цвет тот же.
+    private var coverCard: Theme.VividCard { theme.vividCard(Int(source.id.uuid.1)) }
+
+    private func title(_ style: BookSpineStyle) -> some View {
+        Text(source.displayTitle)
+            .font(.system(size: 11, weight: .semibold, design: .serif))
+            .foregroundStyle(hasCoverImage ? .white : coverCard.foreground)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            // На картинке обложки название читается на тёмной плашке.
+            .background(.black.opacity(hasCoverImage ? 0.5 : 0), in: Capsule())
+            .frame(width: style.height - 40)
+            .rotationEffect(.degrees(90))
+            .frame(width: style.width, height: style.height)
     }
 
     private var band: some View {
@@ -231,11 +263,11 @@ struct RibbonShape: Shape {
     }
 }
 
-/// Размеры и цвет корешка из id книги (стабильно между запусками) и длина ленты из прогресса.
+/// Размеры корешка из id книги (стабильно между запусками) и длина ленты из прогресса.
+/// Цвет корешок берёт у обложки.
 struct BookSpineStyle: Equatable {
     var width: CGFloat
     var height: CGFloat
-    var colorIndex: Int
     /// Лента от верха корешка до прочитанного места. Нет ленты, пока книгу не открывали.
     var ribbonLength: CGFloat?
 
@@ -243,7 +275,6 @@ struct BookSpineStyle: Equatable {
         let seed = Self.seed(source.id)
         height = 128 + CGFloat(seed % 5) * 10
         width = 30 + CGFloat(min(source.displayTitle.count, 36) / 4) + CGFloat(seed / 5 % 3) * 2
-        colorIndex = seed / 15 % 5
         ribbonLength = Self.ribbon(progress: source.progress, opened: source.lastOpenedAt != nil, height: height)
     }
 

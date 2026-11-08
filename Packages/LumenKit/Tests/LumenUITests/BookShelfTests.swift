@@ -18,7 +18,6 @@ struct BookShelfTests {
         let second = BookSpineStyle(source: book(id: id))
         #expect(first == second)
         #expect((128...168).contains(first.height))
-        #expect((0..<5).contains(first.colorIndex))
         #expect(first.width >= 30)
     }
 
