@@ -139,6 +139,49 @@ public final class PDFReaderController: NSObject {
         }
     }
 
+    /// Стрелка на клавиатуре. Если страница не влезла в окно (крупный масштаб), сначала
+    /// докручивается её скрытая часть, экран за экраном, а потом открывается соседняя страница.
+    public func step(forward: Bool) {
+        guard let page = pdfView.currentPage else {
+            turnPage(forward: forward)
+            return
+        }
+        let rect = pdfView.convert(page.bounds(for: pdfView.displayBox), from: page)
+        let visible = pdfView.bounds
+        #if os(macOS)
+        let flipped = pdfView.isFlipped
+        #else
+        let flipped = true
+        #endif
+        let hiddenBelow = flipped ? rect.maxY - visible.maxY : visible.minY - rect.minY
+        let hiddenAbove = flipped ? visible.minY - rect.minY : rect.maxY - visible.maxY
+        let hidden = forward ? hiddenBelow : hiddenAbove
+        guard hidden > 8 else {
+            turnPage(forward: forward)
+            return
+        }
+        scrollVertically(by: min(hidden, max(visible.height - 48, 40)) * (forward ? 1 : -1))
+    }
+
+    /// Прокрутка на `distance` пунктов вниз (меньше нуля: вверх) в пределах документа.
+    private func scrollVertically(by distance: CGFloat) {
+        #if os(macOS)
+        guard let clip = pdfView.documentView?.enclosingScrollView?.contentView else { return }
+        var origin = clip.bounds.origin
+        origin.y += clip.isFlipped ? distance : -distance
+        let target = clip.constrainBoundsRect(NSRect(origin: origin, size: clip.bounds.size)).origin
+        clip.animator().setBoundsOrigin(target)
+        clip.enclosingScrollView?.reflectScrolledClipView(clip)
+        #else
+        guard let scrollView = Self.firstScrollView(in: pdfView) else { return }
+        let maxY = max(scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom, 0)
+        let minY = -scrollView.adjustedContentInset.top
+        var offset = scrollView.contentOffset
+        offset.y = min(max(offset.y + distance, minY), maxY)
+        scrollView.setContentOffset(offset, animated: true)
+        #endif
+    }
+
     /// Свайп листает, только пока страница целиком входит по ширине: в увеличенной им двигают страницу.
     var canSwipe: Bool {
         Double(pdfView.scaleFactor) <= fitScale * 1.02

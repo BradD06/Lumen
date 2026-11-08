@@ -30,8 +30,16 @@ struct ReaderView: View {
     @State var showsHighlights = false
     @State var isAppearancePresented = false
     @AppStorage("reader.tocOpen") var showsToc = false
+    /// Полоса прогресса под книгой: всегда или только под мышью (настройки, «Что показывать на экране»).
+    @AppStorage(ScreenOptions.readerProgressKey) var progressMode = ReaderProgressMode.defaultMode
+    @State var isFooterHovered = false
     @State private var isTocSheetPresented = false
     @Environment(\.isActivePane) private var isActivePane
+    @Environment(\.isSplitScreen) private var isSplitScreen
+    #if os(macOS)
+    /// Стрелки листают книгу, ⌥⌘← → переходят между книгой и заметками сбоку.
+    @State private var keys = ReaderKeys()
+    #endif
     @Environment(\.besidePageId) private var besidePageId
     @State var dragStartFraction: Double?
     /// Доля заметок, пока тянут ручку. В настройки она уходит, когда ручку отпустили:
@@ -100,6 +108,9 @@ struct ReaderView: View {
             .onChange(of: isWide) { _, wide in
                 if wide { isNotesSheetPresented = false }
             }
+            #if os(macOS)
+            .onChange(of: showsNotesPane, initial: true) { _, shown in keys.hasNotesBeside = shown }
+            #endif
         }
         .fontDesign(.rounded)
         .background(ThemedBackground())
@@ -140,6 +151,12 @@ struct ReaderView: View {
         }
         .task { await model.observeHighlights() }
         .onAppear { OpenReaders.shared.register(model, id: model.sourceId) }
+        #if os(macOS)
+        .onAppear { keys.install(model: model) }
+        .onDisappear { keys.remove() }
+        .onChange(of: isActivePane, initial: true) { _, active in keys.isActive = active }
+        .onChange(of: isSplitScreen, initial: true) { _, split in keys.isSplitScreen = split }
+        #endif
         .onChange(of: besidePageId, initial: true) { _, id in model.besidePageId = id }
         .onChange(of: appearance) { _, appearance in
             model.web.setAppearance(appearance)
@@ -246,7 +263,8 @@ struct ReaderView: View {
                     } label: {
                         Label("Оформление", systemImage: "textformat.size")
                     }
-                    .help("Тема страницы, размер и шрифт")
+                    .keyboardShortcut("a", modifiers: [.command, .option])
+                    .help("Тема страницы, размер и шрифт (⌥⌘A)")
                     .popover(isPresented: $isAppearancePresented) { appearancePanel }
                 }
                 Button {
@@ -254,13 +272,16 @@ struct ReaderView: View {
                 } label: {
                     Label("Выделения", systemImage: "highlighter")
                 }
+                .keyboardShortcut("l", modifiers: [.command, .option])
+                .help("Выделения в этой книге (⌥⌘L)")
                 .popover(isPresented: $showsHighlights) { highlightsList }
                 Button {
                     toggleNotes()
                 } label: {
                     Label("Заметки", systemImage: "sidebar.right")
                 }
-                .help("Заметки рядом с книгой")
+                .keyboardShortcut("n", modifiers: [.command, .option])
+                .help("Заметки рядом с книгой (⌥⌘N)")
             }
             Button {
                 Task {
@@ -270,7 +291,8 @@ struct ReaderView: View {
             } label: {
                 Label("О книге", systemImage: "chart.bar")
             }
-            .help("Прогресс, время чтения и все заметки по книге")
+            .keyboardShortcut("i", modifiers: [.command, .option])
+            .help("Прогресс, время чтения и все заметки по книге (⌥⌘I)")
         }
     }
 

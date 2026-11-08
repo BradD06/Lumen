@@ -851,6 +851,8 @@ private struct ExcerptBlock: View {
         Group {
             if reference?.isPlace == true {
                 placeLink
+            } else if theme.layout == .rooms {
+                clipping
             } else {
                 quote
             }
@@ -948,6 +950,56 @@ private struct ExcerptBlock: View {
         .buttonStyle(.plain)
         .disabled(source == nil)
         .help(source == nil ? "Книгу удалили" : "Открыть книгу на этом месте")
+    }
+
+    /// «Кабинет»: выписка вклеена в тетрадь, как вырезка из книги, с полосками скотча сверху.
+    private var clipping: some View {
+        let paper = Color(hex: 0xEFE4CC)
+        let ink = Color(hex: 0x2A2118)
+        return Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("\u{AB}\(text)\u{BB}")
+                    .font(.system(size: 17, design: .serif))
+                    .italic()
+                    .foregroundStyle(ink)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 6) {
+                    Text(source == nil ? caption : "вклейка · \(caption)")
+                        .lineLimit(1)
+                    if source != nil {
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption2.weight(.bold))
+                    }
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(Color(hex: 0x7A5A1E).opacity(source == nil ? 0.6 : 1))
+            }
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+            .padding(.horizontal, 16)
+            .background(paper, in: Rectangle())
+            .overlay(alignment: .topLeading) { tape(angle: -8).offset(x: 10, y: -6) }
+            .overlay(alignment: .topTrailing) { tape(angle: 7).offset(x: -10, y: -6) }
+            .shadow(color: .black.opacity(0.35), radius: 3, x: 1, y: 2)
+            .rotationEffect(.degrees(-0.4))
+            .padding(.vertical, 6)
+            .fixedSize(horizontal: false, vertical: true)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(source == nil)
+        .help(source == nil ? "Книгу удалили" : "Открыть книгу на этом месте")
+    }
+
+    /// Полоска полупрозрачного скотча.
+    private func tape(angle: Double) -> some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.38))
+            .frame(width: 38, height: 13)
+            .overlay(Rectangle().strokeBorder(Color.white.opacity(0.2), lineWidth: 0.5))
+            .rotationEffect(.degrees(angle))
+            .accessibilityHidden(true)
     }
 
     /// Мягкий тёплый тон цитаты.

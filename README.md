@@ -28,14 +28,15 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Text and background colors, duplicate (⌘D), full undo and redo (⌘Z / ⇧⌘Z).
 - Inline formatting: **bold**, *italic*, underline, ~~strikethrough~~, `code` and links. Select text and a floating format bar appears (on iPhone and iPad it sits above the keyboard), or use ⌘B, ⌘I, ⌘U, ⇧⌘X, ⌘E and the Format menu on right-click. While you edit a block you see light Markdown-style markers, and the block shows the finished formatting as soon as you leave it.
 - A tidy right-click (two-finger tap) menu on every block: add a block below, turn into, color, copy text, send to today's tasks, move, delete. A `+` next to the drag handle adds a block on the Mac.
-- Breadcrumbs above the title, a "Saved" indicator, a word count, and a focus mode (⇧⌘F) that hides everything except the paragraph you are writing, with a 25-minute study timer that reminds you to take a break.
+- Breadcrumbs above the title, a "Saved" indicator, a word count (each can be turned off), and a focus mode (⇧⌘F) that hides everything except the paragraph you are writing, with a 25-minute study timer that reminds you to take a break.
 - Hover over an excerpt to preview the book and the place it came from. Hover over a link to a page (or long-press it on iPhone) to see how that page starts, then open it here or beside the current one.
 - On iPhone, a keyboard bar (new block, indent, move, hide keyboard) and block-type chips above it.
 - Subpages and links to any page with `[[` or `@`, plus backlinks at the bottom of every page.
 - Page covers from the theme's gradients or your own photos.
 - One **Create** button for everything: note (⌘N), task (⇧⌘N), handwritten notebook, book or file (⌘O), database, folder. On iPhone it is a round `+` button.
 - Quick note with ⌘N, from Shortcuts or from Siri. It lands in the Inbox to sort later.
-- A ⌘K command palette: search pages, books and quotes, open recent items, and run actions, such as switching the theme (⌘↵ opens a result beside the current one).
+- A ⌘K command palette: search pages, books and quotes, open recent items, and run actions (⌘↵ opens a result beside the current one): switch the theme, tabs and panes, go back and forward, and act on the open note or book (favorite, move to a folder, copy its link, delete).
+- Use the whole app without a mouse: ⌘J puts a short letter on everything you can click (cards, tiles, books on the shelf, list rows, tabs, buttons, settings), type the letter to press it, and ⇧ with the letter opens that item's menu. It works with a Russian keyboard layout too, since it goes by the key, not the letter.
 
 ### 📚 Reader for almost any file
 - Read **EPUB, PDF, FB2, CBZ, Word, PowerPoint, RTF, ODT, Markdown, HTML and plain text** right inside the app. Other files open with Quick Look.
@@ -49,7 +50,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Read a PDF like an EPUB: the **Text** view reflows it into chapters (from the PDF's bookmarks or its large headings), keeps its pictures in place, drops running headers and page numbers, and lets you pick any font and size. Highlights, excerpts and your reading place carry over between the Text and Original views.
 - Text size goes up to 48 pt in books and documents.
 - Read the Original view of a PDF comfortably on a phone: Lumen trims the white margins so the text is larger at the same width, can read a two-column page column by column (left column fills the screen, then the right one), and remembers your zoom for each book. Scrolling stays straight up and down, without drifting sideways.
-- Turn pages with a swipe: on iPhone and iPad by finger, on a Mac with a two-finger swipe on the trackpad, in books and in PDFs.
+- Turn pages with a swipe: on iPhone and iPad by finger, on a Mac with a two-finger swipe on the trackpad, in books and in PDFs. Or with the arrow keys ← → ↑ ↓ (a zoomed PDF page scrolls first, then turns). ⌥⌘← and ⌥⌘→ move the keyboard between the book and the note beside it.
 - A dashboard for every book with reading time and progress.
 - `lumen://` links to a page, a book, a quote or a place in a book. Paste one into any app, and tapping it opens Lumen right there.
 
@@ -66,8 +67,8 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - A ready-made task tracker with Today, Board, All tasks and Calendar views.
 
 ### 🗂️ Library and workspace
-- A visual library for pages, notebooks, books and folders. Notes made from a book stay right next to it.
-- Browser-style back and forward, tabs (⌘T, ⌘1…9) and split screen on Mac and iPad. Drag a tab to one side of the window to open it next to another one.
+- A visual library for pages, notebooks, books and folders. Notes made from a book stay right next to it. Give any folder, note or database its own emoji icon (pick one or type any), and folders always stand out from the background in every theme.
+- Browser-style back and forward, tabs (⌘T, ⌘1…9, ⌃Tab and ⌃⇧Tab to the next and previous tab) and split screen on Mac and iPad (⌥⌘← and ⌥⌘→ jump between the two halves). Drag a tab to one side of the window to open it next to another one.
 - Favorites, an Inbox for quick notes, and a trash you can restore from.
 - Sort the Inbox one note at a time: swipe, pick one of three suggested folders, turn a note into a task, keep it or delete it. Changed your mind? "Undo" (⌘Z) brings the last note back.
 - A sidebar with search on top, Today, Inbox, Tasks, Library, Recent and folders, and Trash and Settings at the bottom. On iPad in portrait, an icon rail with labels keeps everything one tap away.
@@ -75,7 +76,8 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - On iPhone: Today, Inbox, Library and Search tabs at the bottom of the screen.
 
 ### 🌅 Design
-- Five themes to pick in Settings: dark "Sunset" with warm gradients, light "Paper" with serif type, red ink and no sidebar (sections run along the top like a newspaper masthead), near-black "Monochrome" with a monospaced font and no sidebar (a command line at the bottom opens ⌘K for everything), dark green and brass "Study" with no sidebar (brass room plaques along the top: Desk, Shelf, Notes, Tasks, Archive), and quiet light "Zen". A theme changes colors, the font and light or dark mode across the whole app.
+- Five themes to pick in Settings: dark "Sunset" with warm gradients, light "Paper" with serif type, red ink and no sidebar (sections run along the top like a newspaper masthead), near-black "Monochrome" with a monospaced font and no sidebar, made for the keyboard (a command line at the bottom opens ⌘K for everything and reminds you of ⌘J), dark green and brass "Study" with no sidebar (brass room plaques along the top: Desk, Shelf, Notes, Tasks, Archive; books stand on a shelf as spines cut from the middle of their covers (or in the cover's colors), and a ribbon bookmark on each spine shows how far you have read; drag books to put them in your own order, or sort the shelf by title, author, progress, last read or date added with the buttons above it; hover over a book and it slides off the shelf and turns its cover to you; click it and it flies to the middle of the window as a large cover with a translucent panel beside it: reading time, when you last read it, highlights and the notes with its quotes; quotes from books sit in notes like clippings pasted into a notebook), and quiet light "Zen" with no panels at all (only text and air: the whole menu hides in one breathing dot at the bottom, Home asks "What now?" in a few quiet lines, and a one-minute breathing exercise is a click away). A theme changes colors, the font and light or dark mode across the whole app, and the app icon follows it (an alternate icon on iPhone and iPad, the Dock icon on Mac).
+- A calm screen by default: Settings → "What to show on screen" brings back only what you want. The tab bar appears once you open a second tab, the back, forward and split buttons give way to ⌘[, ⌘] and ⌘\, "Saved" shows for a couple of seconds after an edit, and the word count, the page path, the library grid, each Today card, each sidebar section and the book progress bar (always or on hover) can be turned on or off. The library has a single "Create" button.
 - A **Today** screen: a capture field (tick "This is a task" to add it to today's tasks), Continue reading, today's tasks you can check off, the Inbox, and recent pages.
 
 ## Roadmap

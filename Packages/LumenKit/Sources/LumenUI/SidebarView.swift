@@ -22,6 +22,11 @@ struct SidebarView: View {
     @State private var renamingFolder: Folder?
     @State private var newTitle = ""
     @Environment(\.workspaceActions) private var workspaceActions
+    // Какие разделы видны, выбирают в настройках.
+    @AppStorage(ScreenOptions.sidebarRecentKey) private var showsRecent = true
+    @AppStorage(ScreenOptions.sidebarFavoritesKey) private var showsFavorites = true
+    @AppStorage(ScreenOptions.sidebarDatabasesKey) private var showsDatabases = true
+    @AppStorage(ScreenOptions.sidebarFoldersKey) private var showsFolders = true
 
     var body: some View {
         List(selection: $selection) {
@@ -40,7 +45,7 @@ struct SidebarView: View {
                     }
             }
 
-            if !snapshot.recent.isEmpty {
+            if showsRecent, !snapshot.recent.isEmpty {
                 Section("Недавние") {
                     ForEach(snapshot.recent) { item in
                         recentRow(item)
@@ -48,7 +53,7 @@ struct SidebarView: View {
                 }
             }
 
-            if !snapshot.favorites.isEmpty {
+            if showsFavorites, !snapshot.favorites.isEmpty {
                 Section("Избранное") {
                     ForEach(snapshot.favorites) { page in
                         PageLabel(page: page)
@@ -61,40 +66,44 @@ struct SidebarView: View {
                 }
             }
 
-            Section {
-                ForEach(snapshot.databases) { page in
-                    PageLabel(page: page)
-                        .tag(SidebarItem.page(page.id))
-                        .contextMenu { menu(for: page) }
+            if showsDatabases {
+                Section {
+                    ForEach(snapshot.databases) { page in
+                        PageLabel(page: page)
+                            .tag(SidebarItem.page(page.id))
+                            .contextMenu { menu(for: page) }
+                    }
+                    Button(action: onNewDataTable) {
+                        Label("Новая база данных", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                } header: {
+                    Text("Базы данных")
                 }
-                Button(action: onNewDataTable) {
-                    Label("Новая база данных", systemImage: "plus")
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
-            } header: {
-                Text("Базы данных")
             }
 
-            Section {
-                OutlineGroup(snapshot.folders, children: \.childrenOrNil) { node in
-                    FolderLabel(folder: node.folder)
-                        .tag(SidebarItem.library(node.id))
-                        .contextMenu { folderMenu(for: node.folder) }
-                        // Перетащите страницу из избранного на папку, чтобы положить её туда.
-                        .dropDestination(for: PageDragItem.self) { items, _ in
-                            move(items, toFolder: node.id)
-                        }
+            if showsFolders {
+                Section {
+                    OutlineGroup(snapshot.folders, children: \.childrenOrNil) { node in
+                        FolderLabel(folder: node.folder)
+                            .tag(SidebarItem.library(node.id))
+                            .contextMenu { folderMenu(for: node.folder) }
+                            // Перетащите страницу из избранного на папку, чтобы положить её туда.
+                            .dropDestination(for: PageDragItem.self) { items, _ in
+                                move(items, toFolder: node.id)
+                            }
+                    }
+                    Button {
+                        onNewFolder(nil)
+                    } label: {
+                        Label("Новая папка", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                } header: {
+                    Text("Папки")
                 }
-                Button {
-                    onNewFolder(nil)
-                } label: {
-                    Label("Новая папка", systemImage: "plus")
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
-            } header: {
-                Text("Папки")
             }
 
         }
@@ -393,7 +402,7 @@ struct FolderLabel: View {
             Text(folder.displayName)
                 .lineLimit(1)
         } icon: {
-            FolderGlyph(color: folder.color)
+            FolderGlyph(color: folder.color, icon: folder.icon)
         }
     }
 }

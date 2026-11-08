@@ -17,15 +17,20 @@ enum FolderPalette {
 struct FolderArt: View {
     let color: Int
     var count: Int?
+    /// Свой значок папки (эмодзи) на кармане.
+    var icon: String?
     var isTargeted = false
 
     @Environment(\.lumenTheme) private var theme
 
     private var isGlass: Bool { color == Folder.glassColor }
-    private var card: Theme.VividCard { theme.vividCard(color) }
+    /// Цвета темы, подтянутые к контрасту: тёмная папка не пропадает на тёмном фоне.
+    private var card: Theme.VividCard { theme.folderCard(color) }
 
     private var backColor: Color {
-        isGlass ? Color(hex: 0x5A3E62, opacity: 0.95) : (card.colors.last ?? theme.accent).mix(with: .black, by: 0.25)
+        isGlass
+            ? Color(hex: 0x5A3E62, opacity: 0.95)
+            : theme.legibleOnBackground((card.colors.last ?? theme.accent).mix(with: .black, by: 0.25))
     }
 
     private var foreground: Color { isGlass ? theme.textPrimary : card.foreground }
@@ -90,6 +95,14 @@ struct FolderArt: View {
                 startPoint: .top,
                 endPoint: .center
             ))
+            if let icon, !icon.isEmpty {
+                Text(icon)
+                    .font(.system(size: 30))
+                    .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+                    .padding(.leading, 12)
+                    .padding(.bottom, 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            }
             if let count {
                 Text("\(count)")
                     .font(.caption.weight(.bold))
@@ -107,19 +120,30 @@ struct FolderArt: View {
     }
 }
 
-/// Маленький значок папки для сайдбара и списков.
+/// Маленький значок папки для сайдбара и списков. Если у папки свой значок, виден он.
 struct FolderGlyph: View {
     let color: Int
+    var icon: String?
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
+        if let icon, !icon.isEmpty {
+            Text(icon)
+                .font(.system(size: 13))
+                .frame(width: 16, height: 14)
+        } else {
+            glyph
+        }
+    }
+
+    private var glyph: some View {
         UnevenRoundedRectangle(
             topLeadingRadius: 2, bottomLeadingRadius: 3, bottomTrailingRadius: 3, topTrailingRadius: 3,
             style: .continuous
         )
         .fill(color == Folder.glassColor
             ? AnyShapeStyle(theme.textPrimary.opacity(0.35))
-            : AnyShapeStyle(LinearGradient(colors: theme.vividCard(color).colors, startPoint: .topLeading, endPoint: .bottomTrailing)))
+            : AnyShapeStyle(LinearGradient(colors: theme.folderCard(color).colors, startPoint: .topLeading, endPoint: .bottomTrailing)))
         .frame(width: 14, height: 11)
     }
 }

@@ -71,6 +71,11 @@ extension ReaderView {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 footer
+                    .opacity(showsFooter ? 1 : 0)
+                    // Прозрачная подложка ловит мышь, даже когда сама полоса спрятана.
+                    .background(Color.clear.contentShape(Rectangle()))
+                    .onHover { isFooterHovered = $0 }
+                    .animation(.easeInOut(duration: 0.25), value: showsFooter)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .readerSheet(sheetColors, radius: isCompact ? 30 : ReaderStyle.sheetRadius)
@@ -128,6 +133,14 @@ extension ReaderView {
                     .tint(ReaderStyle.peachDeep)
             }
         }
+    }
+
+    private var showsFooter: Bool {
+        #if os(macOS)
+        progressMode.isVisible(isHovered: isFooterHovered, hasPointer: true)
+        #else
+        progressMode.isVisible(isHovered: isFooterHovered, hasPointer: false)
+        #endif
     }
 
     /// Мягкая полоса внизу листа, под текстом: главы, прогресс и место в книге.
@@ -290,6 +303,7 @@ extension ReaderView {
             cropsMargins: isPDF ? Binding(get: { model.cropsMargins }, set: { model.cropsMargins = $0 }) : nil,
             splitsColumns: isPDF ? Binding(get: { model.splitsColumns }, set: { model.splitsColumns = $0 }) : nil
         )
+        .keyHintHost()
         .presentationDetents([.height(isWebContent ? 340 : (isPDF ? 270 : 190))])
         .presentationCornerRadius(34)
         .presentationCompactAdaptation(.sheet)
@@ -298,6 +312,7 @@ extension ReaderView {
     var highlightsList: some View {
         HighlightsList(model: model) { showsHighlights = false }
             .frame(minWidth: 320, minHeight: 360)
+            .keyHintHost()
             .presentationCornerRadius(34)
             .presentationCompactAdaptation(.sheet)
     }

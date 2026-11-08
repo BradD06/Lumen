@@ -26,12 +26,15 @@ final class NavigationTests: XCTestCase {
         XCTAssertTrue(element("row-").waitForExistence(timeout: 5), "«Вперёд» не вернул заметку")
     }
 
+    /// Пока вкладка одна, полоски нет: она появляется со второй вкладкой и прячется снова.
     func testNewTabOpensAndCloses() {
-        XCTAssertTrue(element("tab-1").waitForExistence(timeout: 10), "Нет полоски вкладок")
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10), "Окно не открылось")
+        XCTAssertFalse(element("tab-1").exists, "Полоска видна при одной вкладке")
         app.typeKey("t", modifierFlags: .command)
         XCTAssertTrue(element("tab-2").waitForExistence(timeout: 5), "⌘T не открыл вкладку")
+        XCTAssertTrue(element("tab-1").exists, "Нет первой вкладки")
         app.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(element("tab-2").waitForNonExistence(timeout: 5), "⌘W не закрыл вкладку")
-        XCTAssertTrue(element("tab-1").exists, "Закрылось окно вместо вкладки")
+        XCTAssertTrue(app.windows.firstMatch.exists, "Закрылось окно вместо вкладки")
     }
 }

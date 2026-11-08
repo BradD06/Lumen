@@ -57,7 +57,7 @@ struct PageBreadcrumbs: View {
             Label {
                 Text(folder.displayName)
             } icon: {
-                FolderGlyph(color: folder.color)
+                FolderGlyph(color: folder.color, icon: folder.icon)
             }
         case .page(let page):
             PageLabel(page: page)
@@ -109,11 +109,38 @@ private struct CrumbButtonStyle: ButtonStyle {
 }
 
 /// «Сохранено» или «Сохраняется…»: видно, что правки записались.
+/// По умолчанию надпись видна, только пока идёт запись, и пару секунд после.
 struct SaveStatusLabel: View {
     let hasUnsavedChanges: Bool
     @Environment(\.lumenTheme) private var theme
+    @AppStorage(ScreenOptions.saveStatusKey) private var mode = SaveStatusMode.briefly
+    /// Правку только что записали: «Сохранено» ещё видно.
+    @State private var justSaved = false
 
     var body: some View {
+        label
+            .opacity(isVisible ? 1 : 0)
+            .animation(.easeInOut(duration: 0.3), value: isVisible)
+            .task(id: hasUnsavedChanges) {
+                guard !hasUnsavedChanges else {
+                    justSaved = true
+                    return
+                }
+                try? await Task.sleep(for: SaveStatusMode.briefDuration)
+                guard !Task.isCancelled else { return }
+                justSaved = false
+            }
+    }
+
+    private var isVisible: Bool {
+        switch mode {
+        case .always: true
+        case .briefly: hasUnsavedChanges || justSaved
+        case .never: false
+        }
+    }
+
+    private var label: some View {
         Label {
             Text(hasUnsavedChanges ? "Сохраняется…" : "Сохранено")
         } icon: {
@@ -127,7 +154,7 @@ struct SaveStatusLabel: View {
     }
 }
 
-/// Капсула в углу страницы: сколько слов и кнопка режима фокуса.
+/// Капсула в углу страницы: сколько слов (если включено в настройках) и кнопка режима фокуса.
 struct WordCountCapsule: View {
     let words: Int
     let isFocusMode: Bool
@@ -138,13 +165,16 @@ struct WordCountCapsule: View {
     var onStopTimer: () -> Void = {}
 
     @Environment(\.lumenTheme) private var theme
+    @AppStorage(ScreenOptions.wordCountKey) private var showsCount = false
 
     var body: some View {
         HStack(spacing: 6) {
-            Text("\(words) \(Self.wordsNoun(words)) · \(Self.minutes(words))")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(theme.textSecondary)
-                .padding(.horizontal, 8)
+            if showsCount {
+                Text("\(words) \(Self.wordsNoun(words)) · \(Self.minutes(words))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(theme.textSecondary)
+                    .padding(.horizontal, 8)
+            }
             if let timerEnd {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Button(action: onStopTimer) {
@@ -157,6 +187,7 @@ struct WordCountCapsule: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(theme.textPrimary)
+                    .keyHint("Остановить таймер", perform: onStopTimer)
                     .help("Остановить таймер учёбы")
                     .accessibilityLabel("Таймер учёбы, осталось \(FocusModeState.remaining(until: timerEnd, now: context.date)). Остановить")
                 }
@@ -171,6 +202,7 @@ struct WordCountCapsule: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.textPrimary)
+                .keyHint("Таймер учёбы", perform: onStartTimer)
                 .help("Таймер учёбы на \(FocusModeState.studyMinutes) минут: по окончании напомнит о перерыве")
             }
             Button(action: onToggleFocus) {

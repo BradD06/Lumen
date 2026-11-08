@@ -126,6 +126,7 @@ struct WorkspaceTabStrip: View {
             .buttonStyle(PaneHeaderButtonStyle())
             .foregroundStyle(theme.textSecondary)
             .help("Новая вкладка (⌘T)")
+            .keyHint("Новая вкладка") { withAnimation(.snappy) { workspace.newTab() } }
             .accessibilityLabel("Новая вкладка")
             .padding(.trailing, 8)
         }
@@ -185,6 +186,7 @@ struct WorkspaceTabStrip: View {
         }
         .contentShape(Capsule())
         .onTapGesture { workspace.select(tab: tab.id) }
+        .keyHint("Вкладка \(number)") { workspace.select(tab: tab.id) }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("tab-\(number)")
@@ -239,6 +241,11 @@ struct PaneHeader: View {
             }
             .disabled(!history.canGoBack)
             .help("Назад")
+            .keyHint("Назад") {
+                guard history.canGoBack else { return }
+                workspace.focus(pane: pane)
+                workspace.goBack()
+            }
             .accessibilityLabel("Назад")
             Button {
                 workspace.focus(pane: pane)
@@ -248,12 +255,18 @@ struct PaneHeader: View {
             }
             .disabled(!history.canGoForward)
             .help("Вперёд")
+            .keyHint("Вперёд") {
+                guard history.canGoForward else { return }
+                workspace.focus(pane: pane)
+                workspace.goForward()
+            }
             .accessibilityLabel("Вперёд")
 
             WorkspaceItemLabel(database: database, item: history.current)
                 .font(.callout.weight(isFocused ? .semibold : .regular))
                 .foregroundStyle(isFocused ? theme.textPrimary : theme.textSecondary)
                 .frame(maxWidth: .infinity)
+                .keyHint("Перейти в эту панель") { workspace.focus(pane: pane) }
 
             Button {
                 workspace.swapPanes()
@@ -261,6 +274,7 @@ struct PaneHeader: View {
                 Image(systemName: "arrow.left.arrow.right").frame(width: 26, height: 26)
             }
             .help("Поменять панели местами")
+            .keyHint("Поменять панели местами") { workspace.swapPanes() }
             .accessibilityLabel("Поменять панели местами")
             Button {
                 withAnimation(.snappy) { workspace.closePane(pane) }
@@ -268,6 +282,7 @@ struct PaneHeader: View {
                 Image(systemName: "xmark").frame(width: 26, height: 26)
             }
             .help("Закрыть панель")
+            .keyHint("Закрыть панель") { withAnimation(.snappy) { workspace.closePane(pane) } }
             .accessibilityLabel("Закрыть панель")
         }
         .buttonStyle(PaneHeaderButtonStyle())
@@ -322,6 +337,8 @@ private struct PaneHeaderButton: View {
 /// свои кнопки в панель окна, иначе в разделённом экране они бы задвоились.
 extension EnvironmentValues {
     @Entry var isActivePane = true
+    /// Окно разделено на две панели.
+    @Entry var isSplitScreen = false
     /// Страница во второй панели разделённого экрана, если там открыта страница.
     /// Читалка кладёт в неё выписки и ссылки на места книги.
     @Entry var besidePageId: UUID?

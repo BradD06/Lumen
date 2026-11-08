@@ -41,6 +41,7 @@ struct PageEditorView: View {
     /// Формат, в который выгружают страницу из меню «Экспорт».
     @State private var exportRequest: PageExportFormat?
     @State private var isMovingToFolder = false
+    @State private var isPickingIcon = false
     @State private var focusTask: Task<Void, Never>?
     #if os(macOS)
     @State private var keyMonitor: Any?
@@ -52,6 +53,7 @@ struct PageEditorView: View {
     @AppStorage("editor.subpagesPanel") private var remembersSubpages = false
     @State private var showsSubpages = false
     @AppStorage(LumenSounds.enabledKey) private var soundsEnabled = true
+    @AppStorage(ScreenOptions.breadcrumbsKey) private var showsBreadcrumbs = false
     /// Блоки верхнего уровня, видные на экране: по ним подсвечивается заголовок на карте.
     @State private var visibleBlockIds: [UUID] = []
     #if os(iOS)
@@ -60,7 +62,6 @@ struct PageEditorView: View {
     @Environment(\.lumenTheme) private var theme
     private let focusMode = FocusModeState.shared
 
-    private static let icons = ["📝", "📘", "📚", "🎓", "💡", "✅", "🧠", "🌅", "🗂️", "⭐️"]
     private static let coverGradients = ["Персик", "Солнце", "Лаванда", "Лайм", "Небо"]
 
     init(
@@ -318,6 +319,7 @@ struct PageEditorView: View {
                     content
                 }
             }
+            .keyHintClip()
             .onScrollTargetVisibilityChange(idType: UUID.self) { ids in
                 visibleBlockIds = ids
             }
@@ -603,19 +605,17 @@ struct PageEditorView: View {
                     .foregroundStyle(theme.accent)
                 }
                 .buttonStyle(.plain)
+                .keyHint("Открыть книгу") {
+                    LumenSounds.play(.navigate)
+                    model.openSource(source.id)
+                }
             }
-            if !isEmbedded {
+            if !isEmbedded, showsBreadcrumbs {
                 PageBreadcrumbs(database: model.database, pageId: model.pageId) { model.open($0) }
             }
             HStack(spacing: 8) {
-                Menu {
-                    ForEach(Self.icons, id: \.self) { icon in
-                        Button(icon) { model.setIcon(icon) }
-                    }
-                    if model.page?.icon != nil {
-                        Divider()
-                        Button("Убрать иконку", role: .destructive) { model.setIcon(nil) }
-                    }
+                Button {
+                    isPickingIcon = true
                 } label: {
                     if let icon = model.page?.icon, !icon.isEmpty {
                         Text(icon).font(.system(size: 44))
@@ -625,9 +625,17 @@ struct PageEditorView: View {
                             .foregroundStyle(theme.textSecondary)
                     }
                 }
-                .menuStyle(.button)
                 .buttonStyle(.plain)
                 .fixedSize()
+                .help("Значок заметки: любой эмодзи")
+                .keyHint("Значок") { isPickingIcon = true }
+                .popover(isPresented: $isPickingIcon) {
+                    IconPicker(current: model.page?.icon) { icon in
+                        model.setIcon(icon)
+                        isPickingIcon = false
+                    }
+                    .presentationCompactAdaptation(.popover)
+                }
 
                 coverMenu
 
@@ -640,6 +648,7 @@ struct PageEditorView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Фон страницы: обои из слоёв гор или своё фото")
+                .keyHint("Фон") { isEditingBackground = true }
 
                 if model.page?.inInbox == true {
                     Button {
@@ -654,6 +663,7 @@ struct PageEditorView: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(theme.accent)
                     .help("Перенести в страницы")
+                    .keyHint("Перенести в страницы") { model.moveOutOfInbox() }
                 }
                 Spacer(minLength: 8)
                 SaveStatusLabel(hasUnsavedChanges: model.hasUnsavedChanges)
@@ -669,6 +679,7 @@ struct PageEditorView: View {
             .foregroundStyle(theme.textPrimary)
             .focused($focus, equals: .title)
             .onSubmit { model.focusFirstBlock() }
+            .keyHint("Заголовок") { focus = .title }
 
             // Строка базы данных: статус, срок и другие свойства над текстом.
             if let page = model.page, page.isDatabaseRow {

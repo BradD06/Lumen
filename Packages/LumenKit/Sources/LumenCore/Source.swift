@@ -22,6 +22,8 @@ public struct Source: Identifiable, Hashable, Codable, Sendable {
     /// Сколько прочитано, от 0 до 1.
     public var progress: Double
     public var lastOpenedAt: Date?
+    /// Место на полке «Кабинета» в своём порядке (`SortKey`). `nil`: книгу ещё не переставляли.
+    public var shelfOrder: String?
     public var createdAt: Date
     public var updatedAt: Date
     /// Мягкое удаление: источник лежит в корзине.
@@ -40,6 +42,7 @@ public struct Source: Identifiable, Hashable, Codable, Sendable {
         locator: SourceLocator? = nil,
         progress: Double = 0,
         lastOpenedAt: Date? = nil,
+        shelfOrder: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date? = nil,
         deletedAt: Date? = nil
@@ -57,6 +60,7 @@ public struct Source: Identifiable, Hashable, Codable, Sendable {
         self.locator = locator
         self.progress = progress
         self.lastOpenedAt = lastOpenedAt
+        self.shelfOrder = shelfOrder
         self.createdAt = createdAt
         self.updatedAt = updatedAt ?? createdAt
         self.deletedAt = deletedAt

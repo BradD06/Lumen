@@ -33,6 +33,7 @@ struct TableOfContents: View {
                 }
                 .buttonStyle(.plain)
                 .help("Скрыть содержание")
+                .keyHint("Скрыть содержание", perform: onClose)
             }
             .padding(.horizontal, 16)
             .padding(.top, 16)
@@ -51,12 +52,17 @@ struct TableOfContents: View {
                                 row(entry, level: level, isCurrent: isCurrent, isRead: isRead)
                             }
                             .buttonStyle(.plain)
+                            .keyHint(entry.title) {
+                                model.open(entry)
+                                if closesOnSelect { onClose() }
+                            }
                             .id(entry.id)
                         }
                     }
                     .padding(.horizontal, 10)
                     .padding(.bottom, 14)
                 }
+                .keyHintClip()
                 .onAppear {
                     if let current { proxy.scrollTo(current.id, anchor: .center) }
                 }
@@ -152,6 +158,12 @@ struct HighlightsList: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        // ⇧ с буквой: сразу в заметки.
+                        .keyHint(highlight.text, secondary: { Task { await model.addExcerpt(highlight) } }) {
+                            onClose()
+                            LumenSounds.play(.navigate)
+                            model.reveal(highlight)
+                        }
                         .contextMenu {
                             Button {
                                 Task { await model.addExcerpt(highlight) }
@@ -183,6 +195,7 @@ struct HighlightsList: View {
                         .listRowBackground(Color.clear)
                     }
                 }
+                .keyHintClip()
                 .scrollContentBackground(.hidden)
             }
         }

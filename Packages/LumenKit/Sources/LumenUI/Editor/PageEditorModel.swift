@@ -30,7 +30,11 @@ final class PageEditorModel {
     /// Блок, на который нужно перевести фокус. Вью сбрасывает его после применения.
     var focusRequest: UUID?
     /// Блок, в котором сейчас курсор. Вью обновляет его при каждой смене фокуса.
-    @ObservationIgnored var focusedBlockId: UUID?
+    @ObservationIgnored var focusedBlockId: UUID? {
+        didSet { if let focusedBlockId { lastFocusedBlockId = focusedBlockId } }
+    }
+    /// Где курсор был в последний раз: туда он возвращается, когда в заметку переходят клавишами.
+    @ObservationIgnored private(set) var lastFocusedBlockId: UUID?
     /// Курсор нужно перевести в заголовок страницы. Вью сбрасывает флаг после применения.
     var focusTitleRequest = false
     /// Блок, который сейчас перетаскивают за ручку.

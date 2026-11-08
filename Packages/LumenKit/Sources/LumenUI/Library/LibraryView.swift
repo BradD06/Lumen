@@ -29,6 +29,8 @@ struct LibraryView: View {
     @State var renaming: LibraryItemID?
     @State var renameText = ""
     @State var moving: LibraryItemID?
+    /// Чей значок сейчас выбирают: папки или заметки.
+    @State var pickingIcon: LibraryItemID?
     /// Открытое стеклянное меню: у какого предмета и где на холсте.
     @State var contextMenu: ContextMenuState?
     @State private var contextMenuHeight: CGFloat = 0
@@ -44,7 +46,9 @@ struct LibraryView: View {
     @State var favorites: [Page] = []
     @State var trashCount = 0
     @State var isSyncInfoPresented = false
-    @AppStorage("library.snapToGrid") var snapToGrid = false
+    @AppStorage(ScreenOptions.gridKey) var snapToGrid = false
+    /// Меню «Создать» над холстом.
+    @State var isCreateMenuOpen = false
     #if os(iOS)
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     #endif
@@ -84,6 +88,14 @@ struct LibraryView: View {
             if !usesList {
                 header
             }
+            // «Кабинет»: в корне библиотеки книги стоят на полке над остальным.
+            if theme.layout == .rooms, folderId == nil, !snapshot.isMissing {
+                BookShelf(database: database, onOpen: { onOpenSource($0) }) {
+                    isImporting = true
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+            }
             if snapshot.isMissing {
                 ContentUnavailableView {
                     Label("Папки больше нет", systemImage: "folder.badge.questionmark")
@@ -101,6 +113,7 @@ struct LibraryView: View {
             }
         }
         .background(ThemedBackground())
+        .bookShowcaseHost(database: database, onOpenBook: onOpenSource)
         .navigationTitle(snapshot.folder?.displayName ?? "Библиотека")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -131,12 +144,30 @@ struct LibraryView: View {
             Button("Готово") { commitRename() }
             Button("Отмена", role: .cancel) { renaming = nil }
         }
+        .sheet(item: $pickingIcon) { item in
+            NavigationStack {
+                IconPicker(current: icon(of: item)) { icon in
+                    setIcon(icon, for: item)
+                    pickingIcon = nil
+                }
+                .navigationTitle("Значок")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Отмена") { pickingIcon = nil }
+                    }
+                }
+            }
+        }
         .sheet(item: $moving) { item in
             MoveToFolderSheet(database: database, item: item, currentFolderId: folderId) {
                 moving = nil
             }
         }
         .task { await observe() }
+        // Сетку включают в настройках: тогда всё сразу раскладывается по ячейкам.
+        .onChange(of: snapToGrid) { _, isOn in
+            if isOn { arrangeInGrid() }
+        }
         .task(id: usesList && folderId == nil) {
             if usesList && folderId == nil { await observeFavorites() }
         }
@@ -162,45 +193,32 @@ struct LibraryView: View {
                                 .background(theme.cardFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
                         .buttonStyle(.plain)
+                        .keyHint("Назад") { onOpenFolder(snapshot.path.last?.id) }
                         .accessibilityLabel("Назад")
                     }
-                    Text(snapshot.folder?.displayName ?? "Библиотека")
+                    Text(snapshot.folder?.displayName ?? (theme.layout == .rooms ? "Полка" : "Библиотека"))
                         .font(.largeTitle.weight(.bold))
                         .foregroundStyle(theme.textPrimary)
                         .lineLimit(1)
                 }
             }
             Spacer(minLength: 0)
-            HStack(spacing: 8) {
-                Button(action: toggleGrid) {
-                    Label(snapToGrid ? "Сетка: вкл" : "Сетка: выкл", systemImage: "square.grid.2x2")
+            // Одна кнопка вместо пяти: что создать, выбирают в меню, а сетка ушла в настройки.
+            Button {
+                isCreateMenuOpen = true
+            } label: {
+                Label("Создать", systemImage: "plus")
+            }
+            .buttonStyle(LibraryButtonStyle(isProminent: true))
+            .help("Заметка, рукописная тетрадь, книга или папка здесь")
+            .keyHint("Создать") { isCreateMenuOpen = true }
+            .accessibilityIdentifier("library-create")
+            .popover(isPresented: $isCreateMenuOpen, arrowEdge: .bottom) {
+                CreateMenuList(kinds: [.note, .notebook, .book, .folder]) { kind in
+                    isCreateMenuOpen = false
+                    createHere(kind)
                 }
-                .buttonStyle(LibraryButtonStyle(isOn: snapToGrid))
-                .help("Выровнять всё по ячейкам и примагничивать к ним")
-
-                Button(action: newPage) {
-                    Label("Заметка", systemImage: "plus")
-                }
-                .buttonStyle(LibraryButtonStyle())
-
-                Button(action: newNotebook) {
-                    Label("От руки", systemImage: "pencil.and.scribble")
-                }
-                .buttonStyle(LibraryButtonStyle())
-                .help("Рукописная заметка, как в Goodnotes: листы, на которых пишут пальцем, Apple Pencil или мышью")
-
-                Button {
-                    isImporting = true
-                } label: {
-                    Label("Книга", systemImage: "book.closed")
-                }
-                .buttonStyle(LibraryButtonStyle())
-                .help("Добавить книгу или файл: EPUB, PDF, FB2, Word, PowerPoint, текст и другие")
-
-                Button(action: newFolder) {
-                    Label("Папка", systemImage: "folder.badge.plus")
-                }
-                .buttonStyle(LibraryButtonStyle(isProminent: true))
+                .presentationCompactAdaptation(.popover)
             }
             .disabled(snapshot.isMissing)
         }
@@ -216,10 +234,12 @@ struct LibraryView: View {
             } else {
                 Button("Библиотека") { onOpenFolder(nil) }
                     .buttonStyle(.plain)
+                    .keyHint("Библиотека") { onOpenFolder(nil) }
                 ForEach(snapshot.path) { folder in
                     Image(systemName: "chevron.right").font(.caption2.weight(.bold))
                     Button(folder.displayName) { onOpenFolder(folder.id) }
                         .buttonStyle(.plain)
+                        .keyHint(folder.displayName) { onOpenFolder(folder.id) }
                 }
             }
         }
@@ -284,6 +304,7 @@ struct LibraryView: View {
                     return true
                 } isTargeted: { isDropTargeted = $0 }
             }
+            .keyHintClip()
             .scrollIndicators(.automatic)
             .overlay {
                 if hasLoaded && items.isEmpty && importingCount == 0 {
@@ -426,6 +447,9 @@ struct LibraryView: View {
                 .action(GlassMenuAction(title: "Переименовать", systemImage: "pencil") {
                     startRename(.folder(folder.id), current: folder.name)
                 }),
+                .action(GlassMenuAction(title: "Значок…", systemImage: "face.smiling") {
+                    pickingIcon = .folder(folder.id)
+                }),
                 .action(GlassMenuAction(title: "Переместить в…", systemImage: "arrow.right") {
                     moving = .folder(folder.id)
                 }),
@@ -489,6 +513,9 @@ struct LibraryView: View {
                             try await database.setFavorite(page.id, !page.isFavorite)
                         }
                     }
+                }),
+                .action(GlassMenuAction(title: "Значок…", systemImage: "face.smiling") {
+                    pickingIcon = .page(page.id)
                 }),
                 .action(GlassMenuAction(title: "Переместить в…", systemImage: "arrow.right") {
                     moving = .page(page.id)

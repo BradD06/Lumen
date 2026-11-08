@@ -21,21 +21,43 @@ struct HomeView: View {
     @State private var isTriaging = false
     @Environment(\.appActions) private var appActions
     @Environment(\.lumenTheme) private var theme
+    @AppStorage(ScreenOptions.homeReadingKey) private var showsReading = true
+    @AppStorage(ScreenOptions.homeTasksKey) private var showsTasks = true
+    @AppStorage(ScreenOptions.homeInboxKey) private var showsInbox = true
+    @AppStorage(ScreenOptions.homeRecentKey) private var showsRecent = true
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                header
+                if isZen {
+                    zenHeader
+                } else {
+                    header
+                }
+                if isStudy {
+                    // «Кабинет»: сверху полка с книгами, ниже то, что лежит на столе.
+                    BookShelf(database: database, onOpen: onOpenSource) {
+                        appActions.create(.book)
+                    }
+                    deskLabel
+                }
                 CaptureField { text, asTask in appActions.capture(text, asTask) }
-                cards
-                if !snapshot.recent.isEmpty {
-                    recent
+                if isZen {
+                    zenLines
+                } else {
+                    if showsReading || showsTasks || showsInbox {
+                        cards
+                    }
+                    if showsRecent, !snapshot.recent.isEmpty {
+                        recent
+                    }
                 }
             }
             .padding(20)
             .frame(maxWidth: 1080, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
+        .keyHintClip()
         .background(ThemedBackground())
         .navigationTitle("Сегодня")
         #if os(iOS)
@@ -49,6 +71,8 @@ struct HomeView: View {
         }
         .task { await observePages() }
         .task { await observeReading() }
+        // Книга, вынутая с полки «Кабинета», встаёт посередине экрана.
+        .bookShowcaseHost(database: database, onOpenBook: onOpenSource)
     }
 
     private var header: some View {
@@ -63,6 +87,112 @@ struct HomeView: View {
         .padding(.top, 8)
     }
 
+    private var isStudy: Bool { theme.layout == .rooms }
+    /// «Дзен»: вместо карточек тихие строки без рамок, только то, чем заняться сейчас.
+    private var isZen: Bool { theme.layout == .orb }
+
+    private var zenHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Self.zenMoment(.now))
+                .font(.caption.weight(.medium))
+                .tracking(2)
+                .foregroundStyle(theme.textSecondary)
+            Text("Что сейчас?")
+                .font(.system(size: 40, weight: .light, design: .serif))
+                .foregroundStyle(theme.textPrimary)
+        }
+        .padding(.top, 40)
+    }
+
+    private var zenLines: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !showsReading {
+                EmptyView()
+            } else if let source = reading.current {
+                zenLine("Продолжить: \(source.displayTitle)", detail: "\(Int((source.progress * 100).rounded()))%") {
+                    onOpenSource(source.id)
+                }
+            } else {
+                zenLine("Добавить книгу и читать рядом с заметками", action: onShowLibrary)
+            }
+            if showsTasks {
+                zenLine("Дела на сегодня") { appActions.open(.tasks) }
+            }
+            if showsInbox, snapshot.inboxCount > 0 {
+                zenLine(Self.waitingThoughts(snapshot.inboxCount), action: onShowInbox)
+            }
+            zenLine("Минута тишины перед чтением") { appActions.breathe() }
+        }
+        .padding(.top, 8)
+        .frame(maxWidth: 620, alignment: .leading)
+    }
+
+    private func zenLine(_ title: String, detail: String? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(title)
+                    .font(.system(.title3, design: .serif))
+                    .foregroundStyle(theme.textPrimary)
+                    .lineLimit(1)
+                if let detail {
+                    Text(detail)
+                        .font(.callout)
+                        .foregroundStyle(theme.textSecondary)
+                }
+                Spacer(minLength: 12)
+                Text("→")
+                    .foregroundStyle(theme.accent)
+            }
+            .padding(.vertical, 14)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(theme.contrast.opacity(0.08)).frame(height: 1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .keyHint(title, perform: action)
+    }
+
+    /// «СУББОТА · ВЕЧЕР».
+    nonisolated static func zenMoment(_ date: Date, calendar: Calendar = .current) -> String {
+        let weekday = date.formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "ru_RU")))
+        let part: String
+        switch calendar.component(.hour, from: date) {
+        case 5..<12: part = "утро"
+        case 12..<18: part = "день"
+        case 18..<23: part = "вечер"
+        default: part = "ночь"
+        }
+        return "\(weekday) · \(part)".uppercased()
+    }
+
+    /// «1 мысль ждёт во входящих», «3 мысли ждут во входящих».
+    nonisolated static func waitingThoughts(_ count: Int) -> String {
+        let verb = count % 10 == 1 && count % 100 != 11 ? "ждёт" : "ждут"
+        return "\(count) \(thoughts(count)) \(verb) во входящих"
+    }
+
+    /// «мысль», «мысли», «мыслей».
+    nonisolated static func thoughts(_ count: Int) -> String {
+        let lastTwo = count % 100
+        let last = count % 10
+        if (11...14).contains(lastTwo) { return "мыслей" }
+        switch last {
+        case 1: return "мысль"
+        case 2, 3, 4: return "мысли"
+        default: return "мыслей"
+        }
+    }
+
+    private var deskLabel: some View {
+        Text("На столе")
+            .font(.caption.weight(.semibold))
+            .textCase(.uppercase)
+            .tracking(1.4)
+            .foregroundStyle(theme.accent.opacity(0.85))
+            .padding(.bottom, -10)
+    }
+
     private var greeting: String {
         switch Calendar.current.component(.hour, from: .now) {
         case 5..<12: "Доброе утро"
@@ -75,13 +205,16 @@ struct HomeView: View {
     /// Три главные карточки дня. На узком экране встают друг под другом.
     private var cards: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)], spacing: 16) {
-            if let source = reading.current {
+            if !showsReading {
+                EmptyView()
+            } else if let source = reading.current {
                 Button {
                     onOpenSource(source.id)
                 } label: {
                     ContinueReadingCard(source: source, attachments: database.attachments, caption: readingCaption)
                 }
                 .buttonStyle(.plain)
+                .keyHint(source.displayTitle) { onOpenSource(source.id) }
                 .accessibilityIdentifier("home-continue")
             } else {
                 Button(action: onShowLibrary) {
@@ -93,13 +226,18 @@ struct HomeView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .keyHint("Библиотека", perform: onShowLibrary)
             }
 
-            TodayTasksCard(database: database, onOpen: onOpen) {
-                appActions.open(.tasks)
+            if showsTasks {
+                TodayTasksCard(database: database, onOpen: onOpen) {
+                    appActions.open(.tasks)
+                }
             }
 
-            InboxCard(count: snapshot.inboxCount, onOpen: onShowInbox, onTriage: { isTriaging = true }, onNewNote: onNewNote)
+            if showsInbox {
+                InboxCard(count: snapshot.inboxCount, onOpen: onShowInbox, onTriage: { isTriaging = true }, onNewNote: onNewNote)
+            }
         }
     }
 
@@ -133,6 +271,7 @@ struct HomeView: View {
                 Spacer()
                 Button("Вся библиотека ›", action: onShowLibrary)
                     .buttonStyle(.plain)
+                    .keyHint("Вся библиотека", perform: onShowLibrary)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(theme.accent)
             }
@@ -144,6 +283,7 @@ struct HomeView: View {
                         PagePreviewCard(preview: preview)
                     }
                     .buttonStyle(.plain)
+                    .keyHint(preview.page.displayTitle) { onOpen(preview.page.id) }
                 }
             }
         }
@@ -195,6 +335,7 @@ private struct TodayTasksCard: View {
                 Spacer()
                 Button(counter, action: onShowAll)
                     .buttonStyle(.plain)
+                    .keyHint("Все задачи", perform: onShowAll)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(theme.textSecondary)
                     .help("Открыть все задачи")
@@ -220,6 +361,7 @@ private struct TodayTasksCard: View {
                     .onSubmit(add)
                     .accessibilityIdentifier("home-add-task")
             }
+            .keyHint("Добавить задачу") { isAdding = true }
             .padding(.top, 4)
         }
         .foregroundStyle(theme.textPrimary)
@@ -241,6 +383,7 @@ private struct TodayTasksCard: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .keyHint(done ? "Вернуть в работу" : "Отметить выполненной") { toggle(row) }
             .accessibilityLabel(done ? "Вернуть в работу" : "Отметить выполненной")
             Button {
                 onOpen(row.id)
@@ -254,6 +397,7 @@ private struct TodayTasksCard: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .keyHint(row.title.isEmpty ? "Без названия" : row.title) { onOpen(row.id) }
             if let due = dueLabel(row) {
                 Text(due)
                     .font(.caption.weight(.semibold))
@@ -374,13 +518,16 @@ private struct InboxCard: View {
                 if count > 0 {
                     Button("Разобрать по одной", action: onTriage)
                         .buttonStyle(DarkPillButtonStyle(foreground: theme.vividCard(2).colors.first ?? .white))
+                        .keyHint("Разобрать по одной", perform: onTriage)
                         .accessibilityIdentifier("home-triage")
                 } else {
                     Button("Записать мысль", action: onNewNote)
                         .buttonStyle(DarkPillButtonStyle(foreground: theme.vividCard(2).colors.first ?? .white))
+                        .keyHint("Записать мысль", perform: onNewNote)
                 }
                 Button("Открыть", action: onOpen)
                     .buttonStyle(.plain)
+                    .keyHint("Открыть входящие", perform: onOpen)
                     .font(.subheadline.weight(.semibold))
                     .opacity(0.8)
             }
