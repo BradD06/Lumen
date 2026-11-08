@@ -254,6 +254,13 @@ extension AppDatabase {
             }
         }
 
+        migrator.registerMigration("v11: shelf order") { db in
+            // Свой порядок книг на полке «Кабинета». Таблица уже синхронизируется.
+            try db.alter(table: "source") { t in
+                t.add(column: "shelfOrder", .text)
+            }
+        }
+
         return migrator
     }
 }

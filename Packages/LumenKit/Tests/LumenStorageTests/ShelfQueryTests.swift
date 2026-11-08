@@ -31,3 +31,25 @@ struct ShelfQueryTests {
         #expect(shelf.count == 3)
     }
 }
+
+struct ShelfArrangeTests {
+    @Test func arrangedOrderIsKeptAndOnlyMovedBookChanges() async throws {
+        let db = try AppDatabase.inMemory()
+        var ids: [UUID] = []
+        for index in 0..<4 {
+            ids.append(try await db.addSource(title: "Книга \(index)", format: .epub, file: "\(index).epub", originalName: "\(index).epub").id)
+        }
+        try await db.arrangeShelf(ids)
+        let before = try await db.reader.read { try ShelfQuery.fetch($0) }
+        #expect(ShelfSort.custom.sorted(before).map(\.id) == ids)
+
+        // Последнюю книгу поставили первой.
+        let moved = [ids[3], ids[0], ids[1], ids[2]]
+        try await db.arrangeShelf(moved)
+        let after = try await db.reader.read { try ShelfQuery.fetch($0) }
+        #expect(ShelfSort.custom.sorted(after).map(\.id) == moved)
+        let keyBefore = Dictionary(uniqueKeysWithValues: before.map { ($0.id, $0.shelfOrder) })
+        let changed = after.filter { keyBefore[$0.id] != $0.shelfOrder }.map(\.id)
+        #expect(changed == [ids[3]])
+    }
+}

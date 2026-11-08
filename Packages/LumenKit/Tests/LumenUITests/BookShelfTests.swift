@@ -79,3 +79,14 @@ struct BookShowcaseLayoutTests {
         #expect(layout.coverHeight <= 300)
     }
 }
+
+struct ShelfLayoutTests {
+    @Test func dropPlaceFollowsThePointer() {
+        // Две книги по 30 точек: середины на 25 и 58.
+        let widths: [CGFloat] = [30, 30]
+        #expect(ShelfLayout.insertionIndex(x: 5, widths: widths) == 0)
+        #expect(ShelfLayout.insertionIndex(x: 30, widths: widths) == 1)
+        #expect(ShelfLayout.insertionIndex(x: 70, widths: widths) == 2)
+        #expect(ShelfLayout.insertionIndex(x: 10, widths: []) == 0)
+    }
+}
