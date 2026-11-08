@@ -73,6 +73,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Sort the Inbox one note at a time: swipe, pick one of three suggested folders, turn a note into a task, keep it or delete it. Changed your mind? "Undo" (⌘Z) brings the last note back.
 - A sidebar with search on top, Today, Inbox, Tasks, Library, Recent and folders, and Trash and Settings at the bottom. On iPad in portrait, an icon rail with labels keeps everything one tap away.
 - Export a page to Markdown or PDF, plus full backups of your data.
+- Free sync between Mac, iPhone and iPad through a folder in your iCloud Drive: pick the same folder on every device in Data and backups, and notes, books, pictures, highlights and reading time follow you. No paid Apple account needed.
 - On iPhone: Today, Inbox, Library and Search tabs at the bottom of the screen.
 
 ### 🌅 Design
@@ -115,7 +116,7 @@ Packages/LumenKit/
     LumenStorage/       SQLite via GRDB: schema, migrations, repositories, FTS5 search, backups
     LumenThemes/        design tokens, the five themes, backgrounds, widget cards
     LumenReader/        reader: EPUB, FB2, PDF, Word, PowerPoint and text converters
-    LumenSync/          iCloud sync with CKSyncEngine (off for now, see below)
+    LumenSync/          sync: through an iCloud Drive folder, or CloudKit with a paid account
     LumenUI/            screens: home, inbox, sidebar, library, editor, reader,
                         handwriting, databases, search; Phone/ holds the iPhone tabs
   Tests/                tests written with Swift Testing
@@ -126,10 +127,32 @@ project.yml             Xcode project definition for XcodeGen
 
 ## Sync
 
-Your data stays on your device. iCloud sync between iPhone, iPad and Mac is already written, but it is turned off, because iCloud needs a paid Apple Developer Program account. The plan is to move sync to Supabase, which will also work with the future Windows app.
+Your data stays on your device until you turn on sync. Sync works through a folder you pick yourself, usually iCloud Drive, so it needs no paid Apple Developer Program account. Later the plan is to add Supabase, which will also work with the future Windows app.
+
+**Turn it on:** Settings (or ⋯ in the Library on iPhone) → Data and backups → Sync → "Choose a folder in iCloud Drive…". Pick the same folder on every device, simplest is iCloud Drive itself. Lumen creates a `Lumen Sync` folder in it.
 
 <details>
-<summary>How the iCloud sync works and how to turn it on</summary>
+<summary>How folder sync works</summary>
+
+Every change in the database (a page, block, folder, book, highlight or reading session) is added to a `syncChange` queue by SQLite triggers, and a `syncClock` table remembers when each row was last changed or deleted. A shared SQLite file in the cloud would get corrupted when two devices write to it, so every device keeps its own database and the folder holds only changes:
+
+```
+Lumen Sync/
+  format.json
+  devices/<device>/device.json            device name, last seen
+  devices/<device>/changes/0000000001.json  changes in order (JSON)
+  devices/<device>/snapshot-0000000300.json one compact copy instead of old changes
+  files/<name>                            books, covers, pictures
+```
+
+Each device writes only into its own folder, so iCloud never has to resolve conflicts. A device reads the others' changes in order at launch, a few seconds after an edit, every 30 seconds while open, and when it comes back to the foreground. Of two edits to the same row, the later one wins, and a deletion is not undone by an older copy. Search and backlinks are rebuilt on each device. The engine is `FolderSyncEngine` (LumenStorage), and `FolderSyncController` (LumenSync) keeps the folder bookmark and runs it.
+
+</details>
+
+<details>
+<summary>CloudKit sync with a paid account</summary>
+
+The `LumenSync` module can also hand the same queue to `CKSyncEngine` and keep data in the user's private CloudKit database, with book files as assets. In a build with CloudKit, folder sync is hidden.
 
 Every change in the database (a page, block, folder, book or highlight) is added to a `syncChange` queue by SQLite triggers, even while sync is off. The `LumenSync` module hands this queue to `CKSyncEngine` and writes records from other devices back into the database. Data lives in the user's private CloudKit database, and book files travel as assets. Search indexes and backlinks are not stored in iCloud; each device rebuilds them.
 

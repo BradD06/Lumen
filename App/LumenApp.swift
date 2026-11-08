@@ -12,6 +12,7 @@ struct LumenApp: App {
     @NSApplicationDelegateAdaptor(LumenAppDelegate.self) private var appDelegate
     #endif
     @State private var syncStatus = SyncStatus()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -19,6 +20,7 @@ struct LumenApp: App {
                 RootView(database: database)
                     .lumenThemed()
                     .environment(syncStatus)
+                    .environment(AppEnvironment.folderSync(database: database, status: syncStatus))
                     .task { await AppEnvironment.startSync(database: database, status: syncStatus) }
             } else {
                 DatabaseRecoveryView(error: AppEnvironment.openingError ?? CocoaError(.fileReadUnknown)) { recovered in
@@ -30,6 +32,10 @@ struct LumenApp: App {
         #if os(macOS)
         .defaultSize(width: 1180, height: 760)
         #endif
+        // Открыли приложение или ушли из него: правки сразу уезжают в папку и приходят из неё.
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .inactive { AppEnvironment.folderSyncController?.syncNow() }
+        }
         .commands {
             EditorCommands()
             SoundCommands()
@@ -88,16 +94,34 @@ enum AppEnvironment {
 }
 
 extension AppEnvironment {
-    /// Синхронизация с iCloud, если сборка с ней: в Info.plist указан контейнер и есть права iCloud
-    /// (нужен платный аккаунт разработчика, см. README). Иначе всё остаётся только на устройстве.
+    /// Синхронизация с iCloud через CloudKit, если сборка с ней: в Info.plist указан контейнер и есть права
+    /// iCloud (нужен платный аккаунт разработчика, см. README). Иначе синхронизация через папку,
+    /// которую выбирают в «Данные и копии», или всё остаётся только на устройстве.
     @MainActor
     private static var sync: CloudSync?
 
+    /// Синхронизация через выбранную папку (iCloud Drive). Нет в сборке с CloudKit и в UI-тестах.
+    @MainActor
+    private(set) static var folderSyncController: FolderSyncController?
+
+    @MainActor
+    static func folderSync(database: AppDatabase, status: SyncStatus) -> FolderSyncController? {
+        guard CloudSync.configuredContainer == nil,
+              !ProcessInfo.processInfo.arguments.contains("-uiTesting") else { return nil }
+        if let folderSyncController { return folderSyncController }
+        let controller = FolderSyncController(database: database, status: status)
+        folderSyncController = controller
+        return controller
+    }
+
     @MainActor
     static func startSync(database: AppDatabase, status: SyncStatus) async {
-        guard sync == nil,
-              !ProcessInfo.processInfo.arguments.contains("-uiTesting"),
-              let container = CloudSync.configuredContainer else { return }
+        guard !ProcessInfo.processInfo.arguments.contains("-uiTesting") else { return }
+        guard let container = CloudSync.configuredContainer else {
+            folderSync(database: database, status: status)?.start()
+            return
+        }
+        guard sync == nil else { return }
         let sync = CloudSync(database: database, containerIdentifier: container, status: status)
         self.sync = sync
         await sync.start()

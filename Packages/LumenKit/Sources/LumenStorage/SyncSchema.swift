@@ -12,6 +12,8 @@ public enum SyncTable: String, CaseIterable, Codable, Sendable {
     case dataTable
     case block
     case highlight
+    /// Время чтения: строки только добавляются, поля `updatedAt` у них нет.
+    case readingSession
 
     /// Тип записи в CloudKit.
     public var recordType: String {
@@ -22,6 +24,7 @@ public enum SyncTable: String, CaseIterable, Codable, Sendable {
         case .dataTable: "DataTable"
         case .block: "Block"
         case .highlight: "Highlight"
+        case .readingSession: "ReadingSession"
         }
     }
 
@@ -172,8 +175,8 @@ extension AppDatabase {
             t.primaryKey("id", .integer)
         }
 
-        // Таблицы, появившиеся позже журнала, получают триггеры в своих миграциях.
-        for table in SyncTable.allCases where table != .dataTable {
+        // Таблицы, появившиеся в журнале позже, получают триггеры в своих миграциях.
+        for table: SyncTable in [.folder, .source, .page, .block, .highlight] {
             try createSyncTriggers(db, table: table.rawValue)
         }
     }
@@ -187,6 +190,39 @@ extension AppDatabase {
                 BEGIN
                     INSERT OR REPLACE INTO syncChange(tableName, recordId, isDeletion, version)
                     VALUES ('\(table)', \(row).id, \(isDeletion), (SELECT COALESCE(MAX(version), 0) + 1 FROM syncChange));
+                END
+                """)
+        }
+    }
+}
+
+extension AppDatabase {
+    /// Часы правок для синхронизации через папку: когда строку последний раз меняли или удаляли
+    /// на этом устройстве (или на том, откуда пришла правка). Из двух правок одной строки
+    /// остаётся более поздняя, а удаление помнится, чтобы старая копия строки его не отменила.
+    static func createSyncClock(_ db: Database) throws {
+        try db.create(table: "syncClock") { t in
+            t.column("tableName", .text).notNull()
+            t.column("recordId", .blob).notNull()
+            // Время в том же виде, в каком GRDB хранит даты: строки сравниваются как время.
+            t.column("changedAt", .text).notNull()
+            t.column("isDeleted", .boolean).notNull()
+            t.primaryKey(["tableName", "recordId"])
+        }
+        for table in SyncTable.allCases {
+            try createSyncClockTriggers(db, table: table.rawValue)
+        }
+    }
+
+    static func createSyncClockTriggers(_ db: Database, table: String) throws {
+        for (event, row, isDeletion) in [("INSERT", "NEW", 0), ("UPDATE", "NEW", 0), ("DELETE", "OLD", 1)] {
+            try db.execute(sql: """
+                CREATE TRIGGER sync_\(table)_clock_\(event.lowercased())
+                AFTER \(event) ON \(table)
+                WHEN NOT EXISTS (SELECT 1 FROM syncApplying)
+                BEGIN
+                    INSERT OR REPLACE INTO syncClock(tableName, recordId, changedAt, isDeleted)
+                    VALUES ('\(table)', \(row).id, strftime('%Y-%m-%d %H:%M:%f', 'now'), \(isDeletion));
                 END
                 """)
         }
