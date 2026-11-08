@@ -203,11 +203,12 @@ enum PDFTextLayout {
         breaks.sort { ($0.page, $0.line, $0.level) < ($1.page, $1.line, $1.level) }
         let full = typicalLineLength(pages)
 
+        let allMetrics = pages.map(PageMetrics.of)
         var writer = Writer(title: frontTitle)
         var nextBreak = 0
         for (pageIndex, lines) in pages.enumerated() {
             writer.pendingPages += 1
-            let metrics = PageMetrics.of(lines)
+            let metrics = allMetrics[pageIndex]
             var index = 0
             func applyBreaks(upTo line: Int) -> Int {
                 var consumed = 0
@@ -215,7 +216,9 @@ enum PDFTextLayout {
                       breaks[nextBreak].page < pageIndex || (breaks[nextBreak].page == pageIndex && breaks[nextBreak].line <= line) {
                     let item = breaks[nextBreak]
                     nextBreak += 1
-                    if item.level == 0 {
+                    if item.level == 0, !item.showsHeading {
+                        writer.startChunk(item.title)
+                    } else if item.level == 0 {
                         writer.startSection(item.title, showsHeading: item.showsHeading)
                     } else {
                         writer.heading(item.title, level: item.level)
@@ -243,13 +246,14 @@ enum PDFTextLayout {
                 // Картинка посреди предложения его не рвёт: она встанет после абзаца.
                 let following = lines[(index + 1)...].firstIndex { $0.image == nil }
                 let onThisPage = following != nil
-                let next = following.map { lines[$0] }
-                    ?? pages.dropFirst(pageIndex + 1).lazy.compactMap { later in later.first { !$0.text.isEmpty } }.first
+                // Последняя строка страницы: абзац может продолжиться на следующей, тогда он склеивается.
+                let nextPage = onThisPage ? nil : pages.indices.dropFirst(pageIndex + 1).first { later in pages[later].contains { !$0.text.isEmpty } }
+                let next = following.map { lines[$0] } ?? nextPage.flatMap { later in pages[later].first { !$0.text.isEmpty } }
                 let acrossPicture = (following ?? lines.count) > index + 1
                 let breaksNext = nextBreak < breaks.count && breaks[nextBreak].page == pageIndex && breaks[nextBreak].line == index + 1
                 let ends = endsParagraph(
                     line, next: next, edge: pictureEdge(lines, beside: line), sameColumn: onThisPage,
-                    acrossPicture: acrossPicture, metrics: metrics, fullLength: full
+                    acrossPicture: acrossPicture, metrics: metrics, nextMetrics: nextPage.flatMap { allMetrics[$0] }, fullLength: full
                 )
                 writer.append(line.text, breakAfter: breaksNext || ends)
                 index += 1
@@ -326,11 +330,15 @@ enum PDFTextLayout {
         sameColumn: Bool = true,
         acrossPicture: Bool = false,
         metrics: PageMetrics? = nil,
+        nextMetrics: PageMetrics? = nil,
         fullLength: Int
     ) -> Bool {
         guard let next, !next.text.isEmpty else { return true }
         let text = line.text
-        if text.hasSuffix("-") || text.hasSuffix("\u{00AD}") || text.hasSuffix("\u{2010}") { return false }
+        if text.hasSuffix("-") || text.hasSuffix("\u{00AD}") || text.hasSuffix("\u{2010}") || text.hasSuffix("\u{2011}") { return false }
+        if !sameColumn {
+            return endsBeforePage(line, next: next, edge: localEdge, metrics: metrics, nextMetrics: nextMetrics, fullLength: fullLength)
+        }
         // Перед картинкой кончилось предложение: скорее всего, кончился и абзац.
         if acrossPicture, let last = text.last, ".!?…:".contains(last) { return true }
         if let metrics, let frame = line.frame {
@@ -338,7 +346,7 @@ enum PDFTextLayout {
             // рядом с картинкой текст идёт узкой колонкой, и её строки не короткие, а полные.
             let edge = min(metrics.right, localEdge ?? metrics.right)
             if frame.maxX < edge - max((edge - metrics.left) * 0.1, 12) { return true }
-            guard sameColumn, let following = next.frame else { return false }
+            guard let following = next.frame else { return false }
             // Следующая строка начинается со значка списка.
             if let first = next.text.first, "•·▪◦●■–—".contains(first) { return true }
             let indent = max(metrics.width * 0.025, 6)
@@ -357,6 +365,33 @@ enum PDFTextLayout {
         if Double(text.count) < Double(fullLength) * 0.8 { return true }
         let terminal = text.last.map { ".!?…:;»\"”)".contains($0) } ?? false
         if terminal, let first = next.text.first, "—–•·▪".contains(first) { return true }
+        // Другой размер шрифта: сноска, подпись или заголовок.
+        if line.size > 0, next.size > 0, abs(line.size - next.size) > 1.5 { return true }
+        return false
+    }
+
+    /// Кончается ли абзац на последней строке страницы. Строка с маленькой буквы на следующей
+    /// странице продолжает предложение. Иначе абзац кончился, если последняя строка короткая
+    /// или следующая страница начинается с красной строки или пункта списка.
+    static func endsBeforePage(
+        _ line: PDFLine, next: PDFLine, edge localEdge: Double? = nil,
+        metrics: PageMetrics?, nextMetrics: PageMetrics?, fullLength: Int
+    ) -> Bool {
+        let text = line.text
+        let terminal = text.last.map { ".!?…:;»\"”)".contains($0) } ?? false
+        if !terminal, next.text.first?.isLowercase == true { return false }
+        if let first = next.text.first, "•·▪◦●■".contains(first) { return true }
+        if terminal, let first = next.text.first, "—–".contains(first) { return true }
+        if let metrics, let frame = line.frame {
+            let edge = min(metrics.right, localEdge ?? metrics.right)
+            if frame.maxX < edge - max((edge - metrics.left) * 0.1, 12) { return true }
+        } else if Double(text.count) < Double(fullLength) * 0.8 {
+            return true
+        }
+        if let nextMetrics, let following = next.frame {
+            let indent = max(nextMetrics.width * 0.025, 6)
+            if following.minX > nextMetrics.left + indent, following.minX < nextMetrics.left + nextMetrics.width * 0.3 { return true }
+        }
         // Другой размер шрифта: сноска, подпись или заголовок.
         if line.size > 0, next.size > 0, abs(line.size - next.size) > 1.5 { return true }
         return false
@@ -394,7 +429,7 @@ enum PDFTextLayout {
     // MARK: Колонтитулы и номера страниц
 
     private static let pageNumberPattern = try! NSRegularExpression(pattern:
-        #"^[\s\-–—\[\(\.\|•·]*(?:(?:[Сс]тр|[Сс]траница|[Pp]age|[Pp]|[Сс])\.?\s*)?(?:\d{1,4}|[ivxlcdm]{1,7})(?:\s*(?:из|of|/)\s*\d{1,4})?[\s\-–—\]\)\.\|•·]*$"#
+        #"^[\s\-–—\[\(\.\|•·]*(?:(?:[Сс]тр|[Сс]траница|[Pp]age|[Pp]|[Сс])\.?\s*)?(?:\d{1,4}|[ivxlcdm]{1,7}|[IVXLCDM]{2,7})(?:\s*(?:из|of|/)\s*\d{1,4})?[\s\-–—\]\)\.\|•·]*$"#
     )
 
     /// Строка, в которой нет ничего, кроме номера страницы: «12», «— 12 —», «стр. 12», «xiv».
@@ -410,53 +445,131 @@ enum PDFTextLayout {
         return String(letters).split(separator: " ").joined(separator: " ")
     }
 
-    /// Слова, с которых начинаются названия глав: такие строки повторяются, но это не колонтитулы.
-    private static let chapterWords: Set<String> = ["глава", "часть", "раздел", "лекция", "урок", "chapter", "part", "section", "lesson"]
+    /// Слова, с которых начинаются названия глав и пронумерованные подписи. Такие строки повторяются
+    /// у края страниц и сами по себе («Глава 1», «Глава 2»), поэтому колонтитулом считаются, только
+    /// если повторяется та же строка с тем же номером: «Глава 3. Тайна» вверху страниц третьей главы.
+    private static let labelWords: Set<String> = [
+        "глава", "часть", "раздел", "лекция", "урок", "задача", "упражнение", "пример", "рисунок", "таблица", "теорема",
+        "chapter", "part", "section", "lesson", "exercise", "example", "figure", "table", "problem", "theorem",
+    ]
+
+    /// Ключ строки, которая начинается со слова из `labelWords`: буквы и цифры. Номер страницы
+    /// у края колонтитула («Глава 3. Тайна 47») отбрасывается, номер главы остаётся.
+    /// `nil`, если строка начинается с другого слова.
+    static func labelKey(_ text: String) -> String? {
+        guard text.count <= 90 else { return nil }
+        let characters = text.lowercased().unicodeScalars.map { CharacterSet.alphanumerics.contains($0) ? Character($0) : " " }
+        var words = String(characters).split(separator: " ").map(String.init)
+        guard let first = words.first, labelWords.contains(first) else { return nil }
+        func isNumber(_ word: String) -> Bool { word.allSatisfy(\.isNumber) }
+        while words.filter(isNumber).count >= 2 {
+            if let last = words.last, isNumber(last) { words.removeLast() } else { break }
+        }
+        return words.joined(separator: " ")
+    }
+
+    /// Есть ли среди страниц `pages` три в пределах шести подряд, считая страницу `page`.
+    /// Так повторяется колонтитул даже короткой главы, а заголовок или фраза почти никогда.
+    static func repeatsNearby(_ pages: [Int], around page: Int) -> Bool {
+        let near = pages.filter { abs($0 - page) <= 5 }
+        guard near.count >= 3 else { return false }
+        return (page - 5...page).contains { start in near.filter { (start...start + 5).contains($0) }.count >= 3 }
+    }
+
+    /// Строки у верхнего и нижнего края страницы: сверху вниз и снизу вверх. Если места строк известны,
+    /// край берётся по ним, а не по порядку строк: PDF часто хранит колонтитул после текста страницы.
+    static func edgeLines(_ lines: [PDFLine], edge: Int) -> (top: [Int], bottom: [Int]) {
+        let filled = lines.indices.filter { !lines[$0].text.isEmpty }
+        var ordered = filled
+        if filled.count > 1, filled.allSatisfy({ lines[$0].frame != nil }) {
+            ordered = filled.sorted {
+                let first = lines[$0].frame!.midY, second = lines[$1].frame!.midY
+                return first != second ? first > second : $0 < $1
+            }
+        }
+        let top = Array(ordered.prefix(edge))
+        let bottom = Array(ordered.dropFirst(top.count).suffix(edge).reversed())
+        return (top, bottom)
+    }
 
     /// Убирает сверху и снизу каждой страницы номера страниц и строки, которые повторяются
     /// у края многих страниц: название книги, имя автора, название главы.
     static func stripRunningLines(_ pages: [[PDFLine]], bodySize: Double) -> [[PDFLine]] {
         let edge = 2
-        func edgeLines(_ lines: [PDFLine]) -> [PDFLine] {
-            let filled = lines.filter { !$0.text.isEmpty }
-            return Array(filled.prefix(edge)) + Array(filled.dropFirst(edge).suffix(edge))
-        }
+        let edges = pages.map { edgeLines($0, edge: edge) }
         var counts: [String: Int] = [:]
-        for lines in pages {
-            for key in Set(edgeLines(lines).map { runningKey($0.text) }) where !key.isEmpty {
+        var loosePages: [String: [Int]] = [:]
+        var labelPages: [String: [Int]] = [:]
+        for (pageIndex, lines) in pages.enumerated() {
+            let indices = edges[pageIndex].top + edges[pageIndex].bottom
+            for key in Set(indices.map { runningKey(lines[$0].text) }) where !key.isEmpty {
                 counts[key, default: 0] += 1
+                loosePages[key, default: []].append(pageIndex)
+            }
+            for key in Set(indices.compactMap { labelKey(lines[$0].text) }) where !key.isEmpty {
+                labelPages[key, default: []].append(pageIndex)
             }
         }
         let threshold = max(3, min(Int((Double(pages.count) * 0.1).rounded(.up)), 8))
-        func removable(_ line: PDFLine) -> Bool {
+
+        /// Строка отделена от текста страницы просветом больше обычного, как колонтитул на поле.
+        /// `nil`, если мест строк нет.
+        func standsApart(_ line: PDFLine, from inner: PDFLine?, above: Bool, metrics: PageMetrics?) -> Bool? {
+            guard let frame = line.frame, let metrics, metrics.lineHeight > 0 else { return nil }
+            guard let other = inner?.frame else { return true }
+            let gap = above ? frame.minY - other.maxY : other.minY - frame.maxY
+            return gap > metrics.gap + max(metrics.lineHeight * 0.5, 3)
+        }
+
+        func removable(_ line: PDFLine, page: Int, apart: Bool?) -> Bool {
             // Крупный шрифт это заголовок, даже если он похож на номер.
             if bodySize > 0, line.size > bodySize * 1.15 { return false }
             if isPageNumber(line.text) { return true }
+            guard pages.count >= 4 else { return false }
+            if let label = labelKey(line.text) {
+                return apart != false && repeatsNearby(labelPages[label] ?? [], around: page)
+            }
             let key = runningKey(line.text)
-            guard !key.isEmpty, pages.count >= 4, (counts[key] ?? 0) >= threshold else { return false }
-            return !chapterWords.contains(key) && !chapterWords.contains(String(key.prefix { $0 != " " }))
+            guard !key.isEmpty else { return false }
+            if (counts[key] ?? 0) >= threshold { return true }
+            // Колонтитул короткой главы встречается реже, но на соседних страницах. Чтобы не убрать
+            // повторившуюся реплику («— Да.»), он должен стоять на поле или быть хотя бы из двух слов.
+            let separated = apart ?? key.contains(" ")
+            return separated && repeatsNearby(loosePages[key] ?? [], around: page)
         }
-        return pages.map { original in
-            var lines = original
-            var removed = 0
-            var index = 0
-            while index < lines.count, removed < edge {
-                if lines[index].text.isEmpty { index += 1; continue }
-                guard removable(lines[index]) else { break }
-                lines.remove(at: index)
-                removed += 1
+
+        return pages.enumerated().map { pageIndex, original in
+            let metrics = PageMetrics.of(original)
+            var removed: Set<Int> = []
+            for (side, above) in [(edges[pageIndex].top, true), (edges[pageIndex].bottom, false)] {
+                for index in side {
+                    // Соседняя строка ближе к середине страницы. Номер страницы в той же строке не в счёт.
+                    let neighbour = nearestInner(original, to: index, above: above, skipping: removed)
+                    let apart = standsApart(original[index], from: neighbour, above: above, metrics: metrics)
+                    guard removable(original[index], page: pageIndex, apart: apart) else { break }
+                    removed.insert(index)
+                }
             }
-            removed = 0
-            index = lines.count - 1
-            while index >= 0, removed < edge {
-                if lines[index].text.isEmpty { index -= 1; continue }
-                guard removable(lines[index]) else { break }
-                lines.remove(at: index)
-                removed += 1
-                index -= 1
-            }
+            var lines = original.indices.filter { !removed.contains($0) }.map { original[$0] }
+            // Пустые строки у краёв страницы не конец абзаца: текст продолжается на следующей.
+            while let first = lines.first, first.text.isEmpty, first.image == nil { lines.removeFirst() }
+            while let last = lines.last, last.text.isEmpty, last.image == nil { lines.removeLast() }
             return lines
         }
+    }
+
+    /// Ближайшая к строке `index` строка текста ближе к середине страницы (по месту, а если его нет, по порядку).
+    private static func nearestInner(_ lines: [PDFLine], to index: Int, above: Bool, skipping: Set<Int>) -> PDFLine? {
+        let others = lines.indices.filter { $0 != index && !skipping.contains($0) && !lines[$0].text.isEmpty }
+        guard let frame = lines[index].frame else {
+            return (above ? others.first { $0 > index } : others.last { $0 < index }).map { lines[$0] }
+        }
+        let inner = others.compactMap { other -> (Int, Double)? in
+            guard let second = lines[other].frame else { return nil }
+            let distance = above ? frame.midY - second.midY : second.midY - frame.midY
+            return distance > min(frame.height, second.height) * 0.5 ? (other, distance) : nil
+        }
+        return inner.min { $0.1 < $1.1 }.map { lines[$0.0] }
     }
 
     // MARK: Главы
@@ -583,6 +696,8 @@ enum PDFTextLayout {
         var headingCount = 0
         /// Картинки, которые встретились посреди абзаца: они встанут сразу после него.
         var waitingImages: [String] = []
+        /// Кусок книги без глав, который начнётся, когда кончится абзац: абзац не режется пополам.
+        var waitingChunk: String?
 
         init(title: String) {
             self.title = title
@@ -608,6 +723,19 @@ enum PDFTextLayout {
             length += text.utf16.count + 1
             for path in waitingImages { writeImage(path) }
             waitingImages = []
+            if let chunk = waitingChunk {
+                waitingChunk = nil
+                startSection(chunk, showsHeading: false)
+            }
+        }
+
+        /// Новый кусок книги без глав. Если абзац с прошлой страницы не кончился, кусок начнётся после него.
+        mutating func startChunk(_ newTitle: String) {
+            if paragraph.isEmpty {
+                startSection(newTitle, showsHeading: false)
+            } else {
+                waitingChunk = newTitle
+            }
         }
 
         mutating func append(_ line: String, breakAfter: Bool) {
@@ -663,6 +791,7 @@ enum PDFTextLayout {
         }
 
         mutating func finish() -> Book {
+            waitingChunk = nil
             flushParagraph()
             resolvePages()
             if length > 0 || sections.isEmpty { closeSection() }
