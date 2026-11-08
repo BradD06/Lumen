@@ -4,6 +4,9 @@ import LumenStorage
 import LumenThemes
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(macOS)
+import AppKit
+#endif
 
 /// Книжная полка «Кабинета»: книги стоят корешками, лента-закладка на корешке
 /// спускается до того места, докуда дочитано. Нажатие выносит книгу в центр окна, «+» добавляет новую.
@@ -95,10 +98,10 @@ struct BookShelf: View {
                 // Книга сейчас в центре окна: на полке пустое место под неё.
                 Color.clear.frame(width: BookSpineStyle(source: book).width, height: BookSpineStyle(source: book).height)
             } else if let showcase {
-                ShelfBook(source: book, attachments: database.attachments, isPulled: hoveredId == book.id)
+                ShelfBook(source: book, attachments: database.attachments, isPulled: hoveredId == book.id && !isDragging)
                     .matchedGeometryEffect(id: book.id, in: showcase.namespace)
             } else {
-                ShelfBook(source: book, attachments: database.attachments, isPulled: hoveredId == book.id)
+                ShelfBook(source: book, attachments: database.attachments, isPulled: hoveredId == book.id && !isDragging)
             }
         }
         .buttonStyle(SpineButtonStyle())
@@ -122,6 +125,13 @@ struct BookShelf: View {
         .accessibilityLabel(BookSpineStyle.summary(book))
         .accessibilityHint("Показать книгу и статистику чтения")
         .onHover { hovering in
+            // Пока книгу тащат, книги под мышью не выдвигаются и не поворачиваются.
+            if isDragging {
+                hoveredId = nil
+                return
+            }
+            // Перетаскивание бросили за полкой: забываем его.
+            draggingId = nil
             withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
                 if hovering {
                     hoveredId = book.id
@@ -130,6 +140,17 @@ struct BookShelf: View {
                 }
             }
         }
+    }
+
+    /// Книгу сейчас тащат. На Mac это видно по зажатой кнопке мыши: если перетаскивание
+    /// бросили за полкой, полка об этом не узнаёт, а кнопка уже отпущена.
+    private var isDragging: Bool {
+        guard draggingId != nil else { return false }
+        #if os(macOS)
+        return NSEvent.pressedMouseButtons != 0
+        #else
+        return dragOrder != nil
+        #endif
     }
 
     private func caption(_ text: String) -> some View {
