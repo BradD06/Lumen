@@ -103,6 +103,7 @@ public struct RootView: View {
             )
         } detail: {
             workspaceDetail
+                .themedToolbar()
                 .safeAreaInset(edge: .top, spacing: 0) { topBar }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     // «Монохром»: вместо сайдбара командная строка, до всего дотягиваются через ⌘K.

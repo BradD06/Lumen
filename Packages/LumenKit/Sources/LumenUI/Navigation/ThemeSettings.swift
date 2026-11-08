@@ -9,6 +9,31 @@ extension View {
     }
 }
 
+extension View {
+    /// Верхняя полоса окна (заголовок, кнопки) в цвет темы, а не системная серая.
+    func themedToolbar() -> some View {
+        modifier(ThemedToolbar())
+    }
+}
+
+private struct ThemedToolbar: ViewModifier {
+    @Environment(\.lumenTheme) private var theme
+
+    func body(content: Content) -> some View {
+        let fill = theme.backgroundStops.first ?? .clear
+        #if os(macOS)
+        content
+            .toolbarBackground(fill, for: .windowToolbar)
+            .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+            .toolbarColorScheme(theme.colorScheme, for: .windowToolbar)
+        #else
+        content
+            .toolbarBackground(fill, for: .navigationBar, .tabBar)
+            .toolbarColorScheme(theme.colorScheme, for: .navigationBar, .tabBar)
+        #endif
+    }
+}
+
 private struct LumenThemeHost: ViewModifier {
     @AppStorage(Theme.storageKey) private var themeId = Theme.sunset.id
 

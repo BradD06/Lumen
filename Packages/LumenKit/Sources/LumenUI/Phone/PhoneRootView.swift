@@ -153,8 +153,10 @@ struct PhoneRootView: View {
     private func stack<Root: View>(_ tab: PhoneTab, @ViewBuilder root: () -> Root) -> some View {
         NavigationStack(path: path(for: tab)) {
             root()
+                .themedToolbar()
                 .navigationDestination(for: PhoneRoute.self) { route in
                     destination(route)
+                        .themedToolbar()
                 }
         }
     }
