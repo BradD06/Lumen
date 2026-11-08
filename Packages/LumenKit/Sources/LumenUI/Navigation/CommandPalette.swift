@@ -305,7 +305,26 @@ extension PaletteCommand {
             PaletteCommand(id: "go-\(title)", title: title, systemImage: image, keywords: words, run: { actions.open(item) })
         }
         list.append(PaletteCommand(id: "settings", title: "Настройки", systemImage: "gearshape", keywords: ["звук", "копия", "данные", "синхронизация"], run: actions.settings))
-        return list + extra
+        return list + themes() + extra
+    }
+
+    /// «Тема: Бумага» и другие: сменить оформление, не открывая Настройки.
+    /// Выбранная сейчас тема в списке не нужна.
+    @MainActor
+    static func themes(defaults: UserDefaults = .standard) -> [PaletteCommand] {
+        let current = Theme.named(defaults.string(forKey: Theme.storageKey) ?? Theme.sunset.id).id
+        return Theme.all.filter { $0.id != current }.map { theme in
+            PaletteCommand(
+                id: "theme-\(theme.id)",
+                title: "Тема: \(theme.name)",
+                systemImage: "paintpalette",
+                keywords: ["тема", "оформление", "цвет", "вид", theme.caption],
+                run: {
+                    LumenSounds.play(.toggle)
+                    defaults.set(theme.id, forKey: Theme.storageKey)
+                }
+            )
+        }
     }
 }
 

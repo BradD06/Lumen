@@ -323,9 +323,14 @@ struct PageEditorView: View {
             }
             .overlay(alignment: .bottomTrailing) {
                 if !isEmbedded, !isCompact, isActivePane {
-                    WordCountCapsule(words: model.wordCount, isFocusMode: focusMode.isOn) {
-                        focusMode.toggle()
-                    }
+                    WordCountCapsule(
+                        words: model.wordCount,
+                        isFocusMode: focusMode.isOn,
+                        onToggleFocus: { focusMode.toggle() },
+                        timerEnd: focusMode.timerEnd,
+                        onStartTimer: { focusMode.startTimer() },
+                        onStopTimer: { focusMode.stopTimer() }
+                    )
                     .padding(18)
                 }
             }

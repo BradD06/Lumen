@@ -28,6 +28,31 @@ struct PageRepositoryTests {
         #expect(library.pages.isEmpty, "Входящие не показываются в библиотеке")
     }
 
+    @Test func pagePreviewShowsTheStartOfTheTextAndHidesTrashedPages() async throws {
+        let page = try await db.createQuickNote("Митоз по фазам\n\nПрофаза: хромосомы скручиваются")
+        let preview = try await db.reader.read { try PagePreviewQuery.fetch($0, pageId: page.id) }
+        #expect(preview?.page.title == "Митоз по фазам")
+        #expect(preview?.excerpt == "Профаза: хромосомы скручиваются")
+
+        try await db.trashPage(page.id)
+        let trashed = try await db.reader.read { try PagePreviewQuery.fetch($0, pageId: page.id) }
+        #expect(trashed == nil)
+    }
+
+    @Test func filedNoteCanGoBackToInbox() async throws {
+        let note = try await db.createQuickNote("Спросить про мейоз")
+        let folder = try await db.createFolder(name: "Биология")
+        try await db.movePage(note.id, toFolder: folder.id)
+        #expect(try await db.reader.read { try InboxQuery.fetch($0) }.isEmpty)
+
+        try await db.returnToInbox(note.id)
+        let inbox = try await db.reader.read { try InboxQuery.fetch($0) }
+        #expect(inbox.map(\.page.id) == [note.id])
+        #expect(inbox.first?.page.folderId == nil)
+        let library = try await db.reader.read { try LibrarySnapshot.fetch($0, folderId: folder.id) }
+        #expect(library.pages.isEmpty)
+    }
+
     @Test func newPageHasOneEmptyParagraph() async throws {
         let page = try await db.createPage(title: "Конспект")
         let blocks = try await db.blocks(of: page.id)

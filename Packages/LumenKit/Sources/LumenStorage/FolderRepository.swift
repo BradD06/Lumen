@@ -65,6 +65,20 @@ extension AppDatabase {
         }
     }
 
+    /// Возвращает страницу во «Входящие», например когда разбор отменили.
+    public func returnToInbox(_ id: UUID) async throws {
+        try await writer.write { db in
+            try Self.updatePage(db, id) { page in
+                page.parentId = nil
+                page.folderId = nil
+                page.position = nil
+                page.databaseId = nil
+                page.properties = nil
+                page.inInbox = true
+            }
+        }
+    }
+
     /// Запоминает, где предмет лежит на холсте. `nil` возвращает его в автоматическую раскладку.
     public func setPosition(_ item: LibraryItemID, _ position: LibraryPoint?) async throws {
         try await setPositions([item: position])

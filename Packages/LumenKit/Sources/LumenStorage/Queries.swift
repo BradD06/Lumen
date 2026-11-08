@@ -332,6 +332,19 @@ public enum InboxQuery {
     }
 }
 
+/// Карточка-подсказка у ссылки на страницу: сама страница и начало её текста.
+public enum PagePreviewQuery {
+    /// `nil`, если страницы нет или она в корзине.
+    public static func fetch(_ db: Database, pageId: UUID) throws -> PagePreview? {
+        try previews(db, sql: """
+            SELECT page.*, pageSearch.body AS excerpt
+            FROM page
+            LEFT JOIN pageSearch ON pageSearch.pageId = \(uuidText("page.id"))
+            WHERE page.id = ? AND page.deletedAt IS NULL
+            """, arguments: [pageId]).first
+    }
+}
+
 /// Страницы, которые нужны открытому редактору: все живые страницы для выбора ссылки
 /// и подписей блоков-ссылок, и страницы, которые ссылаются на открытую.
 public struct PageLinksSnapshot: Equatable, Sendable {
