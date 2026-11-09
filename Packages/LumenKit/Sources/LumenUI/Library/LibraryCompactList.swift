@@ -80,6 +80,14 @@ extension LibraryView {
 
     var compactList: some View {
         List {
+            if showsShelf {
+                Section {
+                    bookShelf
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 16))
+                }
+            }
             if folderId == nil && !favorites.isEmpty {
                 Section("Избранное") {
                     ForEach(favorites) { page in

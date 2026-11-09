@@ -45,7 +45,8 @@ struct BookShelf: View {
 
     var body: some View {
         let groups = snapshot.groups
-        VStack(alignment: .leading, spacing: 10) {
+        // Между полками просторно: над каждой видно, что книги разной высоты.
+        VStack(alignment: .leading, spacing: 22) {
             HStack(alignment: .center, spacing: 12) {
                 ViewThatFits(in: .horizontal) {
                     caption("На полке · лента показывает, докуда дочитано")
@@ -60,6 +61,8 @@ struct BookShelf: View {
             }
             newShelfButton
         }
+        // Полки всегда в полный рост: соседний список не сжимает их и не срезает верх книг.
+        .fixedSize(horizontal: false, vertical: true)
         .task { await observe() }
         .onChange(of: snapshot) {
             // База вернула новый порядок: дальше полки показывают его.
@@ -120,7 +123,7 @@ struct BookShelf: View {
                     .frame(minHeight: 110, alignment: .bottomLeading)
                     .padding(.horizontal, ShelfLayout.leading)
                     // Место сверху, чтобы вынутая книга не упиралась в край.
-                    .padding(.top, titled ? 18 : 26)
+                    .padding(.top, 26)
                 }
                 .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.x }) { _, offset in
                     scrollOffsets[group.id] = offset
