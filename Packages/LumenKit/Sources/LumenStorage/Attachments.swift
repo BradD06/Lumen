@@ -49,6 +49,12 @@ public struct AttachmentStore: Sendable {
         folder.appendingPathComponent((name as NSString).lastPathComponent)
     }
 
+    /// Размер файла в байтах; `nil`, если файла здесь нет (например, ещё не доехал с другого устройства).
+    public func fileSize(_ name: String) -> Int64? {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url(for: name).path)
+        return (attributes?[.size] as? NSNumber)?.int64Value
+    }
+
     public func data(for name: String) -> Data? {
         try? Data(contentsOf: url(for: name))
     }

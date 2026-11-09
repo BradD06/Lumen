@@ -90,3 +90,31 @@ struct ShelfLayoutTests {
         #expect(ShelfLayout.insertionIndex(x: 10, widths: []) == 0)
     }
 }
+
+struct ShelfReorderTests {
+    private let a = UUID(), b = UUID(), c = UUID()
+
+    @Test func wideBookDoesNotJumpBackAndForthOverANarrowOne() {
+        // a широкая (60), b и c узкие (20). a держат над b: она встаёт на место b,
+        // и та же точка уже над ней самой, поэтому порядок дальше не меняется.
+        let widths: [UUID: CGFloat] = [a: 60, b: 20, c: 20]
+        let first = ShelfLayout.reorder([a, b, c], moving: a, x: 80, widths: widths)
+        #expect(first == [b, a, c])
+        #expect(ShelfLayout.reorder(first, moving: a, x: 80, widths: widths) == first)
+    }
+
+    @Test func narrowBookWaitsUntilItReallyPassesAWideOne() {
+        // b узкая (20) держат над началом широкой c (60): рано, порядок тот же.
+        let widths: [UUID: CGFloat] = [a: 20, b: 20, c: 60]
+        let order = [a, b, c]
+        #expect(ShelfLayout.reorder(order, moving: b, x: 60, widths: widths) == order)
+        // Над правым краем c: b встаёт после неё.
+        #expect(ShelfLayout.reorder(order, moving: b, x: 100, widths: widths) == [a, c, b])
+    }
+
+    @Test func bookFromAnotherShelfLandsWhereItIsHeld() {
+        let widths: [UUID: CGFloat] = [a: 30, b: 30, c: 30]
+        #expect(ShelfLayout.reorder([a, b], moving: c, x: 30, widths: widths) == [a, c, b])
+        #expect(ShelfLayout.reorder([], moving: c, x: 5, widths: widths) == [c])
+    }
+}

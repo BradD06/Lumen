@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import LumenCore
 @testable import LumenStorage
 import Testing
@@ -94,5 +95,47 @@ struct ShelvesTests {
         try await db.trashFolder(shelf.id)
         let snapshot = try await db.reader.read { try ShelfQuery.snapshot($0) }
         #expect(snapshot.shelves.isEmpty)
+    }
+}
+
+struct BookDuplicateMergeTests {
+    @Test func duplicateGivesItsHighlightsNotesAndPlaceToTheOriginal() async throws {
+        let db = try AppDatabase.inMemory()
+        let original = try await db.addSource(title: "Война и мир", format: .epub, file: "a.epub", originalName: "war.epub")
+        try await Task.sleep(for: .milliseconds(5))
+        let copy = try await db.addSource(title: "Война и мир", format: .epub, file: "b.epub", originalName: "war.epub")
+        let quote = try await db.addHighlight(Highlight(
+            sourceId: copy.id, locator: SourceLocator(section: 2), text: "Всё смешалось", label: "Глава 1"
+        ))
+        let notes = try await db.notesPage(for: copy.id)
+        try await db.saveReadingPosition(copy.id, locator: SourceLocator(section: 7), progress: 0.6)
+
+        let merged = try await db.mergeDuplicateBooks()
+
+        #expect(merged == 1)
+        let books = try await db.reader.read { try ShelfQuery.fetch($0) }
+        #expect(books.map(\.id) == [original.id])
+        #expect(books.first?.progress == 0.6)
+        let moved = try await db.reader.read { try Highlight.fetchOne($0, key: quote.id) }
+        #expect(moved?.sourceId == original.id)
+        let page = try await db.reader.read { try Page.fetchOne($0, key: notes.id) }
+        #expect(page?.sourceId == original.id)
+        #expect(page?.deletedAt == nil)
+        #expect(try await db.mergeDuplicateBooks() == 0)
+    }
+
+    @Test func bookDroppedOnAnotherShelfMovesAndStandsInPlaceInOneStep() async throws {
+        let db = try AppDatabase.inMemory()
+        let shelf = try await db.createShelf(name: "Поэзия")
+        let a = try await db.addSource(title: "А", format: .epub, file: "a.epub", originalName: "a.epub")
+        let b = try await db.addSource(title: "Б", format: .epub, file: "b.epub", originalName: "b.epub")
+        try await db.moveSource(a.id, toFolder: shelf.id)
+
+        try await db.placeOnShelf([b.id, a.id], shelf: shelf.id, arrivals: [b.id])
+
+        let groups = try await db.reader.read { try ShelfQuery.snapshot($0) }.groups
+        #expect(groups[1].shelf?.id == shelf.id)
+        #expect(ShelfSort.custom.sorted(groups[1].books).map(\.id) == [b.id, a.id])
+        #expect(groups[0].books.isEmpty)
     }
 }
