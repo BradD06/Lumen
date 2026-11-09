@@ -99,13 +99,8 @@ struct LibraryView: View {
             if !usesList {
                 header
             }
-            // «Кабинет»: в корне библиотеки книги стоят на полке над остальным.
-            // На iPhone полки внутри списка, чтобы прокручивались вместе со страницей.
-            if showsShelf, !usesList {
-                bookShelf
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 12)
-            }
+            // «Кабинет»: в корне библиотеки книги стоят на полке над остальным. Полки внутри
+            // прокрутки (на iPhone в списке, на Mac и iPad над холстом), чтобы листались вместе со страницей.
             if snapshot.isMissing {
                 ContentUnavailableView {
                     Label("Папки больше нет", systemImage: "folder.badge.questionmark")
@@ -263,6 +258,14 @@ struct LibraryView: View {
         GeometryReader { geometry in
             let items = placedItems
             ScrollView([.vertical, .horizontal]) {
+                VStack(alignment: .leading, spacing: 0) {
+                if showsShelf {
+                    bookShelf
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 12)
+                        // Холст прокручивается во все стороны, а полка шириной с окно: книги листаются внутри неё.
+                        .frame(width: geometry.size.width, alignment: .leading)
+                }
                 ZStack(alignment: .topLeading) {
                     // Пустое место холста: щелчок снимает выделение.
                     Color.clear
@@ -313,6 +316,7 @@ struct LibraryView: View {
                     ))
                     return true
                 } isTargeted: { isDropTargeted = $0 }
+                }
             }
             .keyHintClip()
             .scrollIndicators(.automatic)

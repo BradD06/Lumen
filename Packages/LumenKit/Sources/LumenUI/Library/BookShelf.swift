@@ -119,12 +119,15 @@ struct BookShelf: View {
                                 .padding(.bottom, 16)
                         }
                     }
-                    // Пустая полка тоже принимает книги: высоты хватает, чтобы на неё попасть.
-                    .frame(minHeight: 110, alignment: .bottomLeading)
+                    // Высота под самую высокую книгу, даже на пустой полке: видно, что книги разной высоты,
+                    // и на пустую полку легко попасть.
+                    .frame(minHeight: ShelfLayout.tallestSpine, alignment: .bottomLeading)
                     .padding(.horizontal, ShelfLayout.leading)
                     // Место сверху, чтобы вынутая книга не упиралась в край.
-                    .padding(.top, 26)
+                    .padding(.top, ShelfLayout.headroom)
                 }
+                // Высота полки задана явно: ни список, ни холст рядом не сожмут её и не срежут верх книг.
+                .frame(height: ShelfLayout.rowHeight)
                 .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.x }) { _, offset in
                     scrollOffsets[group.id] = offset
                 }
@@ -659,6 +662,10 @@ private struct SpineButtonStyle: ButtonStyle {
 enum ShelfLayout {
     nonisolated static let leading: CGFloat = 10
     nonisolated static let spacing: CGFloat = 3
+    /// Самый высокий корешок (`BookSpineStyle`: 128…168) и место над ним для вынутой книги.
+    nonisolated static let tallestSpine: CGFloat = 170
+    nonisolated static let headroom: CGFloat = 26
+    nonisolated static var rowHeight: CGFloat { tallestSpine + headroom }
 
     /// Куда встанет книга, отпущенная в точке `x`, среди остальных книг шириной `widths`.
     /// Считается по полке без перетаскиваемой книги, поэтому место не скачет туда-сюда.
