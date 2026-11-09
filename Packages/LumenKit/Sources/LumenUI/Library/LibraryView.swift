@@ -83,18 +83,28 @@ struct LibraryView: View {
         var content: Content
     }
 
+    /// Полки «Кабинета» в корне библиотеки.
+    var showsShelf: Bool {
+        theme.layout == .rooms && folderId == nil && !snapshot.isMissing
+    }
+
+    var bookShelf: some View {
+        BookShelf(database: database, onOpen: { onOpenSource($0) }) {
+            isImporting = true
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if !usesList {
                 header
             }
             // «Кабинет»: в корне библиотеки книги стоят на полке над остальным.
-            if theme.layout == .rooms, folderId == nil, !snapshot.isMissing {
-                BookShelf(database: database, onOpen: { onOpenSource($0) }) {
-                    isImporting = true
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 12)
+            // На iPhone полки внутри списка, чтобы прокручивались вместе со страницей.
+            if showsShelf, !usesList {
+                bookShelf
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
             }
             if snapshot.isMissing {
                 ContentUnavailableView {

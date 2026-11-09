@@ -79,15 +79,35 @@ extension AppDatabase {
     /// что встали не по порядку, обычно у одной передвинутой. Время изменения не трогает.
     public func arrangeShelf(_ ids: [UUID]) async throws {
         try await writer.write { db in
-            let sources = try Source.fetchAll(db, keys: ids)
-            let byId = Dictionary(sources.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            let present = ids.filter { byId[$0] != nil }
-            let keys = SortKey.rearranged(present.map { byId[$0]?.shelfOrder })
-            for (id, key) in zip(present, keys) {
-                guard var source = byId[id], source.shelfOrder != key else { continue }
-                source.shelfOrder = key
-                try source.update(db)
+            try Self.arrangeShelf(db, ids)
+        }
+    }
+
+    /// Книги встали на полку (`shelf`: папка полки, `nil` общая) в порядке `ids`; `arrivals` пришли
+    /// с других полок и переезжают в её папку. Одной записью: полка не успевает показать книгу
+    /// на старом месте и не дёргается.
+    public func placeOnShelf(_ ids: [UUID], shelf: UUID?, arrivals: [UUID]) async throws {
+        try await writer.write { db in
+            for id in arrivals {
+                try Self.updateSource(db, id) { source in
+                    guard source.folderId != shelf else { return }
+                    source.folderId = shelf
+                    source.position = nil
+                }
             }
+            try Self.arrangeShelf(db, ids)
+        }
+    }
+
+    static func arrangeShelf(_ db: Database, _ ids: [UUID]) throws {
+        let sources = try Source.fetchAll(db, keys: ids)
+        let byId = Dictionary(sources.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let present = ids.filter { byId[$0] != nil }
+        let keys = SortKey.rearranged(present.map { byId[$0]?.shelfOrder })
+        for (id, key) in zip(present, keys) {
+            guard var source = byId[id], source.shelfOrder != key else { continue }
+            source.shelfOrder = key
+            try source.update(db)
         }
     }
 

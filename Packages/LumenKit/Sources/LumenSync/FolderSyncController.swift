@@ -95,6 +95,11 @@ public final class FolderSyncController {
         Task {
             do {
                 let report = try await engine.sync()
+                // Книга, добавленная на двух устройствах, после синхронизации стояла бы дважды.
+                let merged = (try? await database.mergeDuplicateBooks()) ?? 0
+                if merged > 0 {
+                    folderSyncLog.info("Folder sync: merged \(merged) duplicate books")
+                }
                 otherDevices = report.otherDevices
                 status.state = .upToDate(Date())
                 if report.sent + report.received + report.filesSent + report.filesReceived > 0 {

@@ -29,6 +29,10 @@ struct BookShelf: View {
     /// Окно с названием: новая полка или переименование.
     @State private var naming: ShelfNaming?
     @State private var shelfName = ""
+    /// Своя полка, на которую добавляют книгу из окна выбора файла.
+    @State private var importShelf: Folder?
+    /// Насколько прокручена каждая полка: место, куда бросили книгу, считается от начала полки.
+    @State private var scrollOffsets: [UUID?: CGFloat] = [:]
     @AppStorage(BookShelf.sortKey) private var sort = ShelfSort.recent
     @Environment(\.lumenTheme) private var theme
     @Environment(\.bookShowcase) private var showcase
@@ -41,7 +45,8 @@ struct BookShelf: View {
 
     var body: some View {
         let groups = snapshot.groups
-        VStack(alignment: .leading, spacing: 10) {
+        // Между полками просторно: над каждой видно, что книги разной высоты.
+        VStack(alignment: .leading, spacing: 22) {
             HStack(alignment: .center, spacing: 12) {
                 ViewThatFits(in: .horizontal) {
                     caption("На полке · лента показывает, докуда дочитано")
@@ -56,6 +61,8 @@ struct BookShelf: View {
             }
             newShelfButton
         }
+        // Полки всегда в полный рост: соседний список не сжимает их и не срезает верх книг.
+        .fixedSize(horizontal: false, vertical: true)
         .task { await observe() }
         .onChange(of: snapshot) {
             // База вернула новый порядок: дальше полки показывают его.
@@ -71,6 +78,19 @@ struct BookShelf: View {
         } message: {
             if naming == .new {
                 Text("Полка это папка в библиотеке: книги, поставленные на неё, лежат в этой папке.")
+            }
+        }
+        .fileImporter(
+            isPresented: Binding(get: { importShelf != nil }, set: { if !$0 { importShelf = nil } }),
+            allowedContentTypes: SourceImporter.contentTypes,
+            allowsMultipleSelection: true
+        ) { result in
+            let shelf = importShelf
+            importShelf = nil
+            guard case .success(let urls) = result, let shelf else { return }
+            Task {
+                let added = await SourceImporter.importFiles(urls, into: database, folderId: shelf.id, positions: [])
+                if !added.isEmpty { LumenSounds.play(.dropIntoFolder) }
             }
         }
         .accessibilityElement(children: .contain)
@@ -90,9 +110,7 @@ struct BookShelf: View {
                         ForEach(Array(shown.enumerated()), id: \.element.id) { index, book in
                             shelfBook(book, index: index, count: shown.count, group: group)
                         }
-                        if group.shelf == nil {
-                            addSpine
-                        }
+                        addSpine(group)
                         if shown.isEmpty {
                             Text(emptyText(group))
                                 .font(.callout.italic())
@@ -105,19 +123,25 @@ struct BookShelf: View {
                     .frame(minHeight: 110, alignment: .bottomLeading)
                     .padding(.horizontal, ShelfLayout.leading)
                     // Место сверху, чтобы вынутая книга не упиралась в край.
-                    .padding(.top, titled ? 18 : 26)
-                    .onDrop(of: [.text], delegate: ShelfDropDelegate(
-                        draggingId: $draggingId,
-                        order: orderBinding(group.id),
-                        shown: shown.map(\.id),
-                        widths: spineWidths,
-                        onDrop: { place($0, on: group) }
-                    ))
+                    .padding(.top, 26)
+                }
+                .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.x }) { _, offset in
+                    scrollOffsets[group.id] = offset
                 }
                 .keyHintClip()
                 plank
             }
         }
+        // Книгу ловит вся полка с табличкой и доской, а не только корешки: иначе её трудно попасть.
+        .contentShape(Rectangle())
+        .onDrop(of: [.text], delegate: ShelfDropDelegate(
+            draggingId: $draggingId,
+            order: orderBinding(group.id),
+            shown: shown.map(\.id),
+            widths: spineWidths,
+            scrollOffset: scrollOffsets[group.id] ?? 0,
+            onDrop: { place($0, on: group) }
+        ))
     }
 
     private func emptyText(_ group: ShelfGroup) -> String {
@@ -224,6 +248,11 @@ struct BookShelf: View {
             Button("Поставить правее", systemImage: "arrow.right") { nudge(book.id, by: 1, in: group) }
                 .disabled(index == count - 1)
             let others = snapshot.groups.filter { $0.id != group.id }
+            if group.shelf != nil, let common = others.first(where: { $0.shelf == nil }) {
+                Button("Снять с полки", systemImage: "arrow.down.to.line") {
+                    place(shownBooks(common).map(\.id) + [book.id], on: common)
+                }
+            }
             if !others.isEmpty {
                 Menu("Переставить на полку", systemImage: "books.vertical") {
                     ForEach(others) { target in
@@ -233,6 +262,8 @@ struct BookShelf: View {
                     }
                 }
             }
+            Divider()
+            Button("Убрать в корзину", systemImage: "trash", role: .destructive) { trash(book) }
         }
         .zIndex(hoveredId == book.id ? 1 : 0)
         .accessibilityLabel(BookSpineStyle.summary(book))
@@ -324,12 +355,24 @@ struct BookShelf: View {
         }
         Task {
             do {
-                for id in arrivals {
-                    try await database.moveSource(id, toFolder: group.shelf?.id)
-                }
-                try await database.arrangeShelf(order)
+                try await database.placeOnShelf(order, shelf: group.shelf?.id, arrivals: arrivals)
             } catch {
                 NoticeCenter.shared.report("Не удалось переставить книгу", error)
+            }
+        }
+    }
+
+    /// Книга уходит с полки в корзину; оттуда её можно вернуть.
+    private func trash(_ book: Source) {
+        Task {
+            do {
+                try await database.trashSource(book.id)
+                let database = database
+                NoticeCenter.shared.show("«\(book.displayTitle)» в корзине") {
+                    try await database.restoreSource(book.id)
+                }
+            } catch {
+                NoticeCenter.shared.report("Не удалось убрать книгу", error)
             }
         }
     }
@@ -384,9 +427,17 @@ struct BookShelf: View {
         }
     }
 
-    /// Пустое место на полке с «+»: добавить книгу или файл.
-    private var addSpine: some View {
-        Button(action: onAdd) {
+    /// Пустое место на полке с «+»: добавить книгу или файл. На своей полке книга сразу встаёт на неё.
+    private func addSpine(_ group: ShelfGroup) -> some View {
+        let add = {
+            if let shelf = group.shelf {
+                importShelf = shelf
+            } else {
+                onAdd()
+            }
+        }
+        let title = group.shelf.map { "Добавить книгу на полку «\($0.displayName)»" } ?? "Добавить книгу"
+        return Button(action: add) {
             RoundedRectangle(cornerRadius: 3, style: .continuous)
                 .strokeBorder(theme.accent.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                 .frame(width: 34, height: 120)
@@ -399,9 +450,9 @@ struct BookShelf: View {
         }
         .buttonStyle(.plain)
         .padding(.leading, 6)
-        .help("Поставить на полку книгу или файл")
-        .keyHint("Добавить книгу", perform: onAdd)
-        .accessibilityLabel("Добавить книгу")
+        .help(group.shelf == nil ? "Поставить на полку книгу или файл" : "Поставить книгу на эту полку")
+        .keyHint(title, perform: add)
+        .accessibilityLabel(title)
     }
 
     /// Доска полки: тёмное дерево с латунной кромкой.
@@ -619,6 +670,47 @@ enum ShelfLayout {
         }
         return widths.count
     }
+
+    /// Новый порядок, когда книгу `id` держат над точкой `x`. Считается по полке, как она видна сейчас,
+    /// вместе с самой книгой. Книга встаёт на место соседки, только если после этого точка окажется
+    /// над ней самой: иначе широкая и узкая книги менялись бы местами туда-сюда.
+    nonisolated static func reorder(_ order: [UUID], moving id: UUID, x: CGFloat, widths: [UUID: CGFloat]) -> [UUID] {
+        guard let from = order.firstIndex(of: id) else {
+            // Книга пришла с другой полки: встаёт туда, где её держат.
+            var result = order
+            let index = insertionIndex(x: x, widths: order.map { widths[$0] ?? 30 })
+            result.insert(id, at: min(index, result.count))
+            return result
+        }
+        var spans: [ClosedRange<CGFloat>] = []
+        var start = leading
+        for book in order {
+            let width = widths[book] ?? 30
+            spans.append(start...(start + width))
+            start += width + spacing
+        }
+        let target: Int
+        if x < leading {
+            target = 0
+        } else if let index = spans.firstIndex(where: { x < $0.upperBound + spacing }) {
+            target = index
+        } else {
+            target = order.count - 1
+        }
+        guard target != from else { return order }
+        let width = widths[id] ?? 30
+        if target > from {
+            // Вправо: правый край книги встанет туда, где был правый край соседки.
+            guard x >= spans[target].upperBound - width else { return order }
+        } else {
+            // Влево: левый край книги встанет туда, где был левый край соседки.
+            guard x <= spans[target].lowerBound + width else { return order }
+        }
+        var result = order
+        result.remove(at: from)
+        result.insert(id, at: target)
+        return result
+    }
 }
 
 /// Перетаскивание книги по полке: книги расступаются, отпустили на полке, порядок сохраняется.
@@ -628,6 +720,8 @@ struct ShelfDropDelegate: DropDelegate {
     @Binding var order: [UUID]?
     let shown: [UUID]
     let widths: [UUID: CGFloat]
+    /// Насколько прокручена полка: точка над полкой переводится в место среди книг.
+    var scrollOffset: CGFloat = 0
     var onDrop: ([UUID]) -> Void
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -660,13 +754,11 @@ struct ShelfDropDelegate: DropDelegate {
     private func move(to x: CGFloat) -> [UUID] {
         let current = order ?? shown
         guard let id = draggingId else { return current }
-        var others = current.filter { $0 != id }
-        let index = ShelfLayout.insertionIndex(x: x, widths: others.map { widths[$0] ?? 30 })
-        others.insert(id, at: min(index, others.count))
-        if others != current {
-            withAnimation(.snappy) { order = others }
+        let next = ShelfLayout.reorder(current, moving: id, x: x + scrollOffset, widths: widths)
+        if next != current || order == nil {
+            withAnimation(.snappy) { order = next }
         }
-        return others
+        return next
     }
 }
 
