@@ -311,8 +311,9 @@ struct PDFTextLayoutTests {
     @Test func removesRunningTitleThatComesApartFromItsPageNumber() {
         // Номер и название раздела на одной высоте, но отдельными строками, название первым.
         let pages = (0..<10).map { index -> [PDFLine] in
-            [framed("Раздел номер \(sentence(index + 300))", left: 120, right: 400, y: 572, height: 9),
-             framed("\(index + 28)", left: 50, right: 62, y: 572, height: 9)]
+            let topics = ["Ветер", "Дождь", "Снег", "Гроза", "Туман", "Иней", "Роса", "Град", "Зной", "Метель"]
+            return [framed("Погода: \(topics[index])", left: 120, right: 400, y: 572, height: 9),
+                    framed("\(index + 28)", left: 50, right: 62, y: 572, height: 9)]
                 + body([sentence(index), sentence(index + 100)])
         }
         let stripped = PDFTextLayout.stripRunningLines(pages, bodySize: 0)
