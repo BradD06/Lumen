@@ -468,6 +468,36 @@ enum PDFTextLayout {
         return words.joined(separator: " ")
     }
 
+    /// Число в начале или в конце короткой строки: так рядом с колонтитулом печатают номер страницы
+    /// («Предварительные условия 23», «22 Введение»). `nil`, если числа там нет.
+    static func edgeNumber(_ text: String) -> Int? {
+        guard text.count <= 90 else { return nil }
+        let words = text.split(whereSeparator: { $0.isWhitespace })
+        guard words.count >= 2 else { return nil }
+        for word in [words.last!, words.first!] {
+            let digits = word.trimmingCharacters(in: CharacterSet(charactersIn: "|•·–—-()[]."))
+            if (1...4).contains(digits.count), digits.allSatisfy(\.isASCII), let number = Int(digits) { return number }
+        }
+        return nil
+    }
+
+    /// Сдвиги между номером, напечатанным у края страницы, и её номером в файле, которые повторяются
+    /// на многих страницах. Так узнаётся колонтитул с номером страницы, даже если текст в нём
+    /// на каждой странице свой (название раздела).
+    static func pageNumberOffsets(_ pages: [[PDFLine]], edges: [(top: [Int], bottom: [Int])]) -> Set<Int> {
+        var counts: [Int: Int] = [:]
+        for (pageIndex, lines) in pages.enumerated() {
+            let indices = edges[pageIndex].top + edges[pageIndex].bottom
+            let offsets = Set(indices.filter { labelKey(lines[$0].text) == nil }.compactMap { index in
+                (edgeNumber(lines[index].text) ?? (isPageNumber(lines[index].text) ? Int(lines[index].text.filter(\.isNumber)) : nil))
+                    .map { $0 - pageIndex }
+            })
+            for offset in offsets { counts[offset, default: 0] += 1 }
+        }
+        let needed = max(5, Int((Double(pages.count) * 0.1).rounded(.up)))
+        return Set(counts.filter { $0.value >= needed }.map(\.key))
+    }
+
     /// Есть ли среди страниц `pages` три в пределах шести подряд, считая страницу `page`.
     /// Так повторяется колонтитул даже короткой главы, а заголовок или фраза почти никогда.
     static func repeatsNearby(_ pages: [Int], around page: Int) -> Bool {
@@ -511,6 +541,7 @@ enum PDFTextLayout {
             }
         }
         let threshold = max(3, min(Int((Double(pages.count) * 0.1).rounded(.up)), 8))
+        let numberOffsets = pages.count >= 8 ? pageNumberOffsets(pages, edges: edges) : []
 
         /// Строка отделена от текста страницы просветом больше обычного, как колонтитул на поле.
         /// `nil`, если мест строк нет.
@@ -526,6 +557,8 @@ enum PDFTextLayout {
             if bodySize > 0, line.size > bodySize * 1.15 { return false }
             if isPageNumber(line.text) { return true }
             guard pages.count >= 4 else { return false }
+            // Колонтитул с номером этой страницы: название раздела меняется, номер идёт по порядку.
+            if let number = edgeNumber(line.text), numberOffsets.contains(number - page) { return true }
             if let label = labelKey(line.text) {
                 return apart != false && repeatsNearby(labelPages[label] ?? [], around: page)
             }
@@ -581,28 +614,48 @@ enum PDFTextLayout {
 
     /// Строки страницы, которыми набрано название: оно бывает разбито на две-три строки.
     static func findTitle(_ title: String, in lines: [PDFLine], from start: Int) -> (line: Int, length: Int)? {
-        let target = squeeze(title)
-        guard !target.isEmpty, start < lines.count else { return nil }
+        let targets = titleVariants(title)
+        guard !targets.isEmpty, start < lines.count else { return nil }
         for first in start..<lines.count {
             let head = squeeze(lines[first].text)
             guard !head.isEmpty else { continue }
-            // «1 Введение» на странице при закладке «Введение».
-            if head.count > target.count, head.hasSuffix(target), head.count <= target.count + 4 {
-                return (first, 1)
-            }
-            var joined = ""
-            var end = first
-            while end < lines.count, end - first < 4 {
-                let part = squeeze(lines[end].text)
-                guard !part.isEmpty else { break }
-                let candidate = joined + part
-                guard target.hasPrefix(candidate) else { break }
-                joined = candidate
-                end += 1
-                if joined == target { return (first, end - first) }
+            for target in targets {
+                // «1 Введение» на странице при закладке «Введение».
+                if head.count > target.count, head.hasSuffix(target), head.count <= target.count + 4 {
+                    return (first, 1)
+                }
+                var joined = ""
+                var end = first
+                while end < lines.count, end - first < 4 {
+                    let part = squeeze(lines[end].text)
+                    guard !part.isEmpty else { break }
+                    let candidate = joined + part
+                    guard target.hasPrefix(candidate) else { break }
+                    joined = candidate
+                    end += 1
+                    if joined == target { return (first, end - first) }
+                }
             }
         }
         return nil
+    }
+
+    /// Как название из закладок может быть набрано на странице. «Глава 1. Что такое оболочка»
+    /// на первой странице главы часто стоит без слова «Глава»: большая цифра и название
+    /// («1Что такое оболочка») или одно название.
+    static func titleVariants(_ title: String) -> [String] {
+        let full = squeeze(title)
+        guard !full.isEmpty else { return [] }
+        var variants = [full]
+        let words = title.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        if words.count >= 3, labelWords.contains(String(words[0])), words[1].allSatisfy(\.isNumber) || words[1].allSatisfy({ "ivxlcdm".contains($0) }) {
+            let rest = squeeze(words.dropFirst(2).joined(separator: " "))
+            if rest.count >= 4 {
+                variants.append(squeeze(String(words[1])) + rest)
+                variants.append(rest)
+            }
+        }
+        return variants
     }
 
     /// Главы по закладкам PDF. Если закладка верхнего уровня одна (название книги), главы на уровень ниже.

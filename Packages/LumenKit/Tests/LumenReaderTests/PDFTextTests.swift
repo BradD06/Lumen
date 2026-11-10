@@ -288,6 +288,35 @@ struct PDFTextLayoutTests {
         #expect(stripped[21].first?.text == "— Да.")
     }
 
+    @Test func removesRunningSectionTitlesWithPageNumbers() {
+        // Колонтитул это название текущего раздела и номер страницы: название меняется
+        // каждые страницу-две и не повторяется трижды, но номер идёт по порядку.
+        let sections = ["О чем эта книга", "Как читать эту книгу", "Предварительные условия", "Что нового", "Благодарности", "Введение"]
+        let pages = (0..<12).map { index -> [PDFLine] in
+            let printed = index + 20
+            let title = sections[index / 2]
+            let header = index.isMultiple(of: 2) ? "\(printed) \(title)" : "\(title) \(printed)"
+            return framedPage(header: header, body: body([sentence(index), sentence(index + 100), sentence(index + 200) + " 7"]), number: nil)
+        }
+        let stripped = PDFTextLayout.stripRunningLines(pages, bodySize: 0)
+        for (index, lines) in stripped.enumerated() {
+            #expect(lines.map(\.text) == [sentence(index), sentence(index + 100), sentence(index + 200) + " 7"])
+        }
+        #expect(PDFTextLayout.edgeNumber("Предварительные условия 23") == 23)
+        #expect(PDFTextLayout.edgeNumber("22 Введение") == 22)
+        #expect(PDFTextLayout.edgeNumber("Введение") == nil)
+        #expect(PDFTextLayout.edgeNumber("1991") == nil)
+    }
+
+    @Test func findsChapterTitleSetWithoutTheWordChapter() throws {
+        // Первая страница главы: большая цифра и название в две строки, а в закладках «Глава 1. ...».
+        let lines = page(["1Что такое командная", "оболочка", sentence(1)])
+        let found = try #require(PDFTextLayout.findTitle("Глава 1. Что такое командная оболочка", in: lines, from: 0))
+        #expect(found.line == 0 && found.length == 2)
+        let plain = try #require(PDFTextLayout.findTitle("Глава 2. Навигация", in: page(["Навигация", sentence(2)]), from: 0))
+        #expect(plain.line == 0 && plain.length == 1)
+    }
+
     @Test func indexFindsPagesAndPlaces() {
         let index = PDFTextIndex(pages: [0, 100, 100, 250], sections: [0, 180], length: 400)
         #expect(index.page(at: 50) == 0)
