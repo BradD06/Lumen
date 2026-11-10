@@ -204,12 +204,31 @@ enum PDFTextLayout {
         let full = typicalLineLength(pages)
 
         let allMetrics = pages.map(PageMetrics.of)
+        let lefts = textLefts(allMetrics)
         var writer = Writer(title: frontTitle)
         var nextBreak = 0
+        /// Открытая выноска: где начинаются её строки и последняя строка в ней (`nil` в начале выноски и страницы).
+        var box: (left: Double, last: LineFrame?)?
         for (pageIndex, lines) in pages.enumerated() {
             writer.pendingPages += 1
             let metrics = allMetrics[pageIndex]
+            let textLeft = lefts[pageIndex]
             var index = 0
+            if let open = box {
+                // Выноска с прошлой страницы продолжается, только если и здесь первые строки с тем же отступом.
+                let shift = open.left - (pageIndex > 0 ? lefts[pageIndex - 1] ?? open.left : open.left)
+                let first = lines.filter { !$0.text.isEmpty }.prefix(2)
+                let continues = first.count == 2 && first.allSatisfy { line in
+                    guard let frame = line.frame, let textLeft else { return false }
+                    return abs(frame.minX - (textLeft + shift)) <= 3
+                }
+                if continues, let frame = first.first?.frame {
+                    box = (frame.minX, nil)
+                } else {
+                    writer.closeBox()
+                    box = nil
+                }
+            }
             func applyBreaks(upTo line: Int) -> Int {
                 var consumed = 0
                 while nextBreak < breaks.count,
@@ -229,11 +248,36 @@ enum PDFTextLayout {
             }
             while index < lines.count {
                 let consumed = applyBreaks(upTo: index)
+                // Заголовок закрывает выноску.
+                if writer.openBoxEnd == nil { box = nil }
                 if consumed > 0 {
                     index += consumed
                     continue
                 }
                 let line = lines[index]
+                if let open = box, !line.text.isEmpty {
+                    // Выноска кончается, когда строки вернулись к краю текста или после неё просвет.
+                    let inside = line.frame.map { frame in
+                        guard abs(frame.minX - open.left) <= 3 else { return false }
+                        guard let last = open.last, let spacing = metrics?.spacing, spacing > 0 else { return true }
+                        return last.midY - frame.midY <= spacing * 1.8
+                    } ?? false
+                    if inside, let frame = line.frame {
+                        box = (open.left, frame)
+                    } else {
+                        writer.closeBox()
+                        box = nil
+                    }
+                }
+                if box == nil, !line.text.isEmpty, let opened = boxStart(lines, at: index, textLeft: textLeft, metrics: metrics) {
+                    writer.openBox(opened.kind, label: line.text)
+                    box = (opened.left, nil)
+                    index += 1
+                    continue
+                }
+                if box == nil, writer.paragraph.isEmpty, inlineNote(line.text) {
+                    writer.paragraphClass = "note"
+                }
                 if line.text.isEmpty {
                     if let image = line.image {
                         writer.image(image)
@@ -261,6 +305,92 @@ enum PDFTextLayout {
             _ = applyBreaks(upTo: Int.max)
         }
         return writer.finish()
+    }
+
+    // MARK: Выноски
+
+    /// Выноска: примечание, предупреждение или врезка с заголовком (в книгах её часто печатают на сером фоне).
+    enum BoxKind: String {
+        case note
+        case warning
+        case aside
+
+        /// Как выноска выглядит в HTML: открывающий и закрывающий теги.
+        var tags: (open: String, close: String) {
+            switch self {
+            case .note: ("<div class=\"note\">", "</div>")
+            case .warning: ("<div class=\"note warning\">", "</div>")
+            case .aside: ("<aside class=\"box\">", "</aside>")
+            }
+        }
+    }
+
+    private static let noteWords: [String: BoxKind] = [
+        "примечание": .note, "замечание": .note, "заметка": .note, "на заметку": .note, "совет": .note, "подсказка": .note,
+        "note": .note, "tip": .note, "hint": .note,
+        "внимание": .warning, "предупреждение": .warning, "важно": .warning, "осторожно": .warning,
+        "warning": .warning, "caution": .warning, "important": .warning,
+    ]
+
+    /// Строка, в которой только метка выноски: «ПРИМЕЧАНИЕ», «Внимание!», «Совет:».
+    static func noteLabel(_ text: String) -> BoxKind? {
+        guard text.count <= 30 else { return nil }
+        let word = text.trimmingCharacters(in: CharacterSet(charactersIn: " :.!—–-•")).lowercased()
+        return noteWords[word]
+    }
+
+    /// Абзац начинается с метки: «Примечание: ...», «Внимание. ...».
+    static func inlineNote(_ text: String) -> Bool {
+        guard let separator = text.firstIndex(where: { ":.".contains($0) }) else { return false }
+        let rest = text[text.index(after: separator)...].trimmingCharacters(in: .whitespaces)
+        return !rest.isEmpty && noteLabel(String(text[..<separator])) != nil
+    }
+
+    /// Заголовок врезки: короткая строка заглавными буквами.
+    static func isCapsTitle(_ text: String) -> Bool {
+        let letters = text.filter(\.isLetter)
+        return letters.count >= 6 && text.count <= 90 && text.contains(" ") && !letters.contains(where: \.isLowercase)
+    }
+
+    /// Обычный левый край текста на каждой странице. Берётся по всем страницам той же чётности:
+    /// на странице с большой врезкой самый частый край это край врезки, а не текста.
+    static func textLefts(_ metrics: [PageMetrics?]) -> [Double?] {
+        var byParity: [[Double]] = [[], []]
+        for (index, page) in metrics.enumerated() {
+            if let left = page?.left { byParity[index % 2].append(left.rounded()) }
+        }
+        let usual = byParity.map { values -> Double? in
+            Dictionary(grouping: values, by: { $0 }).max { $0.value.count < $1.value.count }?.key
+        }
+        return metrics.indices.map { index in
+            guard let page = metrics[index] else { return nil }
+            guard let typical = usual[index % 2] ?? usual[1 - index % 2] else { return page.left }
+            // Страница с другими полями (вставка, разворот) остаётся со своим краем.
+            return abs(page.left - typical) <= max(page.width * 0.08, 20) ? min(typical, page.left) : page.left
+        }
+    }
+
+    /// Начинается ли со строки `index` выноска: метка («ПРИМЕЧАНИЕ») или заголовок заглавными,
+    /// а под ними строки с отступом от края текста. Возвращает вид выноски и где начинаются её строки.
+    static func boxStart(_ lines: [PDFLine], at index: Int, textLeft: Double?, metrics: PageMetrics?) -> (kind: BoxKind, left: Double)? {
+        guard let textLeft, let metrics else { return nil }
+        let line = lines[index]
+        let kind: BoxKind
+        var needed = 1
+        if let label = noteLabel(line.text) {
+            kind = label
+        } else if isCapsTitle(line.text) {
+            kind = .aside
+            needed = 2
+        } else {
+            return nil
+        }
+        let indent = max(metrics.width * 0.025, 6)
+        let following = lines[(index + 1)...].filter { !$0.text.isEmpty }.prefix(needed)
+        guard following.count == needed, let first = following.first?.frame,
+              first.minX > textLeft + indent, first.minX < textLeft + metrics.width * 0.25,
+              following.allSatisfy({ ($0.frame.map { abs($0.minX - first.minX) <= 3 }) ?? false }) else { return nil }
+        return (kind, first.minX)
     }
 
     // MARK: Строки
@@ -574,13 +704,30 @@ enum PDFTextLayout {
         return pages.enumerated().map { pageIndex, original in
             let metrics = PageMetrics.of(original)
             var removed: Set<Int> = []
+            /// Две строки на одной высоте: PDFKit иногда отдаёт номер страницы и название раздела отдельно.
+            func sameBaseline(_ first: Int, _ second: Int) -> Bool {
+                guard let one = original[first].frame, let two = original[second].frame else { return false }
+                return abs(one.midY - two.midY) < min(one.height, two.height) * 0.5
+            }
+            func short(_ index: Int) -> Bool {
+                original[index].text.count <= 90 && !(bodySize > 0 && original[index].size > bodySize * 1.15)
+            }
             for (side, above) in [(edges[pageIndex].top, true), (edges[pageIndex].bottom, false)] {
-                for index in side {
+                for index in side where !removed.contains(index) {
                     // Соседняя строка ближе к середине страницы. Номер страницы в той же строке не в счёт.
                     let neighbour = nearestInner(original, to: index, above: above, skipping: removed)
                     let apart = standsApart(original[index], from: neighbour, above: above, metrics: metrics)
-                    guard removable(original[index], page: pageIndex, apart: apart) else { break }
-                    removed.insert(index)
+                    let partners = side.filter { $0 != index && !removed.contains($0) && sameBaseline(index, $0) }
+                    if removable(original[index], page: pageIndex, apart: apart) {
+                        removed.insert(index)
+                        // Остальное в строке колонтитула уходит вместе с ним.
+                        for partner in partners where short(partner) { removed.insert(partner) }
+                    } else if short(index), let partner = partners.first(where: { removable(original[$0], page: pageIndex, apart: apart) }) {
+                        removed.insert(index)
+                        removed.insert(partner)
+                    } else {
+                        break
+                    }
                 }
             }
             var lines = original.indices.filter { !removed.contains($0) }.map { original[$0] }
@@ -746,6 +893,10 @@ enum PDFTextLayout {
         /// Символов в прошлых главах.
         var base = 0
         var paragraph = ""
+        /// Класс следующего абзаца в HTML, например «note» у абзаца «Примечание: ...».
+        var paragraphClass: String?
+        /// Закрывающий тег открытой выноски.
+        var openBoxEnd: String?
         var headingCount = 0
         /// Картинки, которые встретились посреди абзаца: они встанут сразу после него.
         var waitingImages: [String] = []
@@ -772,7 +923,9 @@ enum PDFTextLayout {
             let text = paragraph
             paragraph = ""
             // Пробел в конце абзаца не виден, зато выделение через два абзаца совпадает с текстом PDF.
-            html += "<p>\(HTML.escape(text)) </p>"
+            let style = paragraphClass.map { " class=\"\($0)\"" } ?? ""
+            paragraphClass = nil
+            html += "<p\(style)>\(HTML.escape(text)) </p>"
             length += text.utf16.count + 1
             for path in waitingImages { writeImage(path) }
             waitingImages = []
@@ -780,6 +933,30 @@ enum PDFTextLayout {
                 waitingChunk = nil
                 startSection(chunk, showsHeading: false)
             }
+        }
+
+        /// Начинает выноску: метка или заголовок врезки отдельным абзацем, дальше её текст.
+        mutating func openBox(_ kind: BoxKind, label: String) {
+            closeBox()
+            flushParagraph()
+            resolvePages()
+            let tags = kind.tags
+            html += tags.open
+            openBoxEnd = tags.close
+            html += "<p class=\"label\">\(HTML.escape(label)) </p>"
+            length += label.utf16.count + 1
+        }
+
+        /// Закрывает выноску, дописав её последний абзац.
+        mutating func closeBox() {
+            guard let end = openBoxEnd else { return }
+            // Кусок книги, который ждёт конца абзаца, начнётся уже после выноски.
+            let chunk = waitingChunk
+            waitingChunk = nil
+            flushParagraph()
+            html += end
+            openBoxEnd = nil
+            if let chunk { startSection(chunk, showsHeading: false) }
         }
 
         /// Новый кусок книги без глав. Если абзац с прошлой страницы не кончился, кусок начнётся после него.
@@ -813,6 +990,7 @@ enum PDFTextLayout {
         }
 
         mutating func heading(_ text: String, level: Int) {
+            closeBox()
             flushParagraph()
             resolvePages()
             headingCount += 1
@@ -826,6 +1004,7 @@ enum PDFTextLayout {
         }
 
         mutating func startSection(_ newTitle: String, showsHeading: Bool) {
+            closeBox()
             flushParagraph()
             // Глава без текста не нужна: её заголовки (если были) уходят в следующую.
             if length > 0 { closeSection() }
@@ -845,6 +1024,7 @@ enum PDFTextLayout {
 
         mutating func finish() -> Book {
             waitingChunk = nil
+            closeBox()
             flushParagraph()
             resolvePages()
             if length > 0 || sections.isEmpty { closeSection() }

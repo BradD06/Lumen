@@ -125,6 +125,31 @@ struct PDFLayoutTests {
         #expect(InkMap.span(counts, length: 100) == 20...79)
     }
 
+    @Test func strayMarkAwayFromTheTextIsNotContent() {
+        // Текст 10...80 × 20...110, водяной знак внизу справа, отдельно от текста.
+        let width = 100, height = 140
+        var dark = [Bool](repeating: false, count: width * height)
+        func paint(_ columns: ClosedRange<Int>, _ rows: ClosedRange<Int>) {
+            for row in rows { for column in columns { dark[row * width + column] = true } }
+        }
+        for row in stride(from: 20, through: 108, by: 4) { paint(10...80, row...(row + 2)) }
+        paint(84...94, 132...135)
+        let map = InkMap(width: width, height: height, dark: dark)
+        let bounds = map.contentBounds()
+        #expect(bounds?.columns == 10...80)
+        #expect(bounds?.rows == 20...110)
+
+        // Строка сноски во всю ширину внизу остаётся.
+        paint(10...70, 126...128)
+        #expect(InkMap(width: width, height: height, dark: dark).contentBounds()?.rows == 20...128)
+
+        // Знак сбоку от последних строк тоже не расширяет текст вправо.
+        dark = [Bool](repeating: false, count: width * height)
+        for row in stride(from: 20, through: 108, by: 4) { paint(10...80, row...(row + 2)) }
+        paint(86...95, 100...103)
+        #expect(InkMap(width: width, height: height, dark: dark).contentBounds()?.columns == 10...80)
+    }
+
     @Test func layoutIsCached() async throws {
         let url = try makePDF([.columns])
         defer { try? FileManager.default.removeItem(at: url) }
