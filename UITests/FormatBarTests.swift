@@ -19,8 +19,17 @@ final class FormatBarTests: XCTestCase {
         app.descendants(matching: .any).matching(NSPredicate(format: "value == %@", value)).firstMatch
     }
 
-    /// Панель висит над блоком выше: клик должен попасть в кнопку, а не в тот блок.
-    func testBoldButtonFormatsSelection() {
+    /// Значения всех полей одной строкой: в сообщении об ошибке видно, что получилось.
+    private var values: String {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "elementType IN %@", [XCUIElement.ElementType.textField.rawValue, XCUIElement.ElementType.textView.rawValue]))
+            .allElementsBoundByIndex
+            .map { "\($0.elementType.rawValue):\(String(describing: $0.value).debugDescription)" }
+            .joined(separator: " | ")
+    }
+
+    /// Пишет заметку из двух строк и выделяет «world» во второй.
+    private func selectWord() {
         app.typeKey("n", modifierFlags: .command)
         XCTAssertTrue(row("").waitForExistence(timeout: 10), "Не открылась новая заметка")
         app.typeText("Test")
@@ -34,12 +43,25 @@ final class FormatBarTests: XCTestCase {
         for _ in 0..<5 {
             app.typeKey(.leftArrow, modifierFlags: .shift)
         }
+    }
+
+    /// ⌘B оформляет выделенное: так видно, что сама проверка результата верна.
+    func testCommandBFormatsSelection() {
+        selectWord()
+        app.typeKey("b", modifierFlags: .command)
+        XCTAssertTrue(field("Hello **world**").waitForExistence(timeout: 5), "⌘B не сработал. Поля: \(values)")
+    }
+
+    /// Панель висит над блоком выше: клик должен попасть в кнопку, а не в тот блок.
+    func testBoldButtonFormatsSelection() {
+        selectWord()
 
         let bold = app.buttons["Жирный"].firstMatch
         XCTAssertTrue(bold.waitForExistence(timeout: 5), "Над выделением нет панели оформления")
+        let before = values
         bold.click()
 
-        XCTAssertTrue(field("Hello **world**").waitForExistence(timeout: 5), "Кнопка «Жирный» не сработала")
+        XCTAssertTrue(field("Hello **world**").waitForExistence(timeout: 5), "Кнопка «Жирный» не сработала. До: \(before). После: \(values)")
         XCTAssertTrue(app.buttons["Жирный"].firstMatch.exists, "Панель пропала после нажатия")
     }
 }
