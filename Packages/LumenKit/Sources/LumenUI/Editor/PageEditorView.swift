@@ -578,6 +578,7 @@ struct PageEditorView: View {
             }
         }
         .scrollTargetLayout()
+        .floatingFormatBar(model: model)
         .padding(.horizontal, isCompact ? 16 : 28)
         .padding(.vertical, isCompact ? 16 : 24)
         .frame(maxWidth: 780, alignment: .leading)

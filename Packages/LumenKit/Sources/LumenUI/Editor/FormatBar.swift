@@ -134,6 +134,45 @@ struct FormatBar: View {
     }
 }
 
+// MARK: - Панель над выделением на Mac
+
+/// Блок с выделенным текстом и его место на странице.
+struct FormatBarAnchor {
+    var selection: TextSelectionInfo
+    var bounds: Anchor<CGRect>
+}
+
+/// Строка с выделением сообщает своё место, а панель рисует редактор поверх всех строк.
+/// Внутри строки панель висела над её границей: клики проходили сквозь неё в блок выше,
+/// курсор уезжал туда, и панель пропадала.
+struct FormatBarAnchorKey: PreferenceKey {
+    static var defaultValue: FormatBarAnchor? { nil }
+
+    static func reduce(value: inout FormatBarAnchor?, nextValue: () -> FormatBarAnchor?) {
+        if value == nil { value = nextValue() }
+    }
+}
+
+extension View {
+    /// Панель оформления над блоком, в котором выделен текст.
+    func floatingFormatBar(model: PageEditorModel) -> some View {
+        overlayPreferenceValue(FormatBarAnchorKey.self) { anchor in
+            GeometryReader { proxy in
+                if let anchor {
+                    let rect = proxy[anchor.bounds]
+                    // Над первым блоком места может не хватить: тогда панель под ним.
+                    let y = rect.minY >= 46 ? rect.minY - 44 : rect.maxY + 6
+                    FormatBar(model: model, blockId: anchor.selection.blockId, selection: anchor.selection) {
+                        model.colorPickerRequest = anchor.selection.blockId
+                    }
+                    .offset(x: rect.minX + BlockRow.handleInset, y: y)
+                    .transition(.opacity)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Оформленный текст
 
 enum RichTextRendering {
