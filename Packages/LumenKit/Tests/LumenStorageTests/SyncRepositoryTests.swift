@@ -107,6 +107,26 @@ struct SyncRepositoryTests {
         #expect(try await phone.pendingSyncChanges().contains { $0.recordId == page.id })
     }
 
+    @Test func ownCoverPhotoTravelsWithTheBook() async throws {
+        let file = try phone.attachments.save(Data("книга".utf8), fileExtension: "epub")
+        let book = try await phone.addSource(title: "Дюна", format: .epub, file: file, originalName: "Дюна.epub")
+        try await phone.setCustomCover(book.id, imageData: Data("фото".utf8))
+        try await phone.setSpineCenter(book.id, 0.3)
+        let custom = try #require(try await phone.source(book.id)?.customCover)
+
+        let record = try #require(try await phone.syncRecord(for: SyncRecordID(table: .source, id: book.id))).record
+        #expect(record.fields["customCoverAsset"] == .asset(custom), "файл фото едет в iCloud вместе с книгой")
+
+        try await send(from: phone, to: mac)
+        let arrived = try #require(try await mac.source(book.id))
+        #expect(arrived.customCover == custom)
+        #expect(arrived.spineCenter == 0.3)
+
+        try await phone.restoreBookCover(book.id)
+        try await send(from: phone, to: mac)
+        #expect(try await mac.source(book.id)?.customCover == nil)
+    }
+
     @Test func recordNamesRoundTrip() {
         let id = SyncRecordID(table: .highlight, id: UUID())
         #expect(SyncRecordID(recordName: id.recordName) == id)
