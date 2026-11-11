@@ -301,6 +301,7 @@ struct BookShelf: View {
                     }
                 }
             }
+            BookCoverMenu(book: book)
             Divider()
             Button("Убрать в корзину", systemImage: "trash", role: .destructive) { trash(book) }
         }
@@ -547,15 +548,15 @@ struct ShelfBook: View {
 }
 
 /// Корешок книги: высота и толщина у каждой книги свои, но всегда одни и те же.
-/// Если у книги есть картинка обложки, корешок сделан из её середины;
-/// без картинки он того же цвета, что и нарисованная обложка.
+/// Если у книги есть картинка обложки, корешок сделан из её полоски (по умолчанию из середины,
+/// полоску выбирают в окне обложки); без картинки он того же цвета, что и нарисованная обложка.
 struct BookSpine: View {
     let source: Source
     var attachments: AttachmentStore?
 
     @Environment(\.lumenTheme) private var theme
 
-    private var hasCoverImage: Bool { source.cover != nil && attachments != nil }
+    private var hasCoverImage: Bool { source.shownCover != nil && attachments != nil }
 
     var body: some View {
         let style = BookSpineStyle(source: source)
@@ -596,10 +597,12 @@ struct BookSpine: View {
 
     @ViewBuilder
     private func face(_ style: BookSpineStyle) -> some View {
-        if let cover = source.cover, let attachments {
-            // Середина обложки той же высоты, что корешок: по краю картинки обычно пусто.
+        if let cover = source.shownCover, let attachments {
+            // Полоска обложки той же высоты, что корешок: по умолчанию середина, по краю картинки обычно пусто.
             AttachmentImage(name: cover, attachments: attachments, contentMode: .fill)
                 .frame(width: style.coverWidth, height: style.height)
+                .clipped()
+                .offset(x: BookSpineStyle.stripOffset(center: source.spineCenter, coverWidth: style.coverWidth, spineWidth: style.width))
                 .frame(width: style.width, height: style.height, alignment: .center)
                 .clipped()
         } else {
@@ -665,6 +668,15 @@ struct BookSpineStyle: Equatable {
 
     /// Ширина обложки, когда книгу повернули лицом: пропорции обычной книги.
     var coverWidth: CGFloat { (height * 0.68).rounded() }
+
+    /// Сдвиг обложки под корешком, чтобы на нём стояла полоска с серединой в `center` (0…1 по ширине
+    /// обложки). Полоска не выходит за края обложки; `nil` середина, сдвига нет.
+    nonisolated static func stripOffset(center: Double?, coverWidth: CGFloat, spineWidth: CGFloat) -> CGFloat {
+        guard let center, coverWidth > spineWidth else { return 0 }
+        let half = spineWidth / 2
+        let x = min(max(CGFloat(center) * coverWidth, half), coverWidth - half)
+        return coverWidth / 2 - x
+    }
 
     /// Сумма байтов id: в отличие от `hashValue` не меняется между запусками.
     static func seed(_ id: UUID) -> Int {

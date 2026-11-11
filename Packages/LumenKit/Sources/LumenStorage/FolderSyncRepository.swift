@@ -262,7 +262,7 @@ extension AppDatabase {
             for name in names {
                 let pattern = "%\(name)%"
                 let used = try Bool.fetchOne(db, sql: """
-                    SELECT EXISTS (SELECT 1 FROM source WHERE file = :name OR cover = :name)
+                    SELECT EXISTS (SELECT 1 FROM source WHERE file = :name OR cover = :name OR customCover = :name)
                         OR EXISTS (SELECT 1 FROM page WHERE cover LIKE :pattern OR background LIKE :pattern)
                         OR EXISTS (SELECT 1 FROM block WHERE content LIKE :pattern)
                     """, arguments: ["name": name, "pattern": pattern]) ?? false

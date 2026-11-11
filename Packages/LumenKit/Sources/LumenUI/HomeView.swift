@@ -36,6 +36,7 @@ struct HomeView: View {
                 }
                 deskLabel
                 CaptureField { text, asTask in appActions.capture(text, asTask) }
+                SyncSetupCard()
                 if showsReading || showsTasks || showsInbox {
                     cards
                 }
@@ -73,6 +74,8 @@ struct HomeView: View {
             Text(greeting)
                 .font(.largeTitle.weight(.bold))
                 .foregroundStyle(theme.textPrimary)
+            SyncBadge()
+                .padding(.top, 2)
         }
         .padding(.top, 8)
     }

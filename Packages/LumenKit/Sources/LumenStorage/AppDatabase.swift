@@ -274,7 +274,15 @@ extension AppDatabase {
             }
         }
 
-        migrator.registerMigration("v13: pinned sheets") { db in
+        migrator.registerMigration("v13: custom book covers") { db in
+            // Своё фото обложки и полоска обложки на корешке. Таблица уже синхронизируется.
+            try db.alter(table: "source") { t in
+                t.add(column: "customCover", .text)
+                t.add(column: "spineCenter", .double)
+            }
+        }
+
+        migrator.registerMigration("v14: pinned sheets") { db in
             // Лист заметки, приколотый к полке «Кабинета». Сами листы это блоки-границы
             // (`sheetBreak`), новых таблиц не нужно: старые заметки остаются одним листом как есть.
             // Таблица уже синхронизируется, триггеры видят новый столбец сами.

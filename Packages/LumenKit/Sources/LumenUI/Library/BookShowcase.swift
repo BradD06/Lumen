@@ -1,3 +1,4 @@
+import GRDB
 import LumenCore
 import LumenStorage
 import LumenThemes
@@ -62,6 +63,7 @@ private struct BookShowcaseHost: ViewModifier {
                     .environment(\.keyHintLayer, 1)
                 }
             }
+            .bookCoverHost(database: database)
     }
 
     private func close() {
@@ -81,7 +83,11 @@ struct BookShowcase: View {
     var onOpenDashboard: () -> Void
 
     @State private var appeared = false
+    /// Книга из базы: сменили обложку, и витрина показывает новую.
+    @State private var live: Source?
     @Environment(\.lumenTheme) private var theme
+
+    private var shown: Source { live ?? book }
 
     var body: some View {
         GeometryReader { geo in
@@ -127,13 +133,26 @@ struct BookShowcase: View {
         .onAppear {
             withAnimation(.spring(duration: 0.6, bounce: 0.2).delay(0.05)) { appeared = true }
         }
+        .task { await observe() }
         .accessibilityIdentifier("bookShowcase")
+    }
+
+    private func observe() async {
+        let id = book.id
+        let observation = ValueObservation.tracking { db in try Source.fetchOne(db, key: id) }
+        do {
+            for try await value in observation.values(in: database.reader) {
+                live = value
+            }
+        } catch {
+            lumenLog.error("Showcase observation failed: \(String(describing: error), privacy: .public)")
+        }
     }
 
     /// Крупная обложка. Прилетает с полки и доворачивается лицом.
     private func cover(_ layout: BookShowcaseLayout) -> some View {
         Button(action: onOpenBook) {
-            SourceCoverArt(source: book, attachments: database.attachments, width: layout.coverWidth, height: layout.coverHeight)
+            SourceCoverArt(source: shown, attachments: database.attachments, width: layout.coverWidth, height: layout.coverHeight)
                 .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
         }
         .buttonStyle(.plain)
@@ -151,7 +170,8 @@ struct BookShowcase: View {
             onOpenBook: onOpenBook,
             onOpenPage: onOpenPage,
             onOpenDashboard: onOpenDashboard,
-            isPanel: true
+            isPanel: true,
+            showsCoverButton: true
         )
         .offset(x: appeared ? 0 : 40)
         .opacity(appeared ? 1 : 0)
