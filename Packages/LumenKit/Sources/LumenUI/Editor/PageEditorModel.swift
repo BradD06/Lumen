@@ -54,6 +54,8 @@ final class PageEditorModel {
     /// Выделение, которое поле должно вернуть после смены оформления (разметка в поле
     /// при этом меняется, и система сбрасывает выделение).
     var selectionRestore: TextSelectionInfo?
+    /// Блок, у которого нужно открыть палитру цвета (кнопка на панели оформления).
+    var colorPickerRequest: UUID?
 
     struct SourceRequest: Equatable {
         var sourceId: UUID
