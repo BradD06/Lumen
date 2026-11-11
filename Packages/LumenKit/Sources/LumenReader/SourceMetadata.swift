@@ -82,6 +82,21 @@ public enum SourceMetadata {
         return jpeg(image)
     }
 
+    /// Своё фото обложки: снимок с камеры бывает в десятки мегабайт, а обложке на витрине
+    /// хватает 1200 точек по длинной стороне. Повёрнуто так, как снимали; любой формат (HEIC, PNG) в JPEG.
+    public static func customCover(from data: Data) -> Data? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: customCoverPixelSize,
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return jpeg(image)
+    }
+
+    static let customCoverPixelSize = 1200
+
     static func jpeg(_ image: CGImage) -> Data? {
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data as CFMutableData, UTType.jpeg.identifier as CFString, 1, nil) else {

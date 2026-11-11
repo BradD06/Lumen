@@ -303,7 +303,7 @@ extension AppDatabase {
             try Page.filter(Column("deletedAt") != nil).deleteAll(db)
             try Folder.filter(Column("deletedAt") != nil).deleteAll(db)
             try Highlight.filter(Column("deletedAt") != nil).deleteAll(db)
-            return sources.flatMap { [$0.file] + ($0.cover.map { [$0] } ?? []) }
+            return sources.flatMap(\.attachmentNames)
         }
         for file in files {
             attachments.remove(file)

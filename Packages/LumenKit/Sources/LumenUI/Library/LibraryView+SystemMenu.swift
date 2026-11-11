@@ -145,6 +145,7 @@ extension LibraryView {
         } label: {
             Label("Переместить в…", systemImage: "arrow.right.doc.on.clipboard")
         }
+        BookCoverMenu(book: source)
         Divider()
         Button(role: .destructive) {
             selection = nil

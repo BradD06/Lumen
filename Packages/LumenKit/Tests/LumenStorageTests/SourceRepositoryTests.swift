@@ -278,4 +278,46 @@ struct SourceRepositoryTests {
         try await db.emptyTrash()
         #expect(try await db.highlight(highlight.id) == nil)
     }
+
+    @Test func ownCoverPhotoReplacesTheBookCoverUntilRestored() async throws {
+        let bookCover = try db.attachments.save(Data("обложка из книги".utf8), fileExtension: "jpg")
+        let file = try db.attachments.save(Data("книга".utf8), fileExtension: "epub")
+        let book = try await db.addSource(title: "Дюна", format: .epub, file: file, originalName: "Дюна.epub", cover: bookCover)
+
+        try await db.setCustomCover(book.id, imageData: Data("фото 1".utf8))
+        let first = try #require(try await db.source(book.id)?.customCover)
+        #expect(try await db.source(book.id)?.shownCover == first)
+        #expect(try await db.source(book.id)?.cover == bookCover, "обложка из книги остаётся, к ней можно вернуться")
+
+        try await db.setSpineCenter(book.id, 1.7)
+        #expect(try await db.source(book.id)?.spineCenter == 1, "полоска не уходит за край обложки")
+
+        // Новое фото заменяет прежнее: старый файл удаляется, корешок снова из середины.
+        try await db.setCustomCover(book.id, imageData: Data("фото 2".utf8))
+        let second = try #require(try await db.source(book.id)?.customCover)
+        #expect(second != first)
+        #expect(db.attachments.data(for: first) == nil)
+        #expect(db.attachments.data(for: second) == Data("фото 2".utf8))
+        #expect(try await db.source(book.id)?.spineCenter == nil)
+
+        try await db.setSpineCenter(book.id, 0.2)
+        try await db.restoreBookCover(book.id)
+        let restored = try #require(try await db.source(book.id))
+        #expect(restored.customCover == nil)
+        #expect(restored.spineCenter == nil)
+        #expect(restored.shownCover == bookCover)
+        #expect(db.attachments.data(for: second) == nil)
+        #expect(db.attachments.data(for: bookCover) != nil)
+    }
+
+    @Test func ownCoverPhotoLeavesWithTheBook() async throws {
+        let book = try await addBook()
+        try await db.setCustomCover(book.id, imageData: Data("фото".utf8))
+        let custom = try #require(try await db.source(book.id)?.customCover)
+        #expect(try await db.referencedAttachments(among: [custom]) == [custom], "синхронизация через папку забирает фото")
+
+        try await db.trashSource(book.id)
+        try await db.emptyTrash()
+        #expect(db.attachments.data(for: custom) == nil)
+    }
 }
