@@ -282,7 +282,7 @@ extension AppDatabase {
             }
         }
 
-        migrator.registerMigration("v14: link board") { db in
+        migrator.registerMigration("v15: link board") { db in
             // Доска связей: что приколото и где. id совпадает с id книги, папки или страницы,
             // поэтому внешнего ключа нет: приколотое из корзины просто не показывается.
             try db.create(table: "boardPin") { t in
