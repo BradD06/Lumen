@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import PDFKit
 import Testing
 @testable import LumenReader
 
@@ -28,6 +29,54 @@ struct PDFPageTintTests {
         let provider = try #require(CGDataProvider(data: data as CFData))
         let document = try #require(CGPDFDocument(provider))
         return try #require(document.page(at: 1))
+    }
+
+    /// Страница без полей (рамка начинается не в нуле) перекрашивается вся, а текст стоит на своём месте.
+    @Test func croppedPageIsTintedEverywhere() throws {
+        let data = NSMutableData()
+        var mediaBox = CGRect(x: 0, y: 0, width: 600, height: 800)
+        let consumer = try #require(CGDataConsumer(data: data as CFMutableData))
+        let pdf = try #require(CGContext(consumer: consumer, mediaBox: &mediaBox, nil))
+        pdf.beginPDFPage(nil)
+        pdf.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 1))
+        pdf.fill(CGRect(x: 150, y: 150, width: 100, height: 100))
+        pdf.endPDFPage()
+        pdf.closePDF()
+
+        let factory = TintedPageFactory()
+        let document = try #require(PDFDocument(data: data as Data))
+        document.delegate = factory
+        let page = try #require(document.page(at: 0) as? TintedPDFPage)
+        page.style = PDFPageStyle(tint: .paper(0xF4EADB), backdrop: 0x00FF00)
+        let crop = CGRect(x: 100, y: 100, width: 400, height: 600)
+        page.setBounds(crop, for: .cropBox)
+
+        let width = 400, height = 600
+        let context = try #require(CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        // Синий там, где страница ничего не нарисовала.
+        context.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        page.draw(with: .cropBox, to: context)
+
+        let pixels = try #require(context.data).bindMemory(to: UInt8.self, capacity: width * height * 4)
+        func color(_ x: Int, _ y: Int) -> (Int, Int, Int) {
+            let offset = ((height - 1 - y) * width + x) * 4
+            return (Int(pixels[offset]), Int(pixels[offset + 1]), Int(pixels[offset + 2]))
+        }
+        func isPaper(_ x: Int, _ y: Int) -> Bool {
+            let (red, green, blue) = color(x, y)
+            return abs(red - 0xF4) < 6 && abs(green - 0xEA) < 6 && abs(blue - 0xDB) < 6
+        }
+        // Квадрат файла (150, 150) в рамке стоит в точке (50, 50).
+        let ink = color(100, 100)
+        #expect(ink.0 < 60 && ink.1 < 60 && ink.2 < 60, "\(ink)")
+        // Слева, снизу, справа, сверху и посередине: бумага, а не пустое место.
+        for (x, y) in [(30, 300), (200, 30), (370, 300), (200, 570), (200, 300)] {
+            #expect(isPaper(x, y), "(\(x), \(y)) = \(color(x, y))")
+        }
     }
 
     @Test func findsWhereTheImageIs() throws {

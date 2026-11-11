@@ -75,7 +75,13 @@ final class TintedPDFPage: PDFPage {
         context.saveGState()
         defer { context.restoreGState() }
 
+        // PDFKit даёт контекст, где начало рамки страницы в нуле, и сдвигает его к координатам
+        // страницы только внутри `super.draw`. У страницы без полей рамка начинается не в нуле,
+        // поэтому свои заливки рисуем в координатах страницы тем же сдвигом, что и PDFKit.
+        let toPage = pageTransform(for: box, in: context)
+
         // Углы вне скругления закрашены цветом листа, так страница выглядит мягкой карточкой.
+        context.concatenate(toPage)
         context.setFillColor(Self.cgColor(style.backdrop))
         context.fill(rect)
         let radius = min(rect.width, rect.height) * 0.025
@@ -83,7 +89,10 @@ final class TintedPDFPage: PDFPage {
         context.clip()
         context.setFillColor(Self.white)
         context.fill(rect)
+        // Обрезка остаётся, а сдвиг снимаем: `super.draw` сдвинет сам.
+        context.concatenate(toPage.inverted())
         super.draw(with: box, to: context)
+        context.concatenate(toPage)
 
         switch style.tint {
         case .original:
@@ -104,9 +113,21 @@ final class TintedPDFPage: PDFPage {
             context.setBlendMode(.normal)
             context.setFillColor(Self.white)
             context.fill(imageRect)
+            context.concatenate(toPage.inverted())
             super.draw(with: box, to: context)
             context.restoreGState()
         }
+    }
+
+    /// Сдвиг (и поворот), который `super.draw` применяет к контексту, чтобы рисовать в координатах страницы.
+    private func pageTransform(for box: PDFDisplayBox, in context: CGContext) -> CGAffineTransform {
+        context.saveGState()
+        defer { context.restoreGState() }
+        let before = context.ctm
+        transform(context, for: box)
+        let after = context.ctm
+        // after = toPage × before, значит toPage = after × before⁻¹.
+        return after.concatenating(before.inverted())
     }
 
     private func fill(_ context: CGContext, _ rect: CGRect, _ color: CGColor, mode: CGBlendMode) {

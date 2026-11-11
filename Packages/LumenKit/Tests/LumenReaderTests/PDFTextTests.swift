@@ -288,6 +288,87 @@ struct PDFTextLayoutTests {
         #expect(stripped[21].first?.text == "— Да.")
     }
 
+    @Test func removesRunningSectionTitlesWithPageNumbers() {
+        // Колонтитул это название текущего раздела и номер страницы: название меняется
+        // каждые страницу-две и не повторяется трижды, но номер идёт по порядку.
+        let sections = ["О чем эта книга", "Как читать эту книгу", "Предварительные условия", "Что нового", "Благодарности", "Введение"]
+        let pages = (0..<12).map { index -> [PDFLine] in
+            let printed = index + 20
+            let title = sections[index / 2]
+            let header = index.isMultiple(of: 2) ? "\(printed) \(title)" : "\(title) \(printed)"
+            return framedPage(header: header, body: body([sentence(index), sentence(index + 100), sentence(index + 200) + " 7"]), number: nil)
+        }
+        let stripped = PDFTextLayout.stripRunningLines(pages, bodySize: 0)
+        for (index, lines) in stripped.enumerated() {
+            #expect(lines.map(\.text) == [sentence(index), sentence(index + 100), sentence(index + 200) + " 7"])
+        }
+        #expect(PDFTextLayout.edgeNumber("Предварительные условия 23") == 23)
+        #expect(PDFTextLayout.edgeNumber("22 Введение") == 22)
+        #expect(PDFTextLayout.edgeNumber("Введение") == nil)
+        #expect(PDFTextLayout.edgeNumber("1991") == nil)
+    }
+
+    @Test func removesRunningTitleThatComesApartFromItsPageNumber() {
+        // Номер и название раздела на одной высоте, но отдельными строками, название первым.
+        let pages = (0..<10).map { index -> [PDFLine] in
+            let topics = ["Ветер", "Дождь", "Снег", "Гроза", "Туман", "Иней", "Роса", "Град", "Зной", "Метель"]
+            return [framed("Погода: \(topics[index])", left: 120, right: 400, y: 572, height: 9),
+                    framed("\(index + 28)", left: 50, right: 62, y: 572, height: 9)]
+                + body([sentence(index), sentence(index + 100)])
+        }
+        let stripped = PDFTextLayout.stripRunningLines(pages, bodySize: 0)
+        for (index, lines) in stripped.enumerated() {
+            #expect(lines.map(\.text) == [sentence(index), sentence(index + 100)])
+        }
+    }
+
+    @Test func findsChapterTitleSetWithoutTheWordChapter() throws {
+        // Первая страница главы: большая цифра и название в две строки, а в закладках «Глава 1. ...».
+        let lines = page(["1Что такое командная", "оболочка", sentence(1)])
+        let found = try #require(PDFTextLayout.findTitle("Глава 1. Что такое командная оболочка", in: lines, from: 0))
+        #expect(found.line == 0 && found.length == 2)
+        let plain = try #require(PDFTextLayout.findTitle("Глава 2. Навигация", in: page(["Навигация", sentence(2)]), from: 0))
+        #expect(plain.line == 0 && plain.length == 1)
+    }
+
+    @Test func notesAndSidebarsBecomeBoxes() {
+        // Строки сверху вниз: (текст, левый край, правый край).
+        let rows: [(String, Double, Double)] = [
+            ("Обычный текст книги идёт во всю ширину", 50, 590),
+            ("и кончается здесь.", 50, 300),
+            ("ПРИМЕЧАНИЕ", 50, 140),
+            ("Текст примечания набран с отступом слева", 64, 590),
+            ("и кончается раньше края.", 64, 320),
+            ("Дальше снова обычный текст во всю ширину", 50, 590),
+            ("и он тоже кончается.", 50, 300),
+            ("ПОЧЕМУ Я НЕ ЛЮБЛЮ МЫШЬ", 64, 300),
+            ("Врезка на сером фоне набрана с отступом", 64, 576),
+            ("с обеих сторон и кончается вот тут.", 64, 300),
+            ("Примечание: короткий абзац с меткой в начале.", 50, 450),
+            ("Последний абзац страницы во всю ширину", 50, 590),
+            ("кончается точкой.", 50, 300),
+        ]
+        let lines = rows.enumerated().map { index, row in framed(row.0, left: row.1, right: row.2, y: 700 - Double(index) * 16) }
+        let book = PDFTextLayout.build(pages: [lines], outline: [], frontTitle: "Книга")
+        let html = book.sections[0].html
+        #expect(html.contains("<div class=\"note\"><p class=\"label\">ПРИМЕЧАНИЕ </p><p>Текст примечания набран с отступом слева и кончается раньше края. </p></div>"))
+        #expect(html.contains("</div><p>Дальше снова обычный текст"))
+        #expect(html.contains("<aside class=\"box\"><p class=\"label\">ПОЧЕМУ Я НЕ ЛЮБЛЮ МЫШЬ </p><p>Врезка на сером фоне набрана с отступом с обеих сторон и кончается вот тут. </p></aside>"))
+        #expect(html.contains("<p class=\"note\">Примечание: короткий абзац с меткой в начале. </p>"))
+        // Выноски только меняют вид: символы текста считаются как раньше.
+        #expect(visibleText(html).utf16.count == book.index.length)
+    }
+
+    @Test func recognisesNoteLabels() {
+        #expect(PDFTextLayout.noteLabel("ПРИМЕЧАНИЕ") == .note)
+        #expect(PDFTextLayout.noteLabel("Внимание!") == .warning)
+        #expect(PDFTextLayout.noteLabel("Совет:") == .note)
+        #expect(PDFTextLayout.noteLabel("Примечание к форме записи") == nil)
+        #expect(PDFTextLayout.isCapsTitle("НЕСКОЛЬКО СЛОВ О МЫШИ"))
+        #expect(!PDFTextLayout.isCapsTitle("GNU"))
+        #expect(!PDFTextLayout.isCapsTitle("Обычная строка"))
+    }
+
     @Test func indexFindsPagesAndPlaces() {
         let index = PDFTextIndex(pages: [0, 100, 100, 250], sections: [0, 180], length: 400)
         #expect(index.page(at: 50) == 0)

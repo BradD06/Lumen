@@ -176,7 +176,7 @@ public enum PDFLayoutPlan {
 /// и смотрит, где на ней тёмное. Работает и со сканами, где текста нет.
 public enum PDFLayoutAnalyzer {
     /// Меняется, когда меняется способ разбора: старые результаты из кэша тогда не годятся.
-    static let version = 1
+    static let version = 2
     /// Длинная сторона картинки страницы в точках: хватает, чтобы увидеть промежуток между колонками.
     static let longSide = 300
 
@@ -318,24 +318,75 @@ struct InkMap {
         return PDFPageInk(content: content, columnSplit: split)
     }
 
-    /// Где содержимое: столбцы и строки картинки с краской. Одиночные точки (пыль на скане)
-    /// и тёмные полосы у самого края (тень от сканера) не в счёт.
+    /// Где содержимое: столбцы и строки картинки с краской. Одиночные точки (пыль на скане),
+    /// тёмные полосы у самого края (тень от сканера) и маленькие метки в стороне от текста
+    /// (водяной знак программы, которой прогнали файл, вроде «by colt» у нижнего края) не в счёт.
     func contentBounds() -> (columns: ClosedRange<Int>, rows: ClosedRange<Int>)? {
-        var columnInk = [Int](repeating: 0, count: width)
         var rowInk = [Int](repeating: 0, count: height)
-        for row in 0..<height {
-            rowInk[row] = ink(row: row, 0..<width)
-            guard rowInk[row] > 0 else { continue }
+        for row in 0..<height { rowInk[row] = ink(row: row, 0..<width) }
+        var rowRuns = Self.runs(rowInk, length: height)
+        // Метка сверху или снизу: низкая, узкая и отделена от текста просветом.
+        let lowRun = max(2, Int(Double(height) * 0.04))
+        let rowGap = max(3, Int(Double(height) * 0.025))
+        func isStray(_ run: ClosedRange<Int>, gap: Int) -> Bool {
+            guard run.count <= lowRun, gap >= rowGap, let columns = inkedColumns(rows: run) else { return false }
+            return Double(columns.count) <= Double(width) * 0.15
+        }
+        while rowRuns.count >= 2, let last = rowRuns.last, isStray(last, gap: last.lowerBound - rowRuns[rowRuns.count - 2].upperBound) {
+            rowRuns.removeLast()
+        }
+        while rowRuns.count >= 2, let first = rowRuns.first, isStray(first, gap: rowRuns[1].lowerBound - first.upperBound) {
+            rowRuns.removeFirst()
+        }
+        guard let top = rowRuns.first, let bottom = rowRuns.last else { return nil }
+        let rows = top.lowerBound...bottom.upperBound
+
+        var columnInk = [Int](repeating: 0, count: width)
+        for row in rows where rowInk[row] > 0 {
             for column in 0..<width where isDark(column, row) {
                 columnInk[column] += 1
             }
         }
-        guard let columns = Self.span(columnInk, length: width), let rows = Self.span(rowInk, length: height) else { return nil }
-        return (columns, rows)
+        var columnRuns = Self.runs(columnInk, length: width)
+        // Метка сбоку: узкая, низкая и отделена от текста просветом.
+        let narrowRun = max(2, Int(Double(width) * 0.1))
+        let columnGap = max(2, Int(Double(width) * 0.015))
+        func isStrayColumn(_ run: ClosedRange<Int>, gap: Int) -> Bool {
+            guard run.count <= narrowRun, gap >= columnGap, let inked = inkedRows(columns: run, within: rows) else { return false }
+            return inked.count <= lowRun
+        }
+        while columnRuns.count >= 2, let last = columnRuns.last, isStrayColumn(last, gap: last.lowerBound - columnRuns[columnRuns.count - 2].upperBound) {
+            columnRuns.removeLast()
+        }
+        while columnRuns.count >= 2, let first = columnRuns.first, isStrayColumn(first, gap: columnRuns[1].lowerBound - first.upperBound) {
+            columnRuns.removeFirst()
+        }
+        guard let left = columnRuns.first, let right = columnRuns.last else { return nil }
+        return (left.lowerBound...right.upperBound, rows)
     }
 
-    /// Первый и последний столбец (или строка) с краской, без узких полос, прилипших к краю.
-    static func span(_ counts: [Int], length: Int) -> ClosedRange<Int>? {
+    /// Столбцы, где есть краска в строках `rows`.
+    private func inkedColumns(rows: ClosedRange<Int>) -> ClosedRange<Int>? {
+        var first: Int?
+        var last: Int?
+        for column in 0..<width where rows.contains(where: { isDark(column, $0) }) {
+            if first == nil { first = column }
+            last = column
+        }
+        guard let first, let last else { return nil }
+        return first...last
+    }
+
+    /// Строки из `within`, где есть краска в столбцах `columns`.
+    private func inkedRows(columns: ClosedRange<Int>, within: ClosedRange<Int>) -> ClosedRange<Int>? {
+        let range = columns.lowerBound..<(columns.upperBound + 1)
+        let inked = within.filter { ink(row: $0, range) > 0 }
+        guard let first = inked.first, let last = inked.last else { return nil }
+        return first...last
+    }
+
+    /// Куски строк (или столбцов) с краской подряд, без узких полос, прилипших к краю.
+    static func runs(_ counts: [Int], length: Int) -> [ClosedRange<Int>] {
         var runs: [ClosedRange<Int>] = []
         var start: Int?
         for index in 0..<length {
@@ -352,7 +403,13 @@ struct InkMap {
             let touchesEdge = run.lowerBound == 0 || run.upperBound == length - 1
             return touchesEdge && run.count <= edgeStrip
         }
-        guard let first = runs.first, let last = runs.last else { return nil }
+        return runs
+    }
+
+    /// Первый и последний столбец (или строка) с краской, без узких полос, прилипших к краю.
+    static func span(_ counts: [Int], length: Int) -> ClosedRange<Int>? {
+        let found = Self.runs(counts, length: length)
+        guard let first = found.first, let last = found.last else { return nil }
         return first.lowerBound...last.upperBound
     }
 

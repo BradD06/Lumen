@@ -106,6 +106,11 @@ struct FormatBar: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
+        #if os(macOS)
+        .background(FormatBarClickCatcher { view in
+            FormatBarClickCatcher.popUpTurnIntoMenu(model: model, blockId: blockId, below: view)
+        })
+        #endif
         .foregroundStyle(theme.textPrimary)
         .help("Превратить в другой блок")
         .accessibilityLabel("Превратить в")
@@ -128,11 +133,151 @@ struct FormatBar: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        #if os(macOS)
+        .background(FormatBarClickCatcher { _ in action() })
+        #endif
         .help(shortcut.map { "\(title) (\($0))" } ?? title)
         .accessibilityLabel(title)
         .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }
+
+// MARK: - Панель над выделением на Mac
+
+/// Блок с выделенным текстом и его место на странице.
+struct FormatBarAnchor {
+    var selection: TextSelectionInfo
+    var bounds: Anchor<CGRect>
+}
+
+/// Строка с выделением сообщает своё место, а панель рисует редактор поверх всех строк.
+/// Внутри строки панель висела над её границей: клики проходили сквозь неё в блок выше,
+/// курсор уезжал туда, и панель пропадала.
+struct FormatBarAnchorKey: PreferenceKey {
+    static var defaultValue: FormatBarAnchor? { nil }
+
+    static func reduce(value: inout FormatBarAnchor?, nextValue: () -> FormatBarAnchor?) {
+        if value == nil { value = nextValue() }
+    }
+}
+
+extension View {
+    /// Панель оформления над блоком, в котором выделен текст.
+    func floatingFormatBar(model: PageEditorModel) -> some View {
+        overlayPreferenceValue(FormatBarAnchorKey.self) { anchor in
+            GeometryReader { proxy in
+                if let anchor {
+                    let rect = proxy[anchor.bounds]
+                    // Над первым блоком места может не хватить: тогда панель под ним.
+                    let y = rect.minY >= 46 ? rect.minY - 44 : rect.maxY + 6
+                    FormatBar(model: model, blockId: anchor.selection.blockId, selection: anchor.selection) {
+                        model.colorPickerRequest = anchor.selection.blockId
+                    }
+                    .offset(x: rect.minX + BlockRow.handleInset, y: y)
+                    .transition(.opacity)
+                }
+            }
+        }
+    }
+}
+
+#if os(macOS)
+/// Клик по кнопке панели на Mac ловится раньше, чем его разберут окно и SwiftUI.
+/// Иначе нажатие кнопки забирало фокус у поля (или доставалось полю блока под панелью):
+/// выделение пропадало, панель исчезала, и кнопка так и не срабатывала.
+/// Монитор событий видит клик первым, выполняет действие и гасит клик, поэтому курсор
+/// и выделение остаются в тексте.
+struct FormatBarClickCatcher: NSViewRepresentable {
+    var action: (NSView) -> Void
+
+    func makeNSView(context: Context) -> FormatBarClickCatcherView {
+        let view = FormatBarClickCatcherView()
+        view.action = action
+        return view
+    }
+
+    func updateNSView(_ view: FormatBarClickCatcherView, context: Context) {
+        view.action = action
+    }
+
+    static func dismantleNSView(_ view: FormatBarClickCatcherView, coordinator: ()) {
+        view.stopMonitoring()
+    }
+
+    /// Меню «Превратить в» под кнопкой «Aa». Системное меню не забирает фокус у поля.
+    static func popUpTurnIntoMenu(model: PageEditorModel, blockId: UUID, below view: NSView) {
+        guard let block = model.findBlock(blockId) else { return }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for type in BlockType.allCases where type.isConvertible && type != .divider {
+            let item = FormatBarMenuItem(title: type.title) { model.setType(blockId, type) }
+            item.image = NSImage(systemSymbolName: type.symbolName, accessibilityDescription: nil)
+            item.isEnabled = type != block.type
+            menu.addItem(item)
+        }
+        Task { @MainActor in
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.height + 4), in: view)
+        }
+    }
+}
+
+final class FormatBarClickCatcherView: NSView {
+    var action: (NSView) -> Void = { _ in }
+    private var monitor: Any?
+
+    override var isFlipped: Bool { true }
+
+    /// Сам вид кликов не принимает: их ловит монитор.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        stopMonitoring()
+        guard window != nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            let location = event.locationInWindow
+            let windowNumber = event.windowNumber
+            let handled = MainActor.assumeIsolated {
+                self?.handleClick(at: location, windowNumber: windowNumber) ?? false
+            }
+            return handled ? nil : event
+        }
+    }
+
+    func stopMonitoring() {
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
+        }
+    }
+
+    private func handleClick(at location: NSPoint, windowNumber: Int) -> Bool {
+        guard let window, window.windowNumber == windowNumber, !isHiddenOrHasHiddenAncestor,
+              bounds.contains(convert(location, from: nil)) else { return false }
+        action(self)
+        return true
+    }
+}
+
+/// Пункт меню, который выполняет замыкание.
+final class FormatBarMenuItem: NSMenuItem {
+    private let handler: () -> Void
+
+    init(title: String, handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(fire), keyEquivalent: "")
+        target = self
+    }
+
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) не используется")
+    }
+
+    @objc private func fire() {
+        handler()
+    }
+}
+#endif
 
 // MARK: - Оформленный текст
 
