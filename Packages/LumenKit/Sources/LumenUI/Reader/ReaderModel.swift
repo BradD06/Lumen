@@ -583,7 +583,7 @@ final class ReaderModel {
         guard let reference = currentPlace, let notes = await excerptTarget() else { return }
         notes.appendPlaceLink(reference)
         Task { await notes.flush() }
-        LumenSounds.play(.create)
+        LumenSounds.play(.tape)
         if notes.pageId == bookNotesPageId {
             showToast("Ссылка на место добавлена в заметки")
         } else {

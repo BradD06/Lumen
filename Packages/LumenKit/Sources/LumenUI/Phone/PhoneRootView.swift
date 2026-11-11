@@ -89,6 +89,7 @@ struct PhoneRootView: View {
                 }
             }
         }
+        .overlay { LampLight() }
         // Книги из «Файлов», Telegram и «Поделиться», ссылки lumen:// на страницы, книги и цитаты.
         .opensIncomingLinks(database: database, open: openIncoming)
         .environment(\.appActions, appActions)

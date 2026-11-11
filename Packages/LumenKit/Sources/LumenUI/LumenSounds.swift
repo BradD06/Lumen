@@ -32,6 +32,18 @@ public enum LumenSound: CaseIterable, Sendable {
     case arrange
     /// Переход в папку или на страницу: лёгкий щелчок уголка страницы.
     case navigate
+    /// Лампа на полке: щелчок выключателя.
+    case lamp
+    /// Книга встала на полку: корешок скользит и мягко стукает о дерево.
+    case shelveBook
+    /// Выписка приклеилась к заметке: короткий звук отрываемого скотча.
+    case tape
+    /// Новый лист в заметке: шелест чистой страницы.
+    case addSheet
+    /// Лист лёг в папку: щелчок колец регистратора.
+    case ringClick
+    /// Кнопка входит в пробковую доску.
+    case pin
 
     /// Длительность в секундах: конец последнего голоса.
     var duration: Double {
@@ -42,9 +54,10 @@ public enum LumenSound: CaseIterable, Sendable {
     fileprivate var level: Double {
         switch self {
         case .navigate, .tap: 0.45
-        case .toggle, .pickUp, .arrange: 0.55
-        case .panelOpen, .panelClose, .restore: 0.6
-        case .create, .trash, .dropIntoFolder: 0.7
+        case .tape, .ringClick, .pin: 0.5
+        case .toggle, .pickUp, .arrange, .lamp: 0.55
+        case .panelOpen, .panelClose, .restore, .addSheet: 0.6
+        case .create, .trash, .dropIntoFolder, .shelveBook: 0.7
         case .drop: 0.8
         }
     }
@@ -117,6 +130,40 @@ public enum LumenSound: CaseIterable, Sendable {
             zip([0, 0.04, 0.08, 0.12, 0.16], [3000, 3400, 2800, 3600, 3200]).map { start, band in
                 .rustle(at: start, length: 0.05, band: band, to: band * 0.9, gain: 0.8, decay: 70, crackle: 0.25)
             }
+        case .lamp:
+            [
+                // Тугой клавишный выключатель: щелчок вниз и короткий отскок.
+                .rustle(at: 0, length: 0.02, band: 4500, to: 4200, decay: 260, width: 0.3),
+                .tone(at: 0, length: 0.03, from: 1800, to: 1500, gain: 0.45, decay: 220),
+                .rustle(at: 0.045, length: 0.02, band: 3000, to: 2800, gain: 0.5, decay: 280, width: 0.35),
+            ]
+        case .shelveBook:
+            [
+                .rustle(at: 0, length: 0.1, band: 900, to: 1500, gain: 0.55, attack: 0.02, decay: 20, crackle: 0.1),
+                .tone(at: 0.08, length: 0.15, from: 150, to: 108, gain: 1, decay: 40),
+                .rustle(at: 0.08, length: 0.04, band: 600, to: 500, gain: 0.3, decay: 80, width: 1.2),
+            ]
+        case .tape:
+            // Липкая лента отрывается: шорох с частыми щелчками уходит вверх.
+            [.rustle(at: 0, length: 0.18, band: 2500, to: 5000, attack: 0.01, decay: 10, width: 0.5, crackle: 0.9)]
+        case .addSheet:
+            [
+                .rustle(at: 0, length: 0.2, band: 1600, to: 3400, attack: 0.06, decay: 9, crackle: 0.12),
+                .rustle(at: 0.17, length: 0.05, band: 3000, to: 2800, gain: 0.5, decay: 70),
+            ]
+        case .ringClick:
+            [
+                // Металлические кольца: два звонких тона и щелчок, потом второе кольцо.
+                .tone(at: 0, length: 0.06, from: 2800, to: 2700, gain: 0.6, decay: 90),
+                .tone(at: 0, length: 0.05, from: 4100, to: 4000, gain: 0.3, decay: 110),
+                .rustle(at: 0, length: 0.02, band: 5000, to: 4800, gain: 0.6, decay: 250, width: 0.3),
+                .tone(at: 0.05, length: 0.05, from: 2900, to: 2800, gain: 0.4, decay: 100),
+            ]
+        case .pin:
+            [
+                .rustle(at: 0, length: 0.03, band: 2000, to: 1800, gain: 0.7, decay: 120, width: 1, crackle: 0.3),
+                .tone(at: 0.01, length: 0.07, from: 400, to: 300, gain: 0.5, decay: 70),
+            ]
         }
     }
 }
@@ -177,10 +224,13 @@ public enum LumenSounds {
     private static func haptic(for sound: LumenSound) {
         switch sound {
         case .pickUp: UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        case .drop, .dropIntoFolder: UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        case .drop, .dropIntoFolder, .shelveBook: UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        case .lamp, .ringClick: UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+        case .pin: UIImpactFeedbackGenerator(style: .light).impactOccurred()
         case .create, .restore: UINotificationFeedbackGenerator().notificationOccurred(.success)
         case .trash: UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
         case .toggle, .tap, .arrange: UISelectionFeedbackGenerator().selectionChanged()
+        case .tape, .addSheet: UISelectionFeedbackGenerator().selectionChanged()
         case .panelOpen, .panelClose, .navigate: break
         }
     }
