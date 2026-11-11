@@ -467,6 +467,9 @@ struct LibraryView: View {
                 .action(GlassMenuAction(title: "Переместить в…", systemImage: "arrow.right") {
                     moving = .folder(folder.id)
                 }),
+                .action(GlassMenuAction(title: "Приколоть на доску", systemImage: "pin") {
+                    NoticeCenter.shared.pinToBoard(.folder(folder.id), in: database)
+                }),
                 .divider,
                 .label("Цвет папки"),
                 .swatches(selected: folder.color) { color in
@@ -534,6 +537,9 @@ struct LibraryView: View {
                 .action(GlassMenuAction(title: "Переместить в…", systemImage: "arrow.right") {
                     moving = .page(page.id)
                 }),
+                .action(GlassMenuAction(title: "Приколоть на доску", systemImage: "pin") {
+                    NoticeCenter.shared.pinToBoard(.page(page.id), in: database)
+                }),
                 .divider,
                 .action(GlassMenuAction(title: "В корзину", systemImage: "trash", shortcut: "⌫", isDestructive: true) {
                     selection = nil
@@ -561,6 +567,9 @@ struct LibraryView: View {
                 }),
                 .action(GlassMenuAction(title: "Переместить в…", systemImage: "arrow.right") {
                     moving = .source(source.id)
+                }),
+                .action(GlassMenuAction(title: "Приколоть на доску", systemImage: "pin") {
+                    NoticeCenter.shared.pinToBoard(.source(source.id), in: database)
                 }),
                 .divider,
                 .action(GlassMenuAction(title: "В корзину", systemImage: "trash", shortcut: "⌫", isDestructive: true) {

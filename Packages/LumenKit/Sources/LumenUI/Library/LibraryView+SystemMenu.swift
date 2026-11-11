@@ -45,6 +45,11 @@ extension LibraryView {
         } label: {
             Label("Переместить в…", systemImage: "arrow.right.doc.on.clipboard")
         }
+        Button {
+            NoticeCenter.shared.pinToBoard(.folder(folder.id), in: database)
+        } label: {
+            Label("Приколоть на доску", systemImage: "pin")
+        }
         Divider()
         Button(role: .destructive) {
             selection = nil
@@ -109,6 +114,11 @@ extension LibraryView {
         } label: {
             Label("Переместить в…", systemImage: "arrow.right.doc.on.clipboard")
         }
+        Button {
+            NoticeCenter.shared.pinToBoard(.page(page.id), in: database)
+        } label: {
+            Label("Приколоть на доску", systemImage: "pin")
+        }
         Divider()
         Button(role: .destructive) {
             selection = nil
@@ -144,6 +154,11 @@ extension LibraryView {
             moving = .source(source.id)
         } label: {
             Label("Переместить в…", systemImage: "arrow.right.doc.on.clipboard")
+        }
+        Button {
+            NoticeCenter.shared.pinToBoard(.source(source.id), in: database)
+        } label: {
+            Label("Приколоть на доску", systemImage: "pin")
         }
         Divider()
         Button(role: .destructive) {

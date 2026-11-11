@@ -274,6 +274,21 @@ extension AppDatabase {
             }
         }
 
+        migrator.registerMigration("v13: link board") { db in
+            // Доска связей: что приколото и где. id совпадает с id книги, папки или страницы,
+            // поэтому внешнего ключа нет: приколотое из корзины просто не показывается.
+            try db.create(table: "boardPin") { t in
+                t.primaryKey("id", .blob)
+                t.column("kind", .text).notNull()
+                t.column("x", .double).notNull()
+                t.column("y", .double).notNull()
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try Self.createSyncTriggers(db, table: SyncTable.boardPin.rawValue)
+            try Self.createSyncClockTriggers(db, table: SyncTable.boardPin.rawValue)
+        }
+
         return migrator
     }
 }
@@ -306,6 +321,10 @@ extension DataTable: FetchableRecord, PersistableRecord {
 
 extension ReadingSession: FetchableRecord, PersistableRecord {
     public static let databaseTableName = "readingSession"
+}
+
+extension BoardPin: FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "boardPin"
 }
 
 // MARK: - Заметки к книгам рядом с книгами

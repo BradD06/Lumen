@@ -42,6 +42,12 @@ extension AppDatabase {
 
     /// Удаляет вещь из корзины и возвращает имена файлов во вложениях, которые больше не нужны.
     static func deleteForever(_ db: Database, _ item: LibraryItemID) throws -> [String] {
+        let files = try deleteItemForever(db, item)
+        try removeOrphanBoardPins(db)
+        return files
+    }
+
+    private static func deleteItemForever(_ db: Database, _ item: LibraryItemID) throws -> [String] {
         switch item {
         case .page(let id):
             guard let page = try Page.fetchOne(db, key: id), page.isTrashed else { return [] }

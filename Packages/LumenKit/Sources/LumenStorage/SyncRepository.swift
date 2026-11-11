@@ -118,7 +118,7 @@ extension AppDatabase {
                 if let source = try Source.fetchOne(db, key: id.id) {
                     removedFiles += [source.file] + (source.cover.map { [$0] } ?? [])
                 }
-            case .folder, .highlight, .dataTable, .readingSession:
+            case .folder, .highlight, .dataTable, .readingSession, .boardPin:
                 break
             }
             try db.execute(sql: "DELETE FROM \(id.table.rawValue) WHERE id = ?", arguments: [id.id])
@@ -169,7 +169,7 @@ extension AppDatabase {
                         try updateLinks(db, block: block)
                         touchedPages.insert(block.pageId)
                     }
-                case .folder, .source, .highlight, .dataTable, .readingSession:
+                case .folder, .source, .highlight, .dataTable, .readingSession, .boardPin:
                     break
                 }
             }

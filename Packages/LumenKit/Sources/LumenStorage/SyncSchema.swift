@@ -14,6 +14,8 @@ public enum SyncTable: String, CaseIterable, Codable, Sendable {
     case highlight
     /// Время чтения: строки только добавляются, поля `updatedAt` у них нет.
     case readingSession
+    /// Что приколото к доске связей. Ни на что не ссылается внешним ключом.
+    case boardPin
 
     /// Тип записи в CloudKit.
     public var recordType: String {
@@ -25,6 +27,7 @@ public enum SyncTable: String, CaseIterable, Codable, Sendable {
         case .block: "Block"
         case .highlight: "Highlight"
         case .readingSession: "ReadingSession"
+        case .boardPin: "BoardPin"
         }
     }
 

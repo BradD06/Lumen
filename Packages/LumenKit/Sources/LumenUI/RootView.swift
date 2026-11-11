@@ -17,6 +17,8 @@ public enum SidebarItem: Hashable, Codable, Sendable {
     /// Библиотека, открытая на папке (`nil` это корень).
     case library(UUID?)
     case trash
+    /// Доска связей: приколотые книги, папки и листы, ссылки между ними нитками.
+    case board
     case page(UUID)
     /// Книга или файл в читалке, `highlight` прокручивает к выделению.
     case source(UUID, highlight: UUID?)
@@ -24,8 +26,8 @@ public enum SidebarItem: Hashable, Codable, Sendable {
     case sourceInfo(UUID)
 }
 
-/// Корневой экран «Кабинета»: сверху стеклянное табло с комнатами (стол, полка, записки,
-/// дела, архив), под ним вкладки, у каждой своя история «Назад / Вперёд», вкладку можно
+/// Корневой экран «Кабинета»: сверху стеклянное табло с комнатами (стол, полка, доска,
+/// записки, дела, архив), под ним вкладки, у каждой своя история «Назад / Вперёд», вкладку можно
 /// разделить на две панели. На iPhone (узкий экран) вместо табло вкладки внизу, см. `PhoneRootView`.
 public struct RootView: View {
     private let database: AppDatabase
@@ -239,6 +241,8 @@ public struct RootView: View {
             .id(folderId)
         case .trash:
             TrashView(database: database)
+        case .board:
+            LinkBoardView(database: database)
         case .page(let id):
             PageScreen(
                 database: database,
@@ -599,6 +603,13 @@ public struct RootView: View {
                 run: { moveSoon(.page(id)) }
             ))
             list.append(PaletteCommand(
+                id: "page-board",
+                title: "Заметка: приколоть на доску связей",
+                systemImage: "pin",
+                keywords: ["доска", "связи", "нитка", "приколоть"],
+                run: { NoticeCenter.shared.pinToBoard(.page(id), in: database) }
+            ))
+            list.append(PaletteCommand(
                 id: "page-link",
                 title: "Заметка: скопировать ссылку",
                 systemImage: "link",
@@ -636,6 +647,13 @@ public struct RootView: View {
                     systemImage: "folder",
                     keywords: ["папка", "перенести", "переместить"],
                     run: { moveSoon(.source(id)) }
+                ),
+                PaletteCommand(
+                    id: "source-board",
+                    title: "Книга: приколоть на доску связей",
+                    systemImage: "pin",
+                    keywords: ["доска", "связи", "нитка", "приколоть"],
+                    run: { NoticeCenter.shared.pinToBoard(.source(id), in: database) }
                 ),
                 PaletteCommand(
                     id: "source-link",
