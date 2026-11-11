@@ -8,7 +8,7 @@ import AppKit
 #endif
 import UniformTypeIdentifiers
 
-/// Пункт сайдбара и одновременно то, что показано в основной области.
+/// Раздел (комната) или открытый предмет: то, что показано в основной области.
 public enum SidebarItem: Hashable, Codable, Sendable {
     case home
     case inbox
@@ -24,9 +24,9 @@ public enum SidebarItem: Hashable, Codable, Sendable {
     case sourceInfo(UUID)
 }
 
-/// Корневой экран: сайдбар с разделами и деревом страниц, справа выбранный раздел.
-/// Справа вкладки, у каждой своя история «Назад / Вперёд», вкладку можно разделить на две панели.
-/// На iPhone (узкий экран) вместо сайдбара вкладки внизу, см. `PhoneRootView`.
+/// Корневой экран «Кабинета»: сверху стеклянное табло с комнатами (стол, полка, записки,
+/// дела, архив), под ним вкладки, у каждой своя история «Назад / Вперёд», вкладку можно
+/// разделить на две панели. На iPhone (узкий экран) вместо табло вкладки внизу, см. `PhoneRootView`.
 public struct RootView: View {
     private let database: AppDatabase
     /// Вкладки и история переходов. UI-тесты начинают с чистого листа и ничего не сохраняют.
@@ -37,17 +37,12 @@ public struct RootView: View {
     @State private var isSettingsPresented = false
     /// Окно выбора книги или файла из «Создать».
     @State private var isImportingBook = false
-    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
-    /// Ширина окна: на узком iPad (вертикально) вместо сайдбара полоса значков.
-    @State private var windowWidth: CGFloat = 0
     private let focusMode = FocusModeState.shared
-    /// К какому краю сейчас держат вкладку, и ширина области панелей для расчёта краёв.
-    /// Минута дыхания поверх всего окна.
-    @State private var isBreathing = false
     /// ⌘J: буквы на всём, что можно нажать.
     @State private var keyHints = KeyHintCenter()
     /// «Переместить в папку…» из ⌘K.
     @State private var paletteMove: PaletteMove?
+    /// К какому краю сейчас держат вкладку, и ширина области панелей для расчёта краёв.
     @State private var tabDropSide: TabDropSide?
     @State private var panesWidth: CGFloat = 0
     #if os(iOS)
@@ -61,7 +56,7 @@ public struct RootView: View {
         self.database = database
     }
 
-    /// Что открыто в активной панели. Выбор в сайдбаре и переходы открывают там же,
+    /// Что открыто в активной панели. Выбор комнаты и переходы открывают там же,
     /// а прошлое место уходит в историю, куда ведёт «Назад».
     private var selection: SidebarItem? {
         get { workspace.current }
@@ -100,17 +95,6 @@ public struct RootView: View {
         }
     }
 
-    /// Темы «Бумага», «Монохром», «Кабинет» и «Дзен» держат всё на экране сами:
-    /// сайдбар у них всегда закрыт, и открыть его нельзя (ни кнопкой, ни жестом с края).
-    private var visibleColumns: Binding<NavigationSplitViewVisibility> {
-        Binding {
-            theme.layout.hidesSidebar ? .detailOnly : columnVisibility
-        } set: { newValue in
-            guard !theme.layout.hidesSidebar else { return }
-            columnVisibility = newValue
-        }
-    }
-
     /// Переводит клавиши в панель: курсор уходит из текста прежней, а в заметку возвращается туда, где был.
     private func focusPane(_ index: Int) {
         guard workspace.isSplit else { return }
@@ -129,43 +113,10 @@ public struct RootView: View {
     }
 
     private var splitView: some View {
-        NavigationSplitView(columnVisibility: visibleColumns) {
-            SidebarView(
-                database: database,
-                selection: Binding { selection } set: { selection = $0 },
-                onNewPage: openNewPage,
-                onNewFolder: openNewFolder,
-                onNewDataTable: openNewDataTable,
-                onSearch: { isSearchPresented = true },
-                onCreate: create,
-                onSettings: { isSettingsPresented = true }
-            )
-            // В темах со своей навигацией сайдбара нет совсем, и кнопки, открывающей его, тоже.
-            .toolbar(removing: theme.layout.hidesSidebar ? .sidebarToggle : nil)
-        } detail: {
+        NavigationStack {
             workspaceDetail
                 .themedToolbar()
                 .safeAreaInset(edge: .top, spacing: 0) { topBar }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    // «Монохром»: вместо сайдбара командная строка, до всего дотягиваются через ⌘K.
-                    if isCommandLine, !focusMode.isOn {
-                        CommandLineBar(location: locationTitle) { isSearchPresented = true }
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-                }
-                .overlay(alignment: .bottom) { zenOrb }
-                .safeAreaInset(edge: .leading, spacing: 0) {
-                    if showsRail {
-                        IconRail(
-                            selection: selection,
-                            onSelect: { selection = $0 },
-                            onCreate: create,
-                            onSearch: { isSearchPresented = true },
-                            onSettings: { isSettingsPresented = true }
-                        )
-                        .transition(.move(edge: .leading))
-                    }
-                }
                 .toolbar {
                     // Сочетания ⌘[ ⌘] ⌘\ живут в `tabShortcuts`: кнопки можно спрятать в настройках.
                     if showsWindowButtons {
@@ -218,23 +169,9 @@ public struct RootView: View {
                     }
                 }
         }
-        .overlay {
-            if isBreathing {
-                BreathingView {
-                    withAnimation(.easeInOut(duration: 0.6)) { isBreathing = false }
-                }
-                .transition(.opacity)
-            }
-        }
         .keyHintHost(keyHints)
         .environment(\.workspaceActions, workspaceActions)
         .environment(\.appActions, appActions(pane: nil))
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
-        .onChange(of: focusMode.isOn) { _, isOn in
-            withAnimation(.easeInOut(duration: 0.3)) {
-                columnVisibility = isOn ? .detailOnly : .automatic
-            }
-        }
         .task(id: workspace.referencedItems) { await removeMissingItems() }
         .sheet(isPresented: $isSearchPresented) {
             CommandPalette(
@@ -333,7 +270,7 @@ public struct RootView: View {
         }
     }
 
-    /// «Открыть в новой вкладке» и «Открыть рядом» для меню сайдбара и библиотеки.
+    /// «Открыть в новой вкладке» и «Открыть рядом» для меню библиотеки и полки.
     private var workspaceActions: WorkspaceActions {
         let workspace = workspace
         return WorkspaceActions(
@@ -496,71 +433,19 @@ public struct RootView: View {
         } catch {}
     }
 
-    /// Навигация сверху для тем без сайдбара: строка разделов «Бумаги» или комнаты «Кабинета».
+    /// Комнаты «Кабинета» сверху. В режиме фокуса табло уходит.
     @ViewBuilder
     private var topBar: some View {
         if !focusMode.isOn {
-            switch theme.layout {
-            case .sectionBar:
-                SectionBar(
-                    database: database,
-                    selection: selection,
-                    onSelect: { selection = $0 },
-                    onSettings: { isSettingsPresented = true }
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-            case .rooms:
-                RoomsBar(
-                    database: database,
-                    selection: selection,
-                    onSelect: { selection = $0 },
-                    onSearch: { isSearchPresented = true },
-                    onSettings: { isSettingsPresented = true }
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-            case .standard, .commandLine, .orb:
-                EmptyView()
-            }
-        }
-    }
-
-    /// «Дзен»: вся навигация в одной дышащей точке внизу.
-    @ViewBuilder
-    private var zenOrb: some View {
-        if theme.layout == .orb, !focusMode.isOn {
-            ZenOrb(
+            RoomsBar(
+                database: database,
                 selection: selection,
                 onSelect: { selection = $0 },
-                onCreate: { newQuickNote() },
                 onSearch: { isSearchPresented = true },
-                onBreathe: startBreathing,
                 onSettings: { isSettingsPresented = true }
             )
-            .padding(.bottom, 18)
-            .transition(.opacity)
+            .transition(.move(edge: .top).combined(with: .opacity))
         }
-    }
-
-    private func startBreathing() {
-        withAnimation(.easeInOut(duration: 0.6)) { isBreathing = true }
-    }
-
-    /// Тема устроена как командная строка («Монохром»): без сайдбара и полосы значков.
-    private var isCommandLine: Bool { theme.layout == .commandLine }
-
-    /// Короткое «где я» для командной строки.
-    private var locationTitle: String {
-        "lumen / \(SidebarItem.commandLinePlace(selection))"
-    }
-
-    /// Полоса значков вместо сайдбара: только на iPad, когда сайдбар спрятан.
-    private var showsRail: Bool {
-        #if os(iOS)
-        guard horizontalSizeClass == .regular, !focusMode.isOn, !theme.layout.hidesSidebar else { return false }
-        return columnVisibility == .detailOnly || (columnVisibility == .automatic && windowWidth > 0 && windowWidth < 1000)
-        #else
-        return false
-        #endif
     }
 
     /// Открыть в панели `pane` (или в активной, если `nil`).
@@ -588,8 +473,7 @@ public struct RootView: View {
             },
             capture: { text, asTask in creator(pane: pane).capture(text, asTask: asTask) },
             search: { isSearchPresented = true },
-            settings: { isSettingsPresented = true },
-            breathe: startBreathing
+            settings: { isSettingsPresented = true }
         )
     }
 
@@ -600,7 +484,6 @@ public struct RootView: View {
     /// Действия ⌘K, которым нужно окно: панели и режим фокуса.
     private var paletteExtras: [PaletteCommand] {
         var list: [PaletteCommand] = [
-            .breathe(startBreathing),
             PaletteCommand(
                 id: "split",
                 title: workspace.isSplit ? "Убрать вторую панель" : "Разделить экран на две панели",
@@ -679,7 +562,6 @@ public struct RootView: View {
             ))
         }
         list += currentItemCommands
-        list += PaletteCommand.themes(current: theme.id)
         list.append(
             PaletteCommand(
                 id: "triage",
@@ -799,41 +681,6 @@ public struct RootView: View {
                 selection = .page(page.id)
             } catch {
                 NoticeCenter.shared.report("Не удалось создать заметку", error)
-            }
-        }
-    }
-
-    private func openNewFolder(parentId: UUID?) {
-        Task {
-            do {
-                let folder = try await database.createFolder(name: "Новая папка", parentId: parentId)
-                LumenSounds.play(.create)
-                selection = .library(folder.id)
-            } catch {
-                NoticeCenter.shared.report("Не удалось создать папку", error)
-            }
-        }
-    }
-
-    private func openNewDataTable() {
-        Task {
-            if let table = await NoticeCenter.shared.perform("Не удалось создать базу", {
-                try await database.createDataTable(title: "Новая база", icon: "📋")
-            }) {
-                LumenSounds.play(.create)
-                selection = .page(table.pageId)
-            }
-        }
-    }
-
-    private func openNewPage(parentId: UUID?) {
-        Task {
-            do {
-                let page = try await database.createPage(parentId: parentId)
-                LumenSounds.play(.create)
-                selection = .page(page.id)
-            } catch {
-                NoticeCenter.shared.report("Не удалось создать страницу", error)
             }
         }
     }

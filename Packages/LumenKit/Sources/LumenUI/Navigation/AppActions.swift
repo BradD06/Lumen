@@ -3,7 +3,7 @@ import LumenStorage
 import LumenThemes
 import SwiftUI
 
-/// Что можно создать кнопкой «Создать». Один список для сайдбара, панели окна, ⌘K и iPhone.
+/// Что можно создать кнопкой «Создать». Один список для полки, панели окна, ⌘K и iPhone.
 enum CreateKind: String, CaseIterable, Identifiable, Sendable {
     case note
     case task
@@ -83,8 +83,6 @@ struct AppActions {
     var capture: @MainActor (_ text: String, _ asTask: Bool) -> Void = { _, _ in }
     var search: @MainActor () -> Void = {}
     var settings: @MainActor () -> Void = {}
-    /// Минута дыхания на весь экран («Дзен»), там, где есть окно, которое её покажет.
-    var breathe: @MainActor () -> Void = {}
 }
 
 extension EnvironmentValues {
@@ -307,43 +305,6 @@ struct MenuRowButtonStyle: ButtonStyle {
     }
 }
 
-/// Кнопка «Создать» в сайдбаре: открывает список того, что можно создать.
-struct CreateButton: View {
-    var onSelect: (CreateKind) -> Void
-
-    @State private var isOpen = false
-    @Environment(\.lumenTheme) private var theme
-
-    var body: some View {
-        Button {
-            isOpen.toggle()
-        } label: {
-            Label("Создать", systemImage: "plus")
-                .font(.callout.weight(.bold))
-                .labelStyle(.titleAndIcon)
-                .frame(maxWidth: .infinity)
-                .frame(height: 36)
-                .foregroundStyle(theme.vividCard(0).foreground)
-                .background {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(LinearGradient(colors: theme.vividCard(0).colors, startPoint: .top, endPoint: .bottom))
-                        .shadow(color: (theme.vividCard(0).colors.last ?? .orange).opacity(0.35), radius: 10, y: 5)
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .help("Создать заметку, задачу, тетрадь, книгу, базу или папку")
-        .accessibilityIdentifier("create-button")
-        .popover(isPresented: $isOpen, arrowEdge: .trailing) {
-            CreateMenuList { kind in
-                isOpen = false
-                onSelect(kind)
-            }
-            .presentationCompactAdaptation(.popover)
-        }
-    }
-}
-
 // MARK: - Быстрая мысль
 
 /// Поле «Запишите мысль»: Return сохраняет во «Входящие», с переключателем «Это задача»
@@ -470,7 +431,7 @@ struct CreateSheet: View {
 
 // MARK: - Настройки
 
-/// «Настройки»: тема оформления, звуки, данные и копии, синхронизация. Одно окно вместо разбросанных пунктов.
+/// «Настройки»: что показывать на экране, звуки, данные и копии, синхронизация. Одно окно вместо разбросанных пунктов.
 struct SettingsSheet: View {
     let database: AppDatabase
     var onDone: () -> Void
@@ -480,13 +441,6 @@ struct SettingsSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    ThemePicker()
-                } header: {
-                    Text("Тема оформления")
-                } footer: {
-                    Text("Меняет цвета, шрифт и светлый или тёмный режим во всём приложении. Вид книги в читалке настраивается отдельно, кнопкой «Аа».")
-                }
                 ScreenOptionsSection()
                 Section("Звук") {
                     Toggle("Звуки при действиях", isOn: $soundsEnabled)

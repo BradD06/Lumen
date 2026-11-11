@@ -323,32 +323,6 @@ extension PaletteCommand {
     }
 }
 
-extension PaletteCommand {
-    /// «Минута дыхания» из «Дзена».
-    static func breathe(_ run: @escaping @MainActor () -> Void) -> PaletteCommand {
-        PaletteCommand(
-            id: "breathe",
-            title: "Минута дыхания",
-            systemImage: "wind",
-            keywords: ["дзен", "тишина", "успокоиться", "пауза", "вдох"],
-            run: run
-        )
-    }
-
-    /// «Тема: Закат» и остальные: сменить оформление, не открывая настроек.
-    static func themes(current: String) -> [PaletteCommand] {
-        Theme.all.map { option in
-            PaletteCommand(
-                id: "theme-\(option.id)",
-                title: "Тема: \(option.name)",
-                systemImage: option.id == current ? "checkmark.circle.fill" : "paintpalette",
-                keywords: ["тема", "оформление", "цвет", "вид"],
-                run: { UserDefaults.standard.set(option.id, forKey: Theme.storageKey) }
-            )
-        }
-    }
-}
-
 private extension CreateKind {
     /// «Новая …» в ⌘K.
     var paletteNoun: String {

@@ -33,10 +33,9 @@ enum PhoneTab: Hashable {
     case search
 }
 
-/// iPhone: вместо сайдбара вкладки внизу экрана, у каждой свой стек экранов.
+/// iPhone: вместо табло с комнатами вкладки внизу экрана, у каждой свой стек экранов.
 /// Сами экраны те же, что на Mac и iPad, они подстраиваются под узкую ширину.
-/// Что на Mac лежит в сайдбаре, на телефоне в библиотеке: избранное в начале списка,
-/// корзина и iCloud в её меню.
+/// Избранное на телефоне в начале списка на полке, корзина и iCloud в её меню.
 struct PhoneRootView: View {
     let database: AppDatabase
 
@@ -45,24 +44,11 @@ struct PhoneRootView: View {
     @State private var isCreating = false
     @State private var isImportingBook = false
     @State private var isSettingsPresented = false
-    /// Минута дыхания «Дзена» поверх всего.
-    @State private var isBreathing = false
-    /// Команды и поиск «Монохрома» и «Дзена» (на Mac это ⌘K).
-    @State private var isPaletteOpen = false
-    /// Пока набирают текст, точка «Дзена» и строка «Монохрома» прячутся.
-    @State private var isKeyboardShown = false
-    @Environment(\.lumenTheme) private var theme
-
-    /// «Кабинет»: вкладки называются как комнаты.
-    private var isStudy: Bool { theme.layout == .rooms }
-
-    /// «Дзен» и «Монохром»: панели вкладок нет, вся навигация в одном месте внизу экрана,
-    /// как на Mac: дышащая точка или командная строка.
-    private var isMinimal: Bool { theme.layout == .orb || theme.layout == .commandLine }
 
     var body: some View {
+        // Вкладки называются как комнаты «Кабинета».
         TabView(selection: $tab) {
-            Tab(isStudy ? "Стол" : "Сегодня", systemImage: isStudy ? "lamp.desk" : "sun.max", value: PhoneTab.home) {
+            Tab("Стол", systemImage: "lamp.desk", value: PhoneTab.home) {
                 stack(.home) {
                     HomeView(
                         database: database,
@@ -72,24 +58,22 @@ struct PhoneRootView: View {
                         onShowInbox: { tab = .inbox },
                         onShowLibrary: { tab = .library }
                     )
-                    .toolbar {
-                        if !isMinimal { settingsButton }
-                    }
+                    .toolbar { settingsButton }
                     .overlay(alignment: .bottomTrailing) { createButton }
                 }
             }
-            Tab(isStudy ? "Записки" : "Входящие", systemImage: isStudy ? "envelope" : "tray", value: PhoneTab.inbox) {
+            Tab("Записки", systemImage: "envelope", value: PhoneTab.inbox) {
                 stack(.inbox) {
                     InboxView(database: database, onOpen: { push(.page($0)) }, onNewNote: newQuickNote)
                         .overlay(alignment: .bottomTrailing) { createButton }
                 }
             }
-            Tab(isStudy ? "Дела" : "Задачи", systemImage: "checklist", value: PhoneTab.tasks) {
+            Tab("Дела", systemImage: "checklist", value: PhoneTab.tasks) {
                 stack(.tasks) {
                     TasksScreen(database: database, onOpenPage: { push(.page($0)) })
                 }
             }
-            Tab(isStudy ? "Полка" : "Библиотека", systemImage: "books.vertical", value: PhoneTab.library) {
+            Tab("Полка", systemImage: "books.vertical", value: PhoneTab.library) {
                 stack(.library) {
                     library(folderId: nil)
                 }
@@ -108,33 +92,6 @@ struct PhoneRootView: View {
         // Книги из «Файлов», Telegram и «Поделиться», ссылки lumen:// на страницы, книги и цитаты.
         .opensIncomingLinks(database: database, open: openIncoming)
         .environment(\.appActions, appActions)
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-            isKeyboardShown = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            isKeyboardShown = false
-        }
-        .sheet(isPresented: $isPaletteOpen) {
-            CommandPalette(
-                database: database,
-                commands: PaletteCommand.standard(actions: appActions, extra: paletteExtras),
-                onOpen: { item, _ in
-                    isPaletteOpen = false
-                    openIncoming(item)
-                },
-                onDismiss: { isPaletteOpen = false }
-            )
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-        }
-        .overlay {
-            if isBreathing {
-                BreathingView {
-                    withAnimation(.easeInOut(duration: 0.6)) { isBreathing = false }
-                }
-                .transition(.opacity)
-            }
-        }
         .sheet(isPresented: $isCreating) {
             CreateSheet(
                 onCapture: { text, asTask in creator.capture(text, asTask: asTask) },
@@ -174,128 +131,16 @@ struct PhoneRootView: View {
                 }
             },
             capture: { text, asTask in creator.capture(text, asTask: asTask) },
-            search: {
-                if isMinimal {
-                    isPaletteOpen = true
-                } else {
-                    tab = .search
-                }
-            },
-            settings: { isSettingsPresented = true },
-            breathe: startBreathing
+            search: { tab = .search },
+            settings: { isSettingsPresented = true }
         )
     }
 
-    private func startBreathing() {
-        withAnimation(.easeInOut(duration: 0.6)) { isBreathing = true }
-    }
-
     /// Круглая «+» над вкладками: создать что угодно одним касанием.
-    /// В «Дзене» и «Монохроме» её нет: создают из точки или из командной строки.
-    @ViewBuilder
     private var createButton: some View {
-        if !isMinimal {
-            PhoneCreateButton { isCreating = true }
-                .padding(.trailing, 20)
-                .padding(.bottom, 16)
-        }
-    }
-
-    /// Нижняя полоса вместо вкладок: точка «Дзена» или командная строка «Монохрома».
-    @ViewBuilder
-    private var minimalBar: some View {
-        if !isKeyboardShown {
-            switch theme.layout {
-            case .orb:
-                // Место внизу под точку постоянное: раскрытое меню всплывает над текстом,
-                // а не сдвигает его.
-                Color.clear
-                    .frame(height: 54)
-                    .overlay(alignment: .bottom) {
-                        ZenOrb(
-                            selection: currentItem,
-                            onSelect: goTo,
-                            onCreate: newQuickNote,
-                            onSearch: { isPaletteOpen = true },
-                            onBreathe: startBreathing,
-                            onSettings: { isSettingsPresented = true }
-                        )
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 4)
-                    }
-            case .commandLine:
-                PhoneCommandBar(
-                    location: "lumen / \(SidebarItem.commandLinePlace(currentItem))",
-                    onOpen: { isPaletteOpen = true },
-                    onNewNote: newQuickNote
-                )
-            case .standard, .sectionBar, .rooms:
-                EmptyView()
-            }
-        }
-    }
-
-    /// Экран с нижней полосой: в «Дзене» и «Монохроме» вместо вкладок точка или строка.
-    /// Книга открывается во весь экран без них.
-    private func withMinimalBar<Content: View>(_ content: Content, isReader: Bool = false) -> some View {
-        content
-            .toolbar(isMinimal || isReader ? .hidden : .automatic, for: .tabBar)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if isMinimal, !isReader {
-                    minimalBar
-                }
-            }
-    }
-
-    /// Действия, которые на телефоне есть только в командах.
-    private var paletteExtras: [PaletteCommand] {
-        var list: [PaletteCommand] = [.breathe(startBreathing)]
-        if paths[tab]?.isEmpty == false {
-            list.append(PaletteCommand(id: "back", title: "Назад", systemImage: "chevron.left", keywords: ["вернуться"], run: pop))
-        }
-        list.append(PaletteCommand(id: "triage", title: "Разобрать входящие", systemImage: "rectangle.stack", keywords: ["входящие", "по одной"], run: { goTo(.inbox) }))
-        list += PaletteCommand.themes(current: theme.id)
-        return list
-    }
-
-    /// Где сейчас: верх стека текущей вкладки или сама вкладка.
-    private var currentItem: SidebarItem? {
-        if let route = paths[tab]?.last {
-            switch route {
-            case .page(let id): return .page(id)
-            case .source(let id, let highlight): return .source(id, highlight: highlight)
-            case .sourceInfo(let id): return .sourceInfo(id)
-            case .folder(let id): return .library(id)
-            case .inbox: return .inbox
-            case .trash: return .trash
-            }
-        }
-        switch tab {
-        case .home: return .home
-        case .inbox: return .inbox
-        case .tasks: return .tasks
-        case .library: return .library(nil)
-        case .search: return nil
-        }
-    }
-
-    /// Переход из точки «Дзена»: на главный экран раздела. Если уже в нём, к его началу.
-    private func goTo(_ item: SidebarItem) {
-        let target: PhoneTab
-        switch item {
-        case .home: target = .home
-        case .inbox: target = .inbox
-        case .tasks: target = .tasks
-        case .library(nil): target = .library
-        default:
-            openIncoming(item)
-            return
-        }
-        if tab == target {
-            paths[target] = []
-        } else {
-            tab = target
-        }
+        PhoneCreateButton { isCreating = true }
+            .padding(.trailing, 20)
+            .padding(.bottom, 16)
     }
 
     private var settingsButton: some ToolbarContent {
@@ -310,9 +155,13 @@ struct PhoneRootView: View {
 
     private func stack<Root: View>(_ tab: PhoneTab, @ViewBuilder root: () -> Root) -> some View {
         NavigationStack(path: path(for: tab)) {
-            withMinimalBar(root().themedToolbar())
+            root()
+                .themedToolbar()
                 .navigationDestination(for: PhoneRoute.self) { route in
-                    withMinimalBar(destination(route).themedToolbar(), isReader: route.isReader)
+                    destination(route)
+                        .themedToolbar()
+                        // Книга во весь экран: панель вкладок ей только мешает.
+                        .toolbar(route.isReader ? .hidden : .automatic, for: .tabBar)
                 }
         }
     }
@@ -345,8 +194,6 @@ struct PhoneRootView: View {
                 onShowInfo: { push(.sourceInfo(id)) },
                 onClose: pop
             )
-            // Книга во весь экран: панель вкладок ей только мешает.
-            .toolbar(.hidden, for: .tabBar)
         case .sourceInfo(let id):
             SourceDashboardView(
                 database: database,

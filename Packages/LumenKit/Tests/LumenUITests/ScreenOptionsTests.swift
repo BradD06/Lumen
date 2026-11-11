@@ -30,8 +30,7 @@ struct ScreenOptionsTests {
             ScreenOptions.tabStripKey, ScreenOptions.windowButtonsKey, ScreenOptions.saveStatusKey,
             ScreenOptions.wordCountKey, ScreenOptions.breadcrumbsKey, ScreenOptions.readerProgressKey,
             ScreenOptions.gridKey, ScreenOptions.homeReadingKey, ScreenOptions.homeTasksKey,
-            ScreenOptions.homeInboxKey, ScreenOptions.homeRecentKey, ScreenOptions.sidebarRecentKey,
-            ScreenOptions.sidebarFavoritesKey, ScreenOptions.sidebarDatabasesKey, ScreenOptions.sidebarFoldersKey,
+            ScreenOptions.homeInboxKey, ScreenOptions.homeRecentKey,
         ]
         #expect(Set(keys).count == keys.count)
         // Сетка осталась на старом ключе: у кого она была включена, так и останется.
