@@ -85,6 +85,6 @@ extension AppDatabase {
         let notes = try notePageIds(db, sources: ids)
         try Page.filter(keys: notes).filter(Column("deletedAt") != nil).deleteAll(db)
         try Source.filter(keys: ids).deleteAll(db)
-        return sources.flatMap { [$0.file] + ($0.cover.map { [$0] } ?? []) }
+        return sources.flatMap(\.attachmentNames)
     }
 }

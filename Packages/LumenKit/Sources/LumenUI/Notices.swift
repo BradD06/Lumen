@@ -128,7 +128,7 @@ extension NoticeCenter {
         Task {
             guard let pinned = await perform("Не удалось приколоть к доске", { try await database.pinToBoard(item) }) else { return }
             if pinned {
-                LumenSounds.play(.drop)
+                LumenSounds.play(.pin)
                 show("Приколото к доске связей")
             } else {
                 show("Уже на доске связей")

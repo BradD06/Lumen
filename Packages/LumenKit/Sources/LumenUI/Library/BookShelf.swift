@@ -17,6 +17,8 @@ struct BookShelf: View {
 
     let database: AppDatabase
     var onOpen: (UUID) -> Void
+    /// Лампа стоит только на полке главного экрана.
+    var showsLamp = false
     var onAdd: () -> Void
 
     @State private var snapshot = ShelfSnapshot.empty
@@ -125,6 +127,13 @@ struct BookShelf: View {
                     .padding(.horizontal, ShelfLayout.leading)
                     // Место сверху, чтобы вынутая книга не упиралась в край.
                     .padding(.top, ShelfLayout.headroom)
+                }
+                .safeAreaInset(edge: .trailing, spacing: 0) {
+                    if showsLamp, group.id == snapshot.groups.first?.id {
+                        ShelfLamp()
+                            .padding(.horizontal, 8)
+                            .frame(maxHeight: .infinity, alignment: .bottom)
+                    }
                 }
                 // Высота полки задана явно: ни список, ни холст рядом не сожмут её и не срежут верх книг.
                 .frame(height: ShelfLayout.rowHeight)
@@ -265,6 +274,7 @@ struct BookShelf: View {
                     }
                 }
             }
+            BookCoverMenu(book: book)
             Divider()
             Button("Убрать в корзину", systemImage: "trash", role: .destructive) { trash(book) }
         }
@@ -352,6 +362,7 @@ struct BookShelf: View {
     private func place(_ order: [UUID], on group: ShelfGroup) {
         let present = Set(group.books.map(\.id))
         let arrivals = order.filter { !present.contains($0) }
+        LumenSounds.play(.shelveBook)
         withAnimation(.snappy) {
             dragOrders = [group.id: order]
             sort = .custom
@@ -440,7 +451,16 @@ struct BookShelf: View {
             }
         }
         let title = group.shelf.map { "Добавить книгу на полку «\($0.displayName)»" } ?? "Добавить книгу"
-        return Button(action: add) {
+        return HStack(alignment: .bottom, spacing: 0) {
+            if !shownBooks(group).isEmpty {
+                Bookend()
+            }
+            addButton(title: title, group: group, add: add)
+        }
+    }
+
+    private func addButton(title: String, group: ShelfGroup, add: @escaping () -> Void) -> some View {
+        Button(action: add) {
             RoundedRectangle(cornerRadius: 3, style: .continuous)
                 .strokeBorder(theme.accent.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                 .frame(width: 34, height: 120)
@@ -458,19 +478,27 @@ struct BookShelf: View {
         .accessibilityLabel(title)
     }
 
-    /// Доска полки: тёмное дерево с латунной кромкой.
+    /// Полка из толстого стекла: латунная кромка сверху, под ней мягкая тень.
     private var plank: some View {
-        Rectangle()
-            .fill(LinearGradient(
-                colors: [theme.accent.mix(with: .black, by: 0.45), theme.accent.mix(with: .black, by: 0.7)],
+        let shape = RoundedRectangle(cornerRadius: 3, style: .continuous)
+        return shape
+            .fill(.ultraThinMaterial)
+            .overlay(shape.fill(LinearGradient(
+                colors: [theme.accent.opacity(0.28), theme.cardFill, theme.accent.opacity(0.12)],
                 startPoint: .top, endPoint: .bottom
-            ))
-            .frame(height: 10)
+            )))
             .overlay(alignment: .top) {
-                Rectangle().fill(theme.accent.opacity(0.7)).frame(height: 1)
+                Rectangle()
+                    .fill(LinearGradient(
+                        colors: [theme.glassHighlight, theme.accent.opacity(0.75), theme.glassHighlight],
+                        startPoint: .leading, endPoint: .trailing
+                    ))
+                    .frame(height: 1)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
-            .shadow(color: .black.opacity(0.35), radius: 4, y: 3)
+            .overlay(shape.strokeBorder(theme.cardStroke, lineWidth: 0.5))
+            .frame(height: 12)
+            .clipShape(shape)
+            .shadow(color: .black.opacity(theme.shadowOpacity), radius: 6, y: 4)
     }
 
     private func observe() async {
@@ -510,37 +538,53 @@ struct ShelfBook: View {
     }
 }
 
-/// Корешок книги: высота и толщина у каждой книги свои, но всегда одни и те же.
-/// Если у книги есть картинка обложки, корешок сделан из её середины;
-/// без картинки он того же цвета, что и нарисованная обложка.
+/// Корешок книги в стиле «Всё вместе»: на одной полке кожаные переплёты с рёбрами и золотым
+/// тиснением, тканевые и мягкие обложки. Вид, высота и толщина у каждой книги свои, но всегда одни
+/// и те же. Если у книги есть картинка обложки, корешок сделан из её полоски (по умолчанию из середины,
+/// полоску выбирают в окне обложки); без картинки он того же цвета, что и нарисованная обложка.
+/// Название всегда идёт вдоль корешка. Дочитанные книги чуть потёрты.
 struct BookSpine: View {
     let source: Source
     var attachments: AttachmentStore?
 
     @Environment(\.lumenTheme) private var theme
 
-    private var hasCoverImage: Bool { source.cover != nil && attachments != nil }
+    private var hasCoverImage: Bool { source.shownCover != nil && attachments != nil }
 
     var body: some View {
         let style = BookSpineStyle(source: source)
-        let shape = RoundedRectangle(cornerRadius: 3, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: style.kind == .paperback ? 2 : 3.5, style: .continuous)
         ZStack(alignment: .top) {
             face(style)
                 .frame(width: style.width, height: style.height)
                 .clipShape(shape)
-            // Скруглённый переплёт: края темнее середины.
+            if style.kind == .cloth {
+                ClothWeave()
+                    .stroke(theme.contrast.opacity(0.07), lineWidth: 0.5)
+                    .clipShape(shape)
+            }
+            // Скруглённый переплёт: края темнее середины. У мягкой обложки корешок плоский.
             shape.fill(LinearGradient(
-                colors: [.black.opacity(0.45), .white.opacity(0.08), .black.opacity(0.12), .black.opacity(0.4)],
+                colors: style.kind == .paperback
+                    ? [.black.opacity(0.28), .white.opacity(0.05), .black.opacity(0.06), .black.opacity(0.25)]
+                    : [.black.opacity(0.5), .white.opacity(0.1), .black.opacity(0.12), .black.opacity(0.45)],
                 startPoint: .leading, endPoint: .trailing
             ))
-            // Латунные полоски сверху и снизу, как тиснение на переплёте.
-            VStack {
-                band
-                Spacer()
-                band
-            }
-            .padding(.vertical, 10)
+            // Блик лампы на корешке.
+            LinearGradient(
+                colors: [theme.glow.opacity(0), theme.glow.opacity(theme.isDark ? 0.22 : 0.3), theme.glow.opacity(0)],
+                startPoint: .leading, endPoint: .trailing
+            )
+            .frame(width: style.width * 0.32)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, style.width * 0.18)
+            .clipShape(shape)
+            decoration(style)
             title(style)
+            if style.isWorn {
+                wear(style)
+                    .clipShape(shape)
+            }
             if let length = style.ribbonLength {
                 RibbonShape()
                     .fill(LinearGradient(
@@ -555,15 +599,17 @@ struct BookSpine: View {
             }
         }
         .frame(width: style.width, height: style.height)
-        .shadow(color: .black.opacity(0.3), radius: 2, x: 1, y: 1)
+        .shadow(color: .black.opacity(0.35), radius: 2, x: 1, y: 1)
     }
 
     @ViewBuilder
     private func face(_ style: BookSpineStyle) -> some View {
-        if let cover = source.cover, let attachments {
-            // Середина обложки той же высоты, что корешок: по краю картинки обычно пусто.
+        if let cover = source.shownCover, let attachments {
+            // Полоска обложки той же высоты, что корешок: по умолчанию середина, по краю картинки обычно пусто.
             AttachmentImage(name: cover, attachments: attachments, contentMode: .fill)
                 .frame(width: style.coverWidth, height: style.height)
+                .clipped()
+                .offset(x: BookSpineStyle.stripOffset(center: source.spineCenter, coverWidth: style.coverWidth, spineWidth: style.width))
                 .frame(width: style.width, height: style.height, alignment: .center)
                 .clipped()
         } else {
@@ -574,19 +620,85 @@ struct BookSpine: View {
     /// Те же цвета, что у нарисованной обложки (`SourceCoverArt`): повернул книгу, цвет тот же.
     private var coverCard: Theme.VividCard { theme.vividCard(Int(source.id.uuid.1)) }
 
+    /// Отделка переплёта: рёбра и тиснение у кожи, полоски у ткани, издательский знак у мягкой.
+    @ViewBuilder
+    private func decoration(_ style: BookSpineStyle) -> some View {
+        switch style.kind {
+        case .leather:
+            VStack(spacing: 0) {
+                rib.padding(.top, 12)
+                rib.padding(.top, 8)
+                Spacer()
+                rib.padding(.bottom, 8)
+                rib.padding(.bottom, 12)
+            }
+        case .cloth:
+            VStack {
+                band
+                Spacer()
+                band
+            }
+            .padding(.vertical, 10)
+        case .paperback:
+            VStack {
+                Spacer()
+                Circle()
+                    .fill(hasCoverImage ? Color.white.opacity(0.75) : coverCard.foreground.opacity(0.7))
+                    .frame(width: 7, height: 7)
+                    .padding(.bottom, 9)
+            }
+        }
+    }
+
     private func title(_ style: BookSpineStyle) -> some View {
-        Text(source.displayTitle)
-            .font(.system(size: 11, weight: .semibold, design: .serif))
-            .foregroundStyle(hasCoverImage ? .white : coverCard.foreground)
+        let label = Text(style.kind == .paperback ? source.displayTitle.uppercased() : source.displayTitle)
+            .font(titleFont(style))
+            .tracking(style.kind == .paperback ? 0.6 : 0)
             .lineLimit(1)
             .truncationMode(.tail)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            // На картинке обложки название читается на тёмной плашке.
-            .background(.black.opacity(hasCoverImage ? 0.5 : 0), in: Capsule())
-            .frame(width: style.height - 40)
-            .rotationEffect(.degrees(90))
-            .frame(width: style.width, height: style.height)
+        // Название идёт вдоль корешка: снизу вверх по длинной стороне.
+        return Group {
+            switch style.kind {
+            case .leather:
+                // Золотое тиснение; на картинке обложки на тёмной плашке, иначе прямо по коже.
+                label
+                    .foregroundStyle(theme.accent.mix(with: .white, by: 0.15))
+                    .background(.black.opacity(hasCoverImage ? 0.55 : 0.18), in: RoundedRectangle(cornerRadius: 2))
+                    .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(theme.accent.opacity(0.45), lineWidth: 0.5))
+            case .cloth:
+                label
+                    .foregroundStyle(hasCoverImage ? .white : coverCard.foreground)
+                    .background(.black.opacity(hasCoverImage ? 0.5 : 0), in: Capsule())
+            case .paperback:
+                label
+                    .foregroundStyle(hasCoverImage ? .white : coverCard.foreground)
+                    .background(.black.opacity(hasCoverImage ? 0.5 : 0), in: RoundedRectangle(cornerRadius: 1))
+            }
+        }
+        .frame(width: style.height - 44)
+        .rotationEffect(.degrees(-90))
+        .frame(width: style.width, height: style.height)
+    }
+
+    private func titleFont(_ style: BookSpineStyle) -> Font {
+        switch style.kind {
+        case .leather: .system(size: 11, weight: .semibold, design: .serif)
+        case .cloth: .system(size: 11, weight: .medium, design: .serif).italic()
+        case .paperback: .system(size: 9.5, weight: .heavy, design: .default)
+        }
+    }
+
+    /// Ребро кожаного переплёта: выпуклая полоска с бликом и золотой нитью.
+    private var rib: some View {
+        Capsule()
+            .fill(LinearGradient(colors: [.white.opacity(0.22), .black.opacity(0.35)], startPoint: .top, endPoint: .bottom))
+            .frame(height: 3)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(theme.accent.opacity(0.55)).frame(height: 0.5)
+            }
+            .padding(.horizontal, 1)
     }
 
     private var band: some View {
@@ -594,6 +706,58 @@ struct BookSpine: View {
             .fill(theme.accent.opacity(0.65))
             .frame(height: 1.5)
             .padding(.horizontal, 3)
+    }
+
+    /// Потёртости зачитанной книги: светлые края сверху и снизу.
+    private func wear(_ style: BookSpineStyle) -> some View {
+        VStack(spacing: 0) {
+            LinearGradient(colors: [.white.opacity(0.22), .white.opacity(0)], startPoint: .top, endPoint: .bottom)
+                .frame(height: 7)
+            Spacer()
+            LinearGradient(colors: [.white.opacity(0), .white.opacity(0.18)], startPoint: .top, endPoint: .bottom)
+                .frame(height: 6)
+        }
+        .overlay(alignment: .leading) {
+            Rectangle().fill(.white.opacity(0.1)).frame(width: 1)
+        }
+    }
+}
+
+/// Переплётная ткань: частые косые нити.
+private struct ClothWeave: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        var y = rect.minY - rect.width
+        while y < rect.maxY {
+            path.move(to: CGPoint(x: rect.minX, y: y))
+            path.addLine(to: CGPoint(x: rect.maxX, y: y + rect.width * 0.6))
+            y += 2.5
+        }
+        return path
+    }
+}
+
+/// Латунный книгодержатель в конце ряда книг.
+struct Bookend: View {
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(LinearGradient(
+                    colors: [theme.accent.mix(with: .white, by: 0.25), theme.accent, theme.accent.mix(with: .black, by: 0.35)],
+                    startPoint: .leading, endPoint: .trailing
+                ))
+                .frame(width: 6, height: 74)
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(theme.accent.mix(with: .black, by: 0.2))
+                .frame(width: 22, height: 4)
+                .offset(x: 8)
+        }
+        .frame(width: 30, height: 80, alignment: .bottomLeading)
+        .shadow(color: .black.opacity(0.35), radius: 3, x: 2, y: 2)
+        .accessibilityHidden(true)
     }
 }
 
@@ -612,11 +776,19 @@ struct RibbonShape: Shape {
     }
 }
 
-/// Размеры корешка из id книги (стабильно между запусками) и длина ленты из прогресса.
+/// Размеры и вид корешка из id книги (стабильно между запусками), длина ленты из прогресса.
 /// Цвет корешок берёт у обложки.
 struct BookSpineStyle: Equatable {
+    /// Переплёт: от него зависят рёбра, тиснение и шрифт названия.
+    enum Kind: Equatable, CaseIterable {
+        case leather, cloth, paperback
+    }
+
     var width: CGFloat
     var height: CGFloat
+    var kind: Kind
+    /// Дочитанная книга выглядит зачитанной.
+    var isWorn: Bool
     /// Лента от верха корешка до прочитанного места. Нет ленты, пока книгу не открывали.
     var ribbonLength: CGFloat?
 
@@ -624,11 +796,31 @@ struct BookSpineStyle: Equatable {
         let seed = Self.seed(source.id)
         height = 128 + CGFloat(seed % 5) * 10
         width = 30 + CGFloat(min(source.displayTitle.count, 36) / 4) + CGFloat(seed / 5 % 3) * 2
+        kind = Self.kind(seed: seed)
+        isWorn = source.progress >= 0.98
         ribbonLength = Self.ribbon(progress: source.progress, opened: source.lastOpenedAt != nil, height: height)
+    }
+
+    /// Примерно поровну: три кожаных, две тканевых и две мягких на каждые семь книг.
+    static func kind(seed: Int) -> Kind {
+        switch seed / 15 % 7 {
+        case 0, 1, 2: .leather
+        case 3, 4: .cloth
+        default: .paperback
+        }
     }
 
     /// Ширина обложки, когда книгу повернули лицом: пропорции обычной книги.
     var coverWidth: CGFloat { (height * 0.68).rounded() }
+
+    /// Сдвиг обложки под корешком, чтобы на нём стояла полоска с серединой в `center` (0…1 по ширине
+    /// обложки). Полоска не выходит за края обложки; `nil` середина, сдвига нет.
+    nonisolated static func stripOffset(center: Double?, coverWidth: CGFloat, spineWidth: CGFloat) -> CGFloat {
+        guard let center, coverWidth > spineWidth else { return 0 }
+        let half = spineWidth / 2
+        let x = min(max(CGFloat(center) * coverWidth, half), coverWidth - half)
+        return coverWidth / 2 - x
+    }
 
     /// Сумма байтов id: в отличие от `hashValue` не меняется между запусками.
     static func seed(_ id: UUID) -> Int {

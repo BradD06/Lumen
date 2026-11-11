@@ -225,6 +225,9 @@ struct PaneHeader: View {
     let database: AppDatabase
     @Bindable var workspace: Workspace
     let pane: Int
+    /// Как стоят панели сейчас: от этого зависят значки «поменять местами» и «окна».
+    var axis: PaneArrangement.Axis = .sideBySide
+    var onToggleAxis: () -> Void = {}
 
     @Environment(\.lumenTheme) private var theme
 
@@ -269,10 +272,18 @@ struct PaneHeader: View {
                 .frame(maxWidth: .infinity)
                 .keyHint("Перейти в эту панель") { workspace.focus(pane: pane) }
 
+            Button(action: onToggleAxis) {
+                Image(systemName: axis == .stacked ? "rectangle.split.2x1" : "rectangle.split.1x2")
+                    .frame(width: 26, height: 26)
+            }
+            .help(axis == .stacked ? "Поставить панели рядом" : "Поставить панели друг под другом")
+            .keyHint(axis == .stacked ? "Панели рядом" : "Панели друг под другом", perform: onToggleAxis)
+            .accessibilityLabel(axis == .stacked ? "Поставить панели рядом" : "Поставить панели друг под другом")
             Button {
-                workspace.swapPanes()
+                withAnimation(.snappy) { workspace.swapPanes() }
             } label: {
-                Image(systemName: "arrow.left.arrow.right").frame(width: 26, height: 26)
+                Image(systemName: axis == .stacked ? "arrow.up.arrow.down" : "arrow.left.arrow.right")
+                    .frame(width: 26, height: 26)
             }
             .help("Поменять панели местами")
             .keyHint("Поменять панели местами") { workspace.swapPanes() }

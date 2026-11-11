@@ -21,12 +21,26 @@ public final class FolderSyncController {
     static let debounce: Duration = .seconds(3)
     static let interval: Duration = .seconds(30)
 
-    /// Как называется выбранная папка, например «iCloud Drive/Lumen Sync». `nil`, если синхронизация выключена.
-    public private(set) var folderName: String?
+    /// Где лежит папка синхронизации. `nil`, если синхронизация выключена.
+    public private(set) var place: FolderSyncPlace?
     /// Другие устройства в той же папке.
     public private(set) var otherDevices: [FolderSyncDevice] = []
+    /// Хотя бы один круг прошёл: если других устройств нет, значит, их действительно нет.
+    public private(set) var hasSynced = false
 
     public var isOn: Bool { engine != nil }
+
+    /// Как называется выбранная папка, например «iCloud Drive/Lumen Sync». `nil`, если синхронизация выключена.
+    public var folderName: String? { place?.displayName }
+
+    /// Что сказать человеку: нашлись ли другие устройства и что сделать дальше.
+    public var advice: FolderSyncAdvice? {
+        place.map { FolderSyncAdvice.make(place: $0, otherDevices: otherDevices, hasSynced: hasSynced) }
+    }
+
+    /// На Mac синхронизация включается одной кнопкой: iCloud Drive находится сам, без окна выбора.
+    /// На iPhone и iPad без платного аккаунта до iCloud Drive можно добраться только через окно выбора.
+    public var turnsOnInOneStep: Bool { Self.iCloudDriveFolder != nil }
 
     private let database: AppDatabase
     private let status: SyncStatus
@@ -76,6 +90,12 @@ public final class FolderSyncController {
         }
     }
 
+    /// Включить в iCloud Drive без окна выбора (только Mac, см. `turnsOnInOneStep`).
+    public func turnOnInICloudDrive() async {
+        guard let folder = Self.iCloudDriveFolder else { return }
+        await choose(folder)
+    }
+
     /// Синхронизация выключается, файлы в папке остаются: включить снова можно в любой момент.
     public func turnOff() {
         stop()
@@ -100,14 +120,23 @@ public final class FolderSyncController {
                 if merged > 0 {
                     folderSyncLog.info("Folder sync: merged \(merged) duplicate books")
                 }
-                otherDevices = report.otherDevices
+                // Пока шёл круг, могли выбрать другую папку: итог старой к ней не относится.
+                if self.engine === engine {
+                    otherDevices = report.otherDevices
+                    hasSynced = true
+                }
                 status.state = .upToDate(Date())
                 if report.sent + report.received + report.filesSent + report.filesReceived > 0 {
                     folderSyncLog.info("Folder sync: sent \(report.sent), received \(report.received), files \(report.filesSent)/\(report.filesReceived)")
                 }
             } catch {
                 folderSyncLog.error("Folder sync failed: \(String(describing: error), privacy: .public)")
-                status.state = .failed(error.localizedDescription)
+                // Круг не удался (часто файл ещё не доехал из iCloud), но кто ещё в папке, всё равно видно.
+                if self.engine === engine {
+                    otherDevices = engine.otherDevices()
+                    hasSynced = true
+                }
+                status.state = .failed(Self.message(for: error))
             }
             isRunning = false
             if runAgain, self.engine != nil {
@@ -123,7 +152,7 @@ public final class FolderSyncController {
         pickedFolder = picked
         let root = FolderSyncEngine.dataFolder(in: picked)
         engine = FolderSyncEngine(database: database, root: root, deviceId: Self.deviceId, deviceName: Self.deviceName)
-        folderName = Self.displayName(for: root)
+        place = FolderSyncPlace(dataFolder: root)
         status.state = .syncing
         observeLocalChanges()
         loop = Task { [weak self] in
@@ -142,8 +171,9 @@ public final class FolderSyncController {
         observation = nil
         debounceTask = nil
         engine = nil
-        folderName = nil
+        place = nil
         otherDevices = []
+        hasSynced = false
         pickedFolder?.stopAccessingSecurityScopedResource()
         pickedFolder = nil
     }
@@ -208,12 +238,39 @@ public final class FolderSyncController {
         return try URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
     }
 
-    /// «iCloud Drive/Lumen Sync» вместо длинного системного пути.
-    static func displayName(for url: URL) -> String {
-        let parts = url.standardizedFileURL.pathComponents
-        if let index = parts.lastIndex(of: "com~apple~CloudDocs") {
-            return (["iCloud Drive"] + parts[(index + 1)...]).joined(separator: "/")
+    /// iCloud Drive на этом Mac. Приложение без песочницы видит его прямо в домашней папке.
+    /// `nil` на iPhone и iPad, а также если iCloud Drive на Mac выключен.
+    static let iCloudDriveFolder: URL? = {
+        #if os(macOS)
+        let folder = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory), isDirectory.boolValue else { return nil }
+        return folder
+        #else
+        return nil
+        #endif
+    }()
+
+    /// Ошибка простыми словами: системные тексты про права и файлы человеку ничего не говорят.
+    static func message(for error: any Error) -> String {
+        if let error = error as? FolderSyncError { return error.localizedDescription }
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain {
+            switch CocoaError.Code(rawValue: nsError.code) {
+            case .fileReadNoPermission, .fileWriteNoPermission:
+                return FolderSyncError.noAccess.localizedDescription
+            case .fileWriteOutOfSpace:
+                return "Не хватает места на устройстве или в iCloud. Освободите место, и синхронизация продолжится сама."
+            case .fileReadNoSuchFile, .fileReadCorruptFile:
+                return "Часть правок ещё не доехала из iCloud. Lumen попробует снова через полминуты."
+            default:
+                break
+            }
         }
-        return parts.suffix(2).joined(separator: "/")
+        if nsError.domain == NSPOSIXErrorDomain, nsError.code == Int(EPERM) || nsError.code == Int(EACCES) {
+            return FolderSyncError.noAccess.localizedDescription
+        }
+        return error.localizedDescription
     }
 }

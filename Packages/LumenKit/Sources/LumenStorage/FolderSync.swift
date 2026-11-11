@@ -242,7 +242,7 @@ public final class FolderSyncEngine: Sendable {
     }
 
     /// Другие устройства, которые пишут в эту папку.
-    func otherDevices() -> [FolderSyncDevice] {
+    public func otherDevices() -> [FolderSyncDevice] {
         FolderFiles.list(devicesFolder)
             .filter { $0 != deviceId }
             .compactMap { device in

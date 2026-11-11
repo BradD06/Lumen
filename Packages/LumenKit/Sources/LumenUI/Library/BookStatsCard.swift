@@ -14,6 +14,8 @@ struct BookStatsCard: View {
     var onOpenDashboard: () -> Void
     /// Полупрозрачная панель рядом с крупной обложкой, а не отдельное окошко.
     var isPanel = false
+    /// «Сменить обложку» под кнопками: в окне книги, вынутой с полки.
+    var showsCoverButton = false
 
     @State private var snapshot = SourceDashboardSnapshot.empty
     @Environment(\.lumenTheme) private var theme
@@ -29,6 +31,9 @@ struct BookStatsCard: View {
                 divider
                 notes
                 buttons
+                if showsCoverButton {
+                    BookCoverButton(book: source)
+                }
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 120)
@@ -166,7 +171,7 @@ struct BookStatsCard: View {
             Button(action: onOpenBook) {
                 Text(snapshot.source?.lastOpenedAt == nil ? "Начать читать" : "Читать дальше")
                     .font(.callout.weight(.semibold))
-                    .foregroundStyle(theme.backgroundStops.last ?? .black)
+                    .foregroundStyle(theme.onAccent)
                     .padding(.horizontal, 14)
                     .frame(height: 32)
                     .background(theme.accent, in: RoundedRectangle(cornerRadius: 6, style: .continuous))

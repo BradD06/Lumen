@@ -274,7 +274,15 @@ extension AppDatabase {
             }
         }
 
-        migrator.registerMigration("v13: link board") { db in
+        migrator.registerMigration("v13: custom book covers") { db in
+            // Своё фото обложки и полоска обложки на корешке. Таблица уже синхронизируется.
+            try db.alter(table: "source") { t in
+                t.add(column: "customCover", .text)
+                t.add(column: "spineCenter", .double)
+            }
+        }
+
+        migrator.registerMigration("v14: link board") { db in
             // Доска связей: что приколото и где. id совпадает с id книги, папки или страницы,
             // поэтому внешнего ключа нет: приколотое из корзины просто не показывается.
             try db.create(table: "boardPin") { t in

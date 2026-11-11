@@ -59,7 +59,7 @@ struct SyncStatusRow: View {
     private func details(_ state: SyncStatus.State) -> String {
         switch state {
         case .notConfigured:
-            "Заметки и книги хранятся только на этом устройстве. Выберите папку в iCloud Drive, и они появятся на других ваших устройствах."
+            "Заметки и книги хранятся только на этом устройстве. Включите синхронизацию, и они появятся на других ваших устройствах."
         case .noAccount:
             "Войдите в iCloud в Настройках, и заметки появятся на всех ваших устройствах."
         case .syncing:

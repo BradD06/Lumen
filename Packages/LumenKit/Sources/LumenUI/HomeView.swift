@@ -31,11 +31,12 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 22) {
                 header
                 // Сверху полка с книгами, ниже то, что лежит на столе.
-                BookShelf(database: database, onOpen: onOpenSource) {
+                BookShelf(database: database, onOpen: onOpenSource, showsLamp: true) {
                     appActions.create(.book)
                 }
                 deskLabel
                 CaptureField { text, asTask in appActions.capture(text, asTask) }
+                SyncSetupCard()
                 if showsReading || showsTasks || showsInbox {
                     cards
                 }
@@ -73,6 +74,8 @@ struct HomeView: View {
             Text(greeting)
                 .font(.largeTitle.weight(.bold))
                 .foregroundStyle(theme.textPrimary)
+            SyncBadge()
+                .padding(.top, 2)
         }
         .padding(.top, 8)
     }

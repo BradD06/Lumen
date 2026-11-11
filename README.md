@@ -17,7 +17,7 @@
 
 ---
 
-Lumen takes the flexible block pages of Notion and puts your reading next to them. Open a book or any document, read it in the app, and write notes beside it. Every quote you save remembers the exact spot in the book it came from, so one tap takes you back there. Write by hand like in a paper notebook, track your tasks in databases, and keep everything in a dark green and brass "Study" look, a home library with books on shelves.
+Lumen takes the flexible block pages of Notion and puts your reading next to them. Open a book or any document, read it in the app, and write notes beside it. Every quote you save remembers the exact spot in the book it came from, so one tap takes you back there. Write by hand like in a paper notebook, track your tasks in databases, and keep everything in the "Study" look: a home library with books on shelves behind frosted glass.
 
 ## Features
 
@@ -46,6 +46,8 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - A **Text / Pen** switch in the notes beside a book: write with the keyboard, or draw at the end of the note.
 - Bookmark a place while you write notes, and jump back to it later.
 - Notes open beside the book in a split view. On iPhone they slide up as a sheet.
+- A **Windows** switch on the Mac and iPad puts the book and its notes side by side or one above the other (book on top, note below), and swaps them. Drag the handle between them to resize. Each book remembers its layout, and an iPad held upright stacks them on its own. Split-screen panes can be stacked the same way.
+- Drag a quote into a note: select text in the book and drag the "To notes" button onto any open note. It lands there as an excerpt that links back to the page.
 - Lumen remembers exactly where you stopped reading. Dark mode tints PDF pages too.
 - Read a PDF like an EPUB: the **Text** view reflows it into chapters (from the PDF's bookmarks or its large headings), keeps its pictures in place, drops running headers and page numbers (even when the header is the current section's name), sets notes, warnings and grey sidebars apart as coloured boxes, and lets you pick any font and size. Highlights, excerpts and your reading place carry over between the Text and Original views.
 - Text size goes up to 48 pt in books and documents.
@@ -73,12 +75,16 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Favorites, an Inbox for quick notes, and a trash you can restore from.
 - Sort the Inbox one note at a time: swipe, pick one of three suggested folders, turn a note into a task, keep it or delete it. Changed your mind? "Undo" (⌘Z) brings the last note back.
 - Export a page to Markdown or PDF, plus full backups of your data.
-- Free sync between Mac, iPhone and iPad through a folder in your iCloud Drive: pick the same folder on every device in Data and backups, and notes, books, pictures, highlights and reading time follow you. A book you had added on two devices before syncing is merged into one, with its highlights, notes and reading place kept. No paid Apple account needed.
+- Free sync between Mac, iPhone and iPad through your iCloud Drive: notes, books, pictures, highlights and reading time follow you. Turn it on with one button on Today or at the top of Settings. On Mac that is all (Lumen finds iCloud Drive itself); on iPhone and iPad you tap iCloud Drive and "Open" once. Lumen then tells you which devices it found (or what to do on the next one), warns you if the chosen folder is not in iCloud Drive, and a line under the greeting on Today shows whether everything is synced; tap it to sync right away. A book you had added on two devices before syncing is merged into one, with its highlights, notes and reading place kept. No paid Apple account needed.
 - On iPhone: Today, Inbox, Library and Search tabs at the bottom of the screen.
 
 ### 🌅 Design
-- The "Study" look: a home library in dark green and brass. Brass room plaques along the top instead of a sidebar: Desk, Shelf, Board, Notes, Tasks, Archive (on iPhone they are the tabs at the bottom). Books stand on a shelf as spines cut from the middle of their covers (or in the cover's colors), and a ribbon bookmark on each spine shows how far you have read; make your own shelves (each shelf is a folder in the library) with a + on every shelf to add a book right there, drag books between them, or use "Move to shelf", "Take off the shelf" and "Move to Trash" in a book's menu; drag books to put them in your own order, or sort the shelf by title, author, progress, last read or date added with the buttons above it; hover over a book and it slides off the shelf and turns its cover to you; click it and it flies to the middle of the window as a large cover with a translucent panel beside it: reading time, when you last read it, highlights and the notes with its quotes. Quotes from books sit in notes like clippings pasted into a notebook.
+- The "Study" look: a home library behind frosted glass, with a softly blurred bookcase and a warm lamp glow in the background, glass cards and glass shelves. Six color schemes in Settings → Appearance: Emerald (dark green and brass), Midnight, Cherry, Walnut, Dusk and the light Linen. Optionally the scheme can follow the time of day (for example Linen by day, Emerald in the evening, Midnight at night); this is off until you turn it on.
+- A glass capsule of rooms along the top instead of a sidebar: Desk, Shelf, Board, Notes, Tasks, Archive (on iPhone they are the tabs at the bottom). Books stand on a shelf as spines cut from the middle of their covers (or in the cover's colors) in mixed bindings: leather with raised bands and gilt titles, cloth, and paperbacks; the title always runs along the spine, finished books look well read, and a brass bookend closes each row. A ribbon bookmark on each spine shows how far you have read; make your own shelves (each shelf is a folder in the library) with a + on every shelf to add a book right there, drag books between them, or use "Move to shelf", "Take off the shelf" and "Move to Trash" in a book's menu; drag books to put them in your own order, or sort the shelf by title, author, progress, last read or date added with the buttons above it; hover over a book and it slides off the shelf and turns its cover to you; click it and it flies to the middle of the window as a large cover with a translucent panel beside it: reading time, when you last read it, highlights and the notes with its quotes. Quotes from books sit in notes like clippings pasted into a notebook.
+- Change a book's cover: by default it comes from the book as before, but you can put your own photo on it. On the Mac pick a file, paste with ⌘V or drop a picture onto the cover, and move a frame to choose which strip of the cover becomes the spine. On iPhone and iPad long-press a book for the camera, Photos, Files or the clipboard. "Change cover" is also in the panel of a book taken off the shelf, and "Restore the book's cover" brings the original back at any time. Your photo syncs with the book.
 - A calm screen by default: Settings → "What to show on screen" brings back only what you want. The tab bar appears once you open a second tab, the back, forward and split buttons give way to ⌘[, ⌘] and ⌘\, "Saved" shows for a couple of seconds after an edit, and the word count, the page path, the library grid, each Today card and the book progress bar (always or on hover) can be turned on or off. The library has a single "Create" button.
+- A desk lamp on the Today shelf: switch it on and the rooms and tabs step away, the edges of the window dim, and a 25-minute study timer starts; switch it off and the light comes back.
+- Quiet sounds, on by default and easy to turn off in Settings: a book sliding onto the shelf, the lamp's switch, tape when an excerpt sticks to a note, paper rustling.
 - A **Today** screen: a capture field (tick "This is a task" to add it to today's tasks), Continue reading, today's tasks you can check off, the Inbox, and recent pages.
 
 ## Roadmap
@@ -129,7 +135,7 @@ project.yml             Xcode project definition for XcodeGen
 
 Your data stays on your device until you turn on sync. Sync works through a folder you pick yourself, usually iCloud Drive, so it needs no paid Apple Developer Program account. Later the plan is to add Supabase, which will also work with the future Windows app.
 
-**Turn it on:** Settings (or ⋯ in the Library on iPhone) → Data and backups → Sync → "Choose a folder in iCloud Drive…". Pick the same folder on every device, simplest is iCloud Drive itself. Lumen creates a `Lumen Sync` folder in it.
+**Turn it on:** tap "Turn on sync" on the Today screen, or at the top of Settings (also in Data and backups). On Mac, Lumen uses iCloud Drive right away. On iPhone and iPad, a folder picker opens: tap iCloud Drive, then "Open". Do the same on every device. Lumen creates a `Lumen Sync` folder in iCloud Drive.
 
 <details>
 <summary>How folder sync works</summary>

@@ -40,7 +40,7 @@ public enum SyncTable: String, CaseIterable, Codable, Sendable {
     /// Файлы книг едут в iCloud вместе с книгой, их не скачать заново из другого места.
     public var assetFields: [(field: String, column: String)] {
         switch self {
-        case .source: [("fileAsset", "file"), ("coverAsset", "cover")]
+        case .source: [("fileAsset", "file"), ("coverAsset", "cover"), ("customCoverAsset", "customCover")]
         default: []
         }
     }

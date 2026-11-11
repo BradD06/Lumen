@@ -38,6 +38,8 @@ targets:
     info:
       path: App/Info.plist
       properties:
+        # Своё фото обложки книги можно снять камерой iPhone или iPad.
+        NSCameraUsageDescription: Lumen снимает камерой обложку книги, если вы хотите поставить своё фото.
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: app.lumen.block
             UTTypeDescription: Lumen Block
@@ -49,6 +51,10 @@ targets:
             UTTypeTagSpecification: {}
           - UTTypeIdentifier: app.lumen.tab
             UTTypeDescription: Lumen Tab
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification: {}
+          - UTTypeIdentifier: app.lumen.excerpt
+            UTTypeDescription: Lumen Excerpt
             UTTypeConformsTo: [public.data]
             UTTypeTagSpecification: {}
           # Форматы, которых нет в системе: без объявления iPhone не знает, что .fb2 и .cbz это книги.

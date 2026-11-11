@@ -64,6 +64,53 @@ extension AppDatabase {
         }
     }
 
+    // MARK: Своя обложка
+
+    /// Ставит своё фото обложки (картинка уже уменьшена, JPEG). Обложка из файла остаётся
+    /// в базе, к ней можно вернуться. Прежнее своё фото удаляется, корешок снова из середины.
+    public func setCustomCover(_ id: UUID, imageData: Data) async throws {
+        let name = try attachments.save(imageData, fileExtension: "jpg")
+        let previous: String?
+        do {
+            previous = try await writer.write { db in
+                let old = try Source.fetchOne(db, key: id)?.customCover
+                try Self.updateSource(db, id) { source in
+                    source.customCover = name
+                    source.spineCenter = nil
+                }
+                return old
+            }
+        } catch {
+            attachments.remove(name)
+            throw error
+        }
+        if let previous, previous != name {
+            attachments.remove(previous)
+        }
+    }
+
+    /// Какая полоска обложки на корешке: середина полоски от 0 до 1, `nil` середина обложки.
+    public func setSpineCenter(_ id: UUID, _ center: Double?) async throws {
+        try await writer.write { db in
+            try Self.updateSource(db, id) { $0.spineCenter = center.map { min(max($0, 0), 1) } }
+        }
+    }
+
+    /// Возвращает обложку из книги: своё фото убирается вместе с файлом.
+    public func restoreBookCover(_ id: UUID) async throws {
+        let removed = try await writer.write { db -> String? in
+            let old = try Source.fetchOne(db, key: id)?.customCover
+            try Self.updateSource(db, id) { source in
+                source.customCover = nil
+                source.spineCenter = nil
+            }
+            return old
+        }
+        if let removed {
+            attachments.remove(removed)
+        }
+    }
+
     /// Кладёт источник в папку (`nil` = корень библиотеки), на новом месте он встаёт в свободную ячейку.
     public func moveSource(_ id: UUID, toFolder folderId: UUID?) async throws {
         try await writer.write { db in

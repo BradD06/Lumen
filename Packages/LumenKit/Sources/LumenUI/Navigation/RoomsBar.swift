@@ -3,8 +3,8 @@ import LumenStorage
 import LumenThemes
 import SwiftUI
 
-/// Комнаты сверху для темы «Кабинет»: латунные таблички вместо боковой панели.
-/// Стол, полка, доска, записки, дела, архив. Справа поиск «Найти в кабинете…» и настройки.
+/// Комнаты сверху: стеклянная капсула с комнатами вместо боковой панели, открытая комната
+/// залита латунью. Стол, полка, доска, записки, дела, архив. Справа поиск «Найти в кабинете…» и настройки.
 struct RoomsBar: View {
     let database: AppDatabase
     let selection: SidebarItem?
@@ -25,12 +25,19 @@ struct RoomsBar: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, 8)
             Rectangle()
-                .fill(LinearGradient(colors: [theme.accent.opacity(0), theme.accent.opacity(0.45), theme.accent.opacity(0)], startPoint: .leading, endPoint: .trailing))
+                .fill(LinearGradient(colors: [theme.accent.opacity(0), theme.accent.opacity(0.35), theme.accent.opacity(0)], startPoint: .leading, endPoint: .trailing))
                 .frame(height: 1)
         }
-        .background(theme.backgroundStops.first ?? .clear)
+        .background {
+            // Полоса тоже стеклянная: шкаф за ней едва просвечивает.
+            ZStack {
+                Rectangle().fill(.ultraThinMaterial)
+                Rectangle().fill((theme.backgroundStops.first ?? .clear).opacity(0.55))
+            }
+            .ignoresSafeArea(edges: .top)
+        }
         .task { await observe() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("roomsBar")
@@ -38,9 +45,13 @@ struct RoomsBar: View {
 
     private func row(wideSearch: Bool) -> some View {
         HStack(spacing: 10) {
-            ForEach(StudyRoom.allCases) { room in
-                plaque(room)
+            HStack(spacing: 2) {
+                ForEach(StudyRoom.allCases) { room in
+                    plaque(room)
+                }
             }
+            .padding(3)
+            .lumenGlass(Capsule())
             Spacer(minLength: 12)
             Button(action: onSearch) {
                 HStack(spacing: 8) {
@@ -57,9 +68,8 @@ struct RoomsBar: View {
                 .font(.callout)
                 .foregroundStyle(theme.textSecondary)
                 .padding(.horizontal, 12)
-                .frame(height: 30)
-                .background(theme.cardFill, in: Capsule())
-                .overlay(Capsule().strokeBorder(theme.accent.opacity(0.3), lineWidth: 1))
+                .frame(height: 32)
+                .lumenGlass(Capsule())
                 .contentShape(Capsule())
             }
             .accessibilityLabel("Найти в кабинете")
@@ -69,8 +79,9 @@ struct RoomsBar: View {
                 Image(systemName: "gearshape")
                     .font(.callout)
                     .foregroundStyle(theme.accent.opacity(0.85))
-                    .frame(width: 30, height: 30)
-                    .contentShape(Rectangle())
+                    .frame(width: 32, height: 32)
+                    .lumenGlass(Circle())
+                    .contentShape(Circle())
             }
             .accessibilityLabel("Настройки")
             .help("Настройки: тема, звук, данные, копии и синхронизация")
@@ -79,47 +90,40 @@ struct RoomsBar: View {
         .buttonStyle(.plain)
     }
 
-    /// Латунная табличка с «винтиками» по краям; открытая комната залита латунью.
+    /// Комната в капсуле. Открытая залита латунью, текст на ней цвета `onAccent`.
     private func plaque(_ room: StudyRoom) -> some View {
         let isSelected = room.contains(selection)
-        let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
-        let ink = theme.backgroundStops.last ?? .black
+        let shape = Capsule()
         let count = room.count(in: counts)
         return Button {
             onSelect(room.item)
         } label: {
             HStack(spacing: 6) {
-                Text(room.title.uppercased())
-                    .font(.footnote.weight(.semibold))
-                    .tracking(1.6)
+                Text(room.title)
+                    .font(.callout.weight(isSelected ? .semibold : .regular))
                 if count > 0 {
                     Text("\(count)")
                         .font(.caption2.weight(.bold))
-                        .opacity(0.75)
+                        .padding(.horizontal, 5)
+                        .frame(minWidth: 16, minHeight: 16)
+                        .background(
+                            (isSelected ? theme.onAccent : theme.accent).opacity(0.18),
+                            in: Capsule()
+                        )
                 }
             }
-            .foregroundStyle(isSelected ? ink : theme.accent)
+            .foregroundStyle(isSelected ? theme.onAccent : theme.textPrimary.opacity(0.82))
             .fixedSize()
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 14)
             .frame(height: 28)
             .background {
                 if isSelected {
                     shape.fill(LinearGradient(
-                        colors: [theme.accent.mix(with: .white, by: 0.25), theme.accent, theme.accent.mix(with: .black, by: 0.2)],
+                        colors: [theme.accent.mix(with: .white, by: 0.22), theme.accent, theme.accent.mix(with: .black, by: 0.12)],
                         startPoint: .top, endPoint: .bottom
                     ))
+                    .shadow(color: theme.accent.opacity(0.35), radius: 6, y: 2)
                 }
-            }
-            .overlay(shape.strokeBorder(theme.accent.opacity(isSelected ? 0.9 : 0.5), lineWidth: 1))
-            .overlay(shape.inset(by: 2.5).strokeBorder(theme.accent.opacity(isSelected ? 0 : 0.18), lineWidth: 0.5))
-            .overlay {
-                HStack {
-                    screw
-                    Spacer()
-                    screw
-                }
-                .padding(.horizontal, 5)
-                .foregroundStyle(isSelected ? ink.opacity(0.45) : theme.accent.opacity(0.55))
             }
             .contentShape(shape)
         }
@@ -128,10 +132,7 @@ struct RoomsBar: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("room.\(room.rawValue)")
         .help(room.hint)
-    }
-
-    private var screw: some View {
-        Circle().frame(width: 3, height: 3)
+        .animation(.snappy(duration: 0.2), value: isSelected)
     }
 
     private func observe() async {

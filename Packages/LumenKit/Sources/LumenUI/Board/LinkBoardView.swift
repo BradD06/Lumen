@@ -92,7 +92,7 @@ struct LinkBoardView: View {
                     .font(.callout.weight(.semibold))
                     .padding(.horizontal, 12)
                     .frame(height: 30)
-                    .foregroundStyle(theme.backgroundStops.last ?? .black)
+                    .foregroundStyle(theme.onAccent)
                     .background(theme.accent, in: Capsule())
                     .contentShape(Capsule())
             }

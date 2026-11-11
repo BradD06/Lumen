@@ -195,7 +195,7 @@ final class LinkBoardModel {
             let done = await NoticeCenter.shared.attempt("Не удалось приколоть") {
                 try await database.pinToBoard(placements)
             }
-            if done { LumenSounds.play(.drop) }
+            if done { LumenSounds.play(.pin) }
         }
     }
 

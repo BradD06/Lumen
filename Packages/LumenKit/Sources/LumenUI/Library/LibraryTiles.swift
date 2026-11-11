@@ -353,7 +353,7 @@ extension Int {
     }
 }
 
-/// Книга или файл на холсте: обложка из файла или нарисованная, корешок и полоска прочитанного.
+/// Книга или файл на холсте: своё фото обложки, обложка из файла или нарисованная, корешок и полоска прочитанного.
 struct SourceCoverArt: View {
     let source: Source
     let attachments: AttachmentStore
@@ -371,7 +371,7 @@ struct SourceCoverArt: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            if let cover = source.cover {
+            if let cover = source.shownCover {
                 AttachmentImage(name: cover, attachments: attachments, contentMode: .fill)
                     .frame(width: width, height: height)
                     .clipped()
@@ -390,7 +390,7 @@ struct SourceCoverArt: View {
             .frame(width: 10)
         }
         .overlay(alignment: .topTrailing) {
-            if !source.format.isBook || source.cover != nil {
+            if !source.format.isBook || (source.cover != nil && source.customCover == nil) {
                 Text(source.format.label)
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(.white)

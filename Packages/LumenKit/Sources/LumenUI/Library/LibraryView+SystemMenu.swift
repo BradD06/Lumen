@@ -160,6 +160,7 @@ extension LibraryView {
         } label: {
             Label("Приколоть на доску", systemImage: "pin")
         }
+        BookCoverMenu(book: source)
         Divider()
         Button(role: .destructive) {
             selection = nil
