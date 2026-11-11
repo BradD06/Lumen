@@ -130,6 +130,7 @@ struct InboxView: View {
 
     private func observe() async {
         let observation = ValueObservation.tracking { db in try InboxQuery.fetch(db) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 withAnimation(LumenMotion.standard) { notes = value }
@@ -479,6 +480,7 @@ struct InboxTriageView: View {
 
     private func observe() async {
         let observation = ValueObservation.tracking { db in try InboxQuery.fetch(db) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 if !isLoaded { total = value.count }
@@ -654,6 +656,7 @@ struct TrashView: View {
 
     private func observe() async {
         let observation = ValueObservation.tracking { db in try TrashSnapshot.fetch(db) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) where value != trash {
                 // Восстановленное и удалённое навсегда уходит из списка плавно.

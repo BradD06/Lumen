@@ -786,6 +786,7 @@ struct RowPropertiesPanel: View {
     private func observe() async {
         let rowId = rowId
         let observation = ValueObservation.tracking { db in try DataRowSnapshot.fetch(db, rowId: rowId) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 snapshot = value

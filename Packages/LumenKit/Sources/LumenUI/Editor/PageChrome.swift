@@ -77,6 +77,7 @@ struct PageBreadcrumbs: View {
     private func observe() async {
         let pageId = pageId
         let observation = ValueObservation.tracking { db in try BreadcrumbQuery.fetch(db, pageId: pageId) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 crumbs = value

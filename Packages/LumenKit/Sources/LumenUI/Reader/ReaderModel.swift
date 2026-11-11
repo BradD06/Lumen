@@ -272,6 +272,8 @@ final class ReaderModel {
                 .order(Column("createdAt"))
                 .fetchAll(db)
         }
+        // Чтение пишет место в книге каждые несколько секунд: выделения перекрашиваются, только если поменялись.
+        .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 highlights = value

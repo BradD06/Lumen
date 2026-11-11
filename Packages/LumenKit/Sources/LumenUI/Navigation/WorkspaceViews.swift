@@ -83,6 +83,7 @@ struct WorkspaceItemLabel: View {
         }
         let item = item
         let observation = ValueObservation.tracking { db in try ItemTitle.fetch(db, item: item) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 title = value

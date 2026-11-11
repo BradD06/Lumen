@@ -608,6 +608,7 @@ struct LibraryView: View {
     private func observe() async {
         let folderId = folderId
         let observation = ValueObservation.tracking { db in try LibrarySnapshot.fetch(db, folderId: folderId) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 // Новое на холсте проявляется, удалённое гаснет. Первый показ сразу, без анимации.

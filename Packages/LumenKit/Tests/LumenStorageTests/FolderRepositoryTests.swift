@@ -121,6 +121,7 @@ struct FolderRepositoryTests {
         #expect(trash.folders.map(\.id) == [study.id], "Вложенная папка вернётся вместе с родителем")
         #expect(trash.pages.isEmpty, "Страницы удалённой папки отдельно не показываются")
         #expect(try await db.reader.read { try SidebarSnapshot.fetch($0) }.trashCount == 4)
+        #expect(try await db.reader.read { try SidebarSnapshot.fetchCounts($0) }.trashCount == 4)
 
         try await db.restoreFolder(study.id)
         #expect(try await db.folder(math.id)?.isTrashed == false)

@@ -129,6 +129,7 @@ struct MoveToFolderSheet: View {
 
     private func observe() async {
         let observation = ValueObservation.tracking { db in try FolderTreeQuery.fetch(db) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 tree = value

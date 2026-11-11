@@ -24,6 +24,9 @@ struct PageRepositoryTests {
 
         let sidebar = try await db.reader.read { try SidebarSnapshot.fetch($0) }
         #expect(sidebar.inboxCount == 1)
+        let counts = try await db.reader.read { try SidebarSnapshot.fetchCounts($0) }
+        #expect(counts.inboxCount == 1, "Табло комнат считает записки так же, как полный снимок")
+        #expect(counts.favorites.isEmpty && counts.folders.isEmpty, "Табло не грузит списки")
         let library = try await db.reader.read { try LibrarySnapshot.fetch($0, folderId: nil) }
         #expect(library.pages.isEmpty, "Входящие не показываются в библиотеке")
     }
@@ -188,6 +191,21 @@ struct BlockAndSearchTests {
         try await db.deleteBlock(blocks[0].id)
         #expect(try await db.blocks(of: page.id).map(\.text) == ["второй"])
         #expect(try await db.search("первый").isEmpty)
+    }
+
+    /// Редактор пишет название, новые и удалённые блоки одной записью, и поиск видит всё сразу.
+    @Test func pageEditsAreSavedTogether() async throws {
+        let page = try await db.createQuickNote("Список\nпервый\nвторой")
+        let blocks = try await db.blocks(of: page.id)
+        let added = Block(pageId: page.id, content: BlockContent(text: "третий"), sortKey: "zz")
+
+        try await db.savePageEdits(pageId: page.id, title: "Покупки", saving: [added], deleting: [blocks[0].id])
+
+        #expect(try await db.blocks(of: page.id).map(\.text) == ["второй", "третий"])
+        #expect(try await db.page(page.id)?.title == "Покупки")
+        #expect(try await db.search("первый").isEmpty)
+        #expect(try await db.search("третий").map(\.pageId) == [page.id])
+        #expect(try await db.search("покупки").map(\.pageId) == [page.id])
     }
 
     @Test func blockContentSurvivesRoundTrip() async throws {

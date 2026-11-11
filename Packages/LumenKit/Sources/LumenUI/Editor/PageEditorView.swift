@@ -48,7 +48,9 @@ struct PageEditorView: View {
     @State private var keyMonitor: Any?
     #endif
     /// Насколько прокручена страница: по ней солнце на горах опускается за гряды.
-    @State private var scrollOffset: CGFloat = 0
+    /// Отдельный объект: прокрутку читают только фон и обложка, и редактор со всеми блоками
+    /// не пересчитывается на каждом кадре прокрутки.
+    @State private var scroll = PageScrollOffset()
     /// Открыта ли панель подстраниц справа. Запоминается между страницами и запусками,
     /// а анимируется копия в `showsSubpages`: изменение `@AppStorage` анимацию не несёт.
     @AppStorage("editor.subpagesPanel") private var remembersSubpages = false
@@ -106,14 +108,14 @@ struct PageEditorView: View {
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { _, offset in
-            scrollOffset = max(offset, 0)
+            scroll.offset = max(offset, 0)
         }
         .scrollDismissesKeyboard(.interactively)
         .background(
-            PageBackgroundView(
+            ScrolledPageBackground(
+                scroll: scroll,
                 background: model.page?.pageBackground,
-                attachments: model.database.attachments,
-                sunset: scrollOffset / 700
+                attachments: model.database.attachments
             )
         )
         .modifier(EditorNavigationTitle(title: model.isLoaded ? displayTitle : "", isEnabled: !isEmbedded && isActivePane))
@@ -324,7 +326,7 @@ struct PageEditorView: View {
                 VStack(spacing: 0) {
                     // Обложка на всю ширину окна, от края до края, как в Notion.
                     if let cover = model.page?.pageCover {
-                        PageCoverView(cover: cover, attachments: model.database.attachments, sunset: scrollOffset / 220)
+                        ScrolledPageCover(scroll: scroll, cover: cover, attachments: model.database.attachments)
                     }
                     content
                 }
@@ -998,5 +1000,39 @@ public struct EditorCommands: Commands {
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .disabled(editor?.canRedo != true)
         }
+    }
+}
+
+/// Насколько прокручена страница. Его читают только фон и обложка ниже.
+@MainActor
+@Observable
+final class PageScrollOffset {
+    var offset: CGFloat = 0
+}
+
+/// Фон страницы, на котором солнце садится по мере прокрутки.
+private struct ScrolledPageBackground: View {
+    let scroll: PageScrollOffset
+    let background: PageBackground?
+    let attachments: AttachmentStore
+
+    var body: some View {
+        // Без обоев прокрутка фону не нужна: не читаем её, и фон не перерисовывается.
+        PageBackgroundView(
+            background: background,
+            attachments: attachments,
+            sunset: background == nil ? 0 : scroll.offset / 700
+        )
+    }
+}
+
+/// Обложка страницы: горы на ней тоже темнеют при прокрутке.
+private struct ScrolledPageCover: View {
+    let scroll: PageScrollOffset
+    let cover: PageCover
+    let attachments: AttachmentStore
+
+    var body: some View {
+        PageCoverView(cover: cover, attachments: attachments, sunset: scroll.offset / 220)
     }
 }

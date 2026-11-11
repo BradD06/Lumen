@@ -132,6 +132,7 @@ final class PageEditorModel {
     func observeLinks() async {
         let pageId = pageId
         let observation = ValueObservation.tracking { db in try PageLinksSnapshot.fetch(db, pageId: pageId) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 links = value
@@ -194,16 +195,13 @@ final class PageEditorModel {
         let write = Task {
             await previous?.value
             do {
-                if let newTitle {
-                    try await database.renamePage(pageId, title: newTitle)
-                }
-                // Порядок документа: родитель записывается раньше детей.
-                for block in pending {
-                    try await database.saveBlock(block)
-                }
-                for id in deletes {
-                    try await database.deleteBlock(id)
-                }
+                // Всё одной записью. Порядок документа: родитель записывается раньше детей.
+                try await database.savePageEdits(
+                    pageId: pageId,
+                    title: newTitle,
+                    saving: pending,
+                    deleting: Array(deletes)
+                )
             } catch {
                 NoticeCenter.shared.report("Не удалось сохранить изменения на странице", error)
             }

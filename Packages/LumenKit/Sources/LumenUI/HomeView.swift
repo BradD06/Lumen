@@ -187,6 +187,7 @@ struct HomeView: View {
 
     private func observePages() async {
         let observation = ValueObservation.tracking { db in try HomeSnapshot.fetch(db) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 withAnimation(LumenMotion.standard) { snapshot = value }
@@ -198,6 +199,7 @@ struct HomeView: View {
 
     private func observeReading() async {
         let observation = ValueObservation.tracking { db in try HomeReadingSnapshot.fetch(db) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 withAnimation(LumenMotion.standard) { reading = value }
@@ -379,6 +381,7 @@ private struct TodayTasksCard: View {
         guard let table = try? await database.tasksDataTable() else { return }
         let pageId = table.pageId
         let observation = ValueObservation.tracking { db in try DataTableSnapshot.fetch(db, pageId: pageId) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 withAnimation(LumenMotion.standard) { snapshot = value }

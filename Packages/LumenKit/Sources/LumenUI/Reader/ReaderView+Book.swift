@@ -115,7 +115,7 @@ extension ReaderView {
         case .image:
             if let source = model.source {
                 ScrollView([.horizontal, .vertical]) {
-                    AttachmentImage(name: source.file, attachments: model.database.attachments)
+                    AttachmentImage(name: source.file, attachments: model.database.attachments, maxPixelSize: nil)
                         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         .padding(24)
                 }

@@ -38,22 +38,30 @@ public struct SidebarSnapshot: Equatable, Sendable {
     public static let empty = SidebarSnapshot(favorites: [], databases: [], folders: [], inboxCount: 0, trashCount: 0)
 
     public static func fetch(_ db: Database) throws -> SidebarSnapshot {
-        let alive = Page.filter(Column("deletedAt") == nil)
-        let favorites = try alive
+        let favorites = try Page.filter(Column("deletedAt") == nil)
             .filter(Column("isFavorite") == true)
             .order(Column("title"))
             .fetchAll(db)
+        var snapshot = try fetchCounts(db)
+        snapshot.favorites = favorites
+        snapshot.databases = try DataTableListQuery.fetch(db)
+        snapshot.folders = try FolderTreeQuery.fetch(db)
+        snapshot.recent = try RecentQuery.fetch(db, limit: 5)
+        return snapshot
+    }
+
+    /// Только числа: неразобранные записки и что лежит в корзине. Табло комнат видно всегда
+    /// и пересчитывается после каждой записи, поэтому дерево папок и списки ему не грузим.
+    public static func fetchCounts(_ db: Database) throws -> SidebarSnapshot {
         let trashedPages = try Page.filter(Column("deletedAt") != nil).fetchCount(db)
         let trashedFolders = try Folder.filter(Column("deletedAt") != nil).fetchCount(db)
         let trashedSources = try Source.filter(Column("deletedAt") != nil).fetchCount(db)
-        return SidebarSnapshot(
-            favorites: favorites,
-            databases: try DataTableListQuery.fetch(db),
-            folders: try FolderTreeQuery.fetch(db),
-            inboxCount: try alive.filter(Column("inInbox") == true).fetchCount(db),
-            trashCount: trashedPages + trashedFolders + trashedSources,
-            recent: try RecentQuery.fetch(db, limit: 5)
-        )
+        var snapshot = SidebarSnapshot.empty
+        snapshot.inboxCount = try Page
+            .filter(Column("deletedAt") == nil && Column("inInbox") == true)
+            .fetchCount(db)
+        snapshot.trashCount = trashedPages + trashedFolders + trashedSources
+        return snapshot
     }
 }
 
