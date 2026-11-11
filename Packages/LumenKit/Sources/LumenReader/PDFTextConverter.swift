@@ -12,7 +12,7 @@ import UIKit
 /// Главы берутся из закладок файла, а если их нет, из заголовков, набранных крупным шрифтом.
 enum PDFTextConverter {
     /// Версия разбора: если поменять вывод, старый кэш перестанет подходить.
-    static let version = 5
+    static let version = 6
     /// Меньше стольких символов на страницу в среднем значит, что это скан без текстового слоя.
     static let minimumCharactersPerPage = 40
 
@@ -58,7 +58,14 @@ enum PDFTextConverter {
         <html><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>\(HTML.escape(title))</title>
-        <style>p.image { margin: 1.2em 0; } p.image img { border-radius: 10px; } h1 { font-size: 1.55em; margin: 0.3em 0 1em; } h2 { font-size: 1.25em; margin: 1.6em 0 0.7em; } h3 { font-size: 1.08em; margin: 1.4em 0 0.6em; } p { margin: 0 0 0.85em; }</style>
+        <style>p.image { margin: 1.2em 0; } p.image img { border-radius: 10px; } h1 { font-size: 1.55em; margin: 0.3em 0 1em; } h2 { font-size: 1.25em; margin: 1.6em 0 0.7em; } h3 { font-size: 1.08em; margin: 1.4em 0 0.6em; } p { margin: 0 0 0.85em; } \
+        div.note, aside.box, p.note { margin: 1.3em 0; padding: 0.8em 1.05em; border-radius: 12px; } \
+        div.note, p.note { background: rgba(226, 132, 92, 0.12); border-left: 3px solid rgba(226, 132, 92, 0.8); } \
+        div.note.warning { background: rgba(214, 84, 84, 0.12); border-left-color: rgba(214, 84, 84, 0.85); } \
+        aside.box { background: rgba(128, 128, 128, 0.14); } \
+        div.note p, aside.box p { margin: 0 0 0.6em; } div.note p:last-child, aside.box p:last-child { margin-bottom: 0; } \
+        div.note p.label { font-size: 0.74em; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85; margin-bottom: 0.45em; } \
+        aside.box p.label { font-weight: 700; margin-bottom: 0.5em; } aside.box p:not(.label) { font-size: 0.94em; }</style>
         </head><body>\(body)</body></html>
         """
     }

@@ -20,6 +20,11 @@ struct ScreenOptionsTests {
         #expect(ReaderProgressMode.hover.isVisible(isHovered: false, hasPointer: false))
     }
 
+    @Test func windowButtonsShownByDefault() {
+        // Кнопки «Назад / Вперёд» видны сразу, на Mac тоже.
+        #expect(ScreenOptions.windowButtonsDefault)
+    }
+
     @Test func keysAreDistinct() {
         let keys = [
             ScreenOptions.tabStripKey, ScreenOptions.windowButtonsKey, ScreenOptions.saveStatusKey,

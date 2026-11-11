@@ -47,9 +47,9 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Bookmark a place while you write notes, and jump back to it later.
 - Notes open beside the book in a split view. On iPhone they slide up as a sheet.
 - Lumen remembers exactly where you stopped reading. Dark mode tints PDF pages too.
-- Read a PDF like an EPUB: the **Text** view reflows it into chapters (from the PDF's bookmarks or its large headings), keeps its pictures in place, drops running headers and page numbers, and lets you pick any font and size. Highlights, excerpts and your reading place carry over between the Text and Original views.
+- Read a PDF like an EPUB: the **Text** view reflows it into chapters (from the PDF's bookmarks or its large headings), keeps its pictures in place, drops running headers and page numbers (even when the header is the current section's name), sets notes, warnings and grey sidebars apart as coloured boxes, and lets you pick any font and size. Highlights, excerpts and your reading place carry over between the Text and Original views.
 - Text size goes up to 48 pt in books and documents.
-- Read the Original view of a PDF comfortably on a phone: Lumen trims the white margins so the text is larger at the same width, can read a two-column page column by column (left column fills the screen, then the right one), and remembers your zoom for each book. Scrolling stays straight up and down, without drifting sideways.
+- Read the Original view of a PDF comfortably on a phone: Lumen trims the white margins of every page on its own (mirrored book margins included, stray watermarks ignored) so the text is larger at the same width, can read a two-column page column by column (left column fills the screen, then the right one), and remembers your zoom for each book. Scrolling stays straight up and down, without drifting sideways.
 - Turn pages with a swipe: on iPhone and iPad by finger, on a Mac with a two-finger swipe on the trackpad, in books and in PDFs. Or with the arrow keys ← → ↑ ↓ (a zoomed PDF page scrolls first, then turns). ⌥⌘← and ⌥⌘→ move the keyboard between the book and the note beside it.
 - A dashboard for every book with reading time and progress.
 - `lumen://` links to a page, a book, a quote or a place in a book. Paste one into any app, and tapping it opens Lumen right there.

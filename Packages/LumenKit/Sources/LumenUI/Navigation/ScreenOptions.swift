@@ -16,15 +16,9 @@ enum ScreenOptions {
     static let homeInboxKey = "screen.home.inbox"
     static let homeRecentKey = "screen.home.recent"
 
-    /// «Назад / Вперёд» и «Разделить экран» вверху окна. На Mac есть ⌘[ ⌘] ⌘\, поэтому кнопки
-    /// спрятаны; на iPad клавиатуры может не быть, там они видны.
-    static var windowButtonsDefault: Bool {
-        #if os(macOS)
-        false
-        #else
-        true
-        #endif
-    }
+    /// «Назад / Вперёд» и «Разделить экран» вверху окна. Видны везде: по ним ходят мышью
+    /// и на Mac, а ⌘[ ⌘] ⌘\ знают не все. Спрятать можно в настройках.
+    static let windowButtonsDefault = true
 }
 
 /// Когда видна строка вкладок.

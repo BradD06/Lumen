@@ -57,7 +57,18 @@ struct BlockRow: View {
         }
         .padding(.vertical, verticalPadding)
         .overlay(alignment: .topLeading) { addButton }
-        .overlay(alignment: .topLeading) { floatingFormatBar }
+        #if os(macOS)
+        // Панель оформления рисует сам редактор поверх всех строк (PageEditorView): внутри строки
+        // она висела бы за её границей, и клики уходили бы в блок выше.
+        .anchorPreference(key: FormatBarAnchorKey.self, value: .bounds) { [selection = formatBarSelection] bounds in
+            selection.map { FormatBarAnchor(selection: $0, bounds: bounds) }
+        }
+        .onChange(of: model.colorPickerRequest) { _, id in
+            guard let id, id == block.id else { return }
+            model.colorPickerRequest = nil
+            isColorPickerShown = true
+        }
+        #endif
         // Режим фокуса: всё, кроме блока с курсором, приглушено.
         .opacity(focusMode.isOn && focus.wrappedValue != nil && !isFocused ? 0.3 : 1)
         .animation(.easeInOut(duration: 0.25), value: isFocused)
@@ -580,18 +591,11 @@ struct BlockRow: View {
         ActiveTextField.select(target, whenTextIs: source)
     }
 
-    /// Панель над выделенным текстом на Mac. На iPhone и iPad она над клавиатурой (PageEditorView).
-    @ViewBuilder
-    private var floatingFormatBar: some View {
-        #if os(macOS)
-        if isFocused, let info = model.textSelection, info.blockId == block.id {
-            FormatBar(model: model, blockId: block.id, selection: info) {
-                DispatchQueue.main.async { isColorPickerShown = true }
-            }
-            .offset(x: Self.handleInset, y: -44)
-            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottomLeading)))
-        }
-        #endif
+    /// Выделенный текст этого блока, над которым на Mac стоит панель оформления.
+    /// На iPhone и iPad панель над клавиатурой (PageEditorView).
+    private var formatBarSelection: TextSelectionInfo? {
+        guard isFocused, let info = model.textSelection, info.blockId == block.id else { return nil }
+        return info
     }
 
     /// Код вне редактирования рисует подсвеченная копия поверх поля, само поле тогда прозрачное.
