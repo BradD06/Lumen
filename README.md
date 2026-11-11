@@ -46,6 +46,8 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - A **Text / Pen** switch in the notes beside a book: write with the keyboard, or draw at the end of the note.
 - Bookmark a place while you write notes, and jump back to it later.
 - Notes open beside the book in a split view. On iPhone they slide up as a sheet.
+- A **Windows** switch on the Mac and iPad puts the book and its notes side by side or one above the other (book on top, note below), and swaps them. Drag the handle between them to resize. Each book remembers its layout, and an iPad held upright stacks them on its own. Split-screen panes can be stacked the same way.
+- Drag a quote into a note: select text in the book and drag the "To notes" button onto any open note. It lands there as an excerpt that links back to the page.
 - Lumen remembers exactly where you stopped reading. Dark mode tints PDF pages too.
 - Read a PDF like an EPUB: the **Text** view reflows it into chapters (from the PDF's bookmarks or its large headings), keeps its pictures in place, drops running headers and page numbers (even when the header is the current section's name), sets notes, warnings and grey sidebars apart as coloured boxes, and lets you pick any font and size. Highlights, excerpts and your reading place carry over between the Text and Original views.
 - Text size goes up to 48 pt in books and documents.

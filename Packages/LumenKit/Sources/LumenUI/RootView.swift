@@ -45,6 +45,8 @@ public struct RootView: View {
     /// К какому краю сейчас держат вкладку, и ширина области панелей для расчёта краёв.
     @State private var tabDropSide: TabDropSide?
     @State private var panesWidth: CGFloat = 0
+    /// Окно выше, чем шире (iPad стоя): панели тогда сами встают друг под другом.
+    @State private var isTallWindow = false
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -112,6 +114,24 @@ public struct RootView: View {
         withAnimation(.snappy) { workspace.toggleSplit() }
     }
 
+    /// Панели активной вкладки рядом или друг под другом: что выбрано для такого окна.
+    private var paneAxis: PaneArrangement.Axis {
+        workspace.selectedTab.arrangement.axis(isTall: isTallWindow)
+    }
+
+    private func setPaneAxis(_ axis: PaneArrangement.Axis) {
+        guard axis != paneAxis else { return }
+        LumenSounds.play(.toggle)
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+            workspace.setPaneAxis(axis, isTall: isTallWindow)
+        }
+    }
+
+    private func swapPanes() {
+        LumenSounds.play(.toggle)
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { workspace.swapPanes() }
+    }
+
     private var splitView: some View {
         NavigationStack {
             workspaceDetail
@@ -158,6 +178,9 @@ public struct RootView: View {
                         }
                         .help("Новая заметка (⌘N). Удерживайте, чтобы выбрать, что создать")
 
+                        if workspace.isSplit {
+                            PaneArrangementControls(axis: paneAxis, subject: "панели", onAxis: setPaneAxis, onSwap: swapPanes)
+                        }
                         if showsWindowButtons {
                             Button(action: toggleSplit) {
                                 Label(
@@ -296,7 +319,10 @@ public struct RootView: View {
                 .onChange(of: workspace.draggingTabId) { _, id in
                     if id == nil { tabDropSide = nil }
                 }
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { panesWidth = $0 }
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                    panesWidth = size.width
+                    isTallWindow = PaneArrangement.isTall(width: Double(size.width), height: Double(size.height))
+                }
                 .onDrop(
                     of: [.lumenTab],
                     delegate: TabEdgeDropDelegate(workspace: workspace, width: panesWidth, side: $tabDropSide)
@@ -316,7 +342,7 @@ public struct RootView: View {
         let tab = workspace.selectedTab
         if tab.isSplit {
             // Две скруглённые карточки с просветом, сквозь который виден приглушённый фон темы.
-            PaneSplit {
+            PaneSplit(axis: paneAxis) {
                 pane(0, of: tab).paneCard(isFocused: tab.focusedPane == 0)
             } trailing: {
                 pane(1, of: tab).paneCard(isFocused: tab.focusedPane == 1)
@@ -379,7 +405,13 @@ public struct RootView: View {
         let isActive = !tab.isSplit || tab.focusedPane == index
         return VStack(spacing: 0) {
             if tab.isSplit {
-                PaneHeader(database: database, workspace: workspace, pane: index)
+                PaneHeader(
+                    database: database,
+                    workspace: workspace,
+                    pane: index,
+                    axis: paneAxis,
+                    onToggleAxis: { setPaneAxis(paneAxis == .stacked ? .sideBySide : .stacked) }
+                )
             }
             detail(tab.panes[index].current, pane: index)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -553,6 +585,21 @@ public struct RootView: View {
             ))
         }
         if workspace.isSplit {
+            let stacked = paneAxis == .stacked
+            list.append(PaletteCommand(
+                id: "pane-axis",
+                title: stacked ? "Поставить панели рядом" : "Поставить панели друг под другом",
+                systemImage: stacked ? "rectangle.split.2x1" : "rectangle.split.1x2",
+                keywords: ["окна", "сверху", "снизу", "под", "рядом", "панели", "расположение"],
+                run: { setPaneAxis(stacked ? .sideBySide : .stacked) }
+            ))
+            list.append(PaletteCommand(
+                id: "pane-swap",
+                title: "Поменять панели местами",
+                systemImage: stacked ? "arrow.up.arrow.down" : "arrow.left.arrow.right",
+                keywords: ["окна", "местами", "панели"],
+                run: swapPanes
+            ))
             list.append(PaletteCommand(
                 id: "other-pane",
                 title: "Перейти в соседнюю панель",

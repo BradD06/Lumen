@@ -55,6 +55,9 @@ private struct HighlightActionBar<Extra: View>: View {
     var onColor: (HighlightColor) -> Void
     var onExcerpt: () -> Void
     var onClose: () -> Void
+    /// Что тянуть, если кнопку «В заметки» не нажать, а потащить на заметку.
+    var drag: ExcerptDrag.Payload?
+    var dragText = ""
     @ViewBuilder var extra: () -> Extra
     @Environment(\.lumenTheme) private var theme
 
@@ -92,14 +95,26 @@ private struct HighlightActionBar<Extra: View>: View {
         }
     }
 
+    @ViewBuilder
     private func excerptButton(expands: Bool) -> some View {
-        Button(action: onExcerpt) {
+        let button = Button(action: onExcerpt) {
             Label("В заметки", systemImage: "quote.opening")
                 .font(.system(size: expands ? 16 : 14, weight: .heavy, design: .rounded))
         }
         .buttonStyle(ReaderPillButtonStyle(isProminent: true, expands: expands))
         .keyboardShortcut("e", modifiers: .command)
-        .help("Выделить и вставить цитату в заметки (⌘E)")
+        if let drag {
+            // Кнопку можно не только нажать, но и утащить на заметку: выписка встанет там.
+            button
+                .onDrag {
+                    ExcerptDrag.itemProvider(for: drag)
+                } preview: {
+                    ExcerptDragPreview(text: dragText)
+                }
+                .help("Нажмите или перетащите на заметку, чтобы вставить цитату (⌘E)")
+        } else {
+            button.help("Выделить и вставить цитату в заметки (⌘E)")
+        }
     }
 
     private var closeButton: some View {
@@ -126,7 +141,9 @@ struct SelectionBar: View {
             isCompact: isCompact,
             onColor: { color in Task { await model.highlightSelection(color) } },
             onExcerpt: { Task { await model.excerptSelection() } },
-            onClose: { model.clearSelection() }
+            onClose: { model.clearSelection() },
+            drag: ExcerptDrag.Payload(sourceId: model.sourceId),
+            dragText: model.selection?.text ?? ""
         ) {
             Button {
                 Task { await model.copySelectionLink() }
@@ -173,7 +190,9 @@ struct HighlightBar: View {
                 Task { await model.addExcerpt(highlight) }
                 model.activeHighlightId = nil
             },
-            onClose: { model.activeHighlightId = nil }
+            onClose: { model.activeHighlightId = nil },
+            drag: ExcerptDrag.Payload(sourceId: model.sourceId, highlightId: highlight.id),
+            dragText: highlight.text
         ) {
             Button {
                 isEditingNote = true

@@ -3,6 +3,7 @@ import LumenStorage
 import LumenThemes
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
 #endif
@@ -56,6 +57,8 @@ struct PageEditorView: View {
     @AppStorage(ScreenOptions.breadcrumbsKey) private var showsBreadcrumbs = false
     /// Блоки верхнего уровня, видные на экране: по ним подсвечивается заголовок на карте.
     @State private var visibleBlockIds: [UUID] = []
+    /// Над заметкой держат выписку, утащенную из книги.
+    @State private var isExcerptTargeted = false
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -323,6 +326,12 @@ struct PageEditorView: View {
             .onScrollTargetVisibilityChange(idType: UUID.self) { ids in
                 visibleBlockIds = ids
             }
+            // Выписку из книги можно дотащить до заметки: она встанет выпиской со ссылкой на место.
+            .onDrop(of: [.lumenExcerpt], isTargeted: $isExcerptTargeted) { providers in
+                ExcerptDrag.accept(providers, into: model)
+            }
+            .overlay { ExcerptDropHighlight(isTargeted: isExcerptTargeted) }
+            .animation(.easeOut(duration: 0.15), value: isExcerptTargeted)
             .overlay(alignment: .bottomTrailing) {
                 if !isEmbedded, !isCompact, isActivePane {
                     WordCountCapsule(
