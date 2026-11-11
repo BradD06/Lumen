@@ -64,13 +64,25 @@ extension AppDatabase {
             keeper.author = author
             keeperChanged = true
         }
+        var duplicateChanged = false
         if keeper.cover == nil, let cover = duplicate.cover {
             // Обложка переходит оригиналу: при очистке корзины её файл не удалится вместе с повтором.
             keeper.cover = cover
             duplicate.cover = nil
+            duplicateChanged = true
+            keeperChanged = true
+        }
+        if keeper.customCover == nil, let custom = duplicate.customCover {
+            // Своё фото обложки тоже: его выбрали для этой книги на другом устройстве.
+            keeper.customCover = custom
+            keeper.spineCenter = duplicate.spineCenter
+            duplicate.customCover = nil
+            duplicateChanged = true
+            keeperChanged = true
+        }
+        if duplicateChanged {
             duplicate.updatedAt = now
             try duplicate.update(db)
-            keeperChanged = true
         }
         if keeperChanged {
             keeper.updatedAt = now
