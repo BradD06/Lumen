@@ -25,7 +25,12 @@ struct ReaderView: View {
     @AppStorage("reader.fontSize") var fontSize = 18
     @AppStorage("reader.typeface") var typefaceRaw = ReaderAppearance.Typeface.serif.rawValue
     @AppStorage("reader.notesOpen") var showsNotes = true
-    @AppStorage("reader.notesFraction") var notesFraction = 0.42
+    /// Где заметки: рядом с книгой или под ней и с какой стороны. Своё у каждой книги.
+    @State var arrangement: PaneArrangement
+    /// Читалка выше, чем шире (iPad стоя): заметки тогда сами встают под книгу.
+    @State var isTallReader = false
+    /// Заметки сейчас на экране рядом с книгой или под ней (не шторкой).
+    @State var isNotesPaneShown = false
     @State private var isNotesSheetPresented = false
     @State var showsHighlights = false
     @State var isAppearancePresented = false
@@ -63,6 +68,7 @@ struct ReaderView: View {
         onClose: @escaping () -> Void
     ) {
         _model = State(initialValue: ReaderModel(database: database, sourceId: sourceId, highlightId: highlightId))
+        _arrangement = State(initialValue: ReaderLayoutStore.load(sourceId))
         self.highlightId = highlightId
         self.onOpenPage = onOpenPage
         self.onOpenSource = onOpenSource
@@ -80,13 +86,20 @@ struct ReaderView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let isWide = isWide(geometry.size.width)
-            let notesWidth: CGFloat = (geometry.size.width * CGFloat(dragFraction ?? notesFraction)).rounded()
+            let size = geometry.size
+            let isTall = PaneArrangement.isTall(width: Double(size.width), height: Double(size.height))
+            let axis = arrangement.axis(isTall: isTall)
+            let fraction = dragFraction ?? arrangement.fraction(for: axis)
             // Панель видна и до первой заметки: в ней кнопка начать заметку.
-            let showsNotesPane: Bool = isWide && showsNotes && model.source != nil
+            let canShowPane = axis == .stacked ? canStack(size) : isWide(size.width)
+            let showsNotesPane: Bool = canShowPane && showsNotes && model.source != nil
+            let notesWidth: CGFloat = showsNotesPane && axis == .sideBySide ? (size.width * CGFloat(fraction)).rounded() : 0
             // Содержание встаёт отдельной колонкой, только если книге останется достаточно места.
             let tocAsColumn: Bool = showsToc && !isCompact && !model.toc.isEmpty
-                && geometry.size.width - (showsNotesPane ? notesWidth : 0) - 300 > 460
+                && size.width - notesWidth - 300 > 460
+            let paneLength: CGFloat = axis == .stacked
+                ? size.height
+                : size.width - (tocAsColumn ? 260 + ReaderStyle.gap : 0)
             HStack(spacing: 0) {
                 if tocAsColumn {
                     tableOfContents
@@ -94,23 +107,36 @@ struct ReaderView: View {
                         .padding(.trailing, ReaderStyle.gap)
                         .transition(.move(edge: .leading).combined(with: .opacity))
                 }
-                readerPane(tocOverlay: !tocAsColumn)
-                if showsNotesPane {
-                    splitHandle(totalWidth: geometry.size.width)
-                    notesPane(model.notes)
-                        .frame(width: notesWidth)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                // Книга, ручка и заметки всегда в одном порядке: раскладка сама ставит их
+                // рядом или друг под другом, и книга при этом не открывается заново.
+                TwoPaneLayout(
+                    axis: axis,
+                    isSwapped: arrangement.isSwapped,
+                    secondFraction: CGFloat(fraction),
+                    gap: ReaderStyle.gap,
+                    minLength: axis == .stacked ? 180 : 300
+                ) {
+                    readerPane(tocOverlay: !tocAsColumn)
+                    if showsNotesPane {
+                        splitHandle(axis: axis, length: paneLength)
+                        notesPane(model.notes)
+                            .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                    }
                 }
             }
             .padding(.horizontal, isCompact ? 8 : ReaderStyle.gap)
             .padding(.top, isCompact ? 4 : 6)
             .padding(.bottom, isCompact ? 8 : ReaderStyle.gap)
-            .onChange(of: isWide) { _, wide in
-                if wide { isNotesSheetPresented = false }
+            .onChange(of: canShowPane) { _, canShow in
+                if canShow { isNotesSheetPresented = false }
             }
-            #if os(macOS)
-            .onChange(of: showsNotesPane, initial: true) { _, shown in keys.hasNotesBeside = shown }
-            #endif
+            .onChange(of: isTall, initial: true) { _, tall in isTallReader = tall }
+            .onChange(of: showsNotesPane, initial: true) { _, shown in
+                isNotesPaneShown = shown
+                #if os(macOS)
+                keys.hasNotesBeside = shown
+                #endif
+            }
         }
         .fontDesign(.rounded)
         .background(ThemedBackground())
@@ -158,6 +184,9 @@ struct ReaderView: View {
         .onChange(of: isSplitScreen, initial: true) { _, split in keys.isSplitScreen = split }
         #endif
         .onChange(of: besidePageId, initial: true) { _, id in model.besidePageId = id }
+        .onChange(of: arrangement) { _, arrangement in
+            ReaderLayoutStore.save(arrangement, for: model.sourceId)
+        }
         .onChange(of: appearance) { _, appearance in
             model.web.setAppearance(appearance)
             model.pdf.setPageStyle(appearance.palette.pdfStyle)
@@ -190,6 +219,45 @@ struct ReaderView: View {
         #else
         return width > 720
         #endif
+    }
+
+    /// Заметки под книгой помещаются: обоим листам хватает высоты.
+    private func canStack(_ size: CGSize) -> Bool {
+        #if os(iOS)
+        return horizontalSizeClass == .regular && size.height > 560 && size.width > 400
+        #else
+        return size.height > 520 && size.width > 420
+        #endif
+    }
+
+    /// Текущая ось: рядом или друг под другом, для окна, какое оно сейчас.
+    var notesAxis: PaneArrangement.Axis {
+        arrangement.axis(isTall: isTallReader)
+    }
+
+    func setNotesAxis(_ axis: PaneArrangement.Axis) {
+        guard axis != notesAxis else { return }
+        LumenSounds.play(.toggle)
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+            arrangement.setAxis(axis, isTall: isTallReader)
+        }
+    }
+
+    func swapNotesSide() {
+        LumenSounds.play(.toggle)
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+            arrangement.swap()
+        }
+    }
+
+    /// Значок кнопки «Заметки»: с той стороны, где заметки встанут.
+    private var notesSymbol: String {
+        switch (notesAxis, arrangement.isSwapped) {
+        case (.sideBySide, false): "sidebar.right"
+        case (.sideBySide, true): "sidebar.left"
+        case (.stacked, false): "rectangle.bottomhalf.inset.filled"
+        case (.stacked, true): "rectangle.tophalf.inset.filled"
+        }
     }
 
     func openPage(_ id: UUID) {
@@ -275,13 +343,21 @@ struct ReaderView: View {
                 .keyboardShortcut("l", modifiers: [.command, .option])
                 .help("Выделения в этой книге (⌥⌘L)")
                 .popover(isPresented: $showsHighlights) { highlightsList }
+                if isNotesPaneShown {
+                    PaneArrangementControls(
+                        axis: notesAxis,
+                        subject: "книгу и заметки",
+                        onAxis: setNotesAxis,
+                        onSwap: swapNotesSide
+                    )
+                }
                 Button {
                     toggleNotes()
                 } label: {
-                    Label("Заметки", systemImage: "sidebar.right")
+                    Label("Заметки", systemImage: notesSymbol)
                 }
                 .keyboardShortcut("n", modifiers: [.command, .option])
-                .help("Заметки рядом с книгой (⌥⌘N)")
+                .help(notesAxis == .stacked ? "Заметки под книгой (⌥⌘N)" : "Заметки рядом с книгой (⌥⌘N)")
             }
             Button {
                 Task {

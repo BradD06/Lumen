@@ -1,4 +1,5 @@
 import Foundation
+import LumenCore
 import Observation
 import SwiftUI
 
@@ -70,9 +71,25 @@ struct WorkspaceTab: Identifiable, Hashable, Codable, Sendable {
     var id = UUID()
     var panes: [NavigationHistory]
     var focusedPane = 0
+    /// Как стоят две панели: рядом или друг под другом (в высоком окне сами друг под другом).
+    /// Порядок панелей меняется самими панелями (`swapPanes`), поэтому `isSwapped` тут не нужен.
+    var arrangement = PaneArrangement()
 
     init(_ item: SidebarItem = .home) {
         panes = [NavigationHistory(item)]
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, panes, focusedPane, arrangement
+    }
+
+    // Вкладки, сохранённые до появления расположения панелей, читаются как раньше.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        panes = try container.decode([NavigationHistory].self, forKey: .panes)
+        focusedPane = try container.decodeIfPresent(Int.self, forKey: .focusedPane) ?? 0
+        arrangement = (try? container.decodeIfPresent(PaneArrangement.self, forKey: .arrangement)) ?? PaneArrangement()
     }
 
     var isSplit: Bool { panes.count > 1 }
@@ -327,6 +344,13 @@ final class Workspace {
             tabs.removeAll { $0.id == id }
         }
         selectedTabId = target.id
+    }
+
+    /// Ставит панели активной вкладки рядом или друг под другом. Выбор помнится отдельно
+    /// для широкого и для высокого окна (iPad стоя).
+    func setPaneAxis(_ axis: PaneArrangement.Axis, isTall: Bool) {
+        defer { save() }
+        tabs[selectedIndex].arrangement.setAxis(axis, isTall: isTall)
     }
 
     /// Меняет панели местами.

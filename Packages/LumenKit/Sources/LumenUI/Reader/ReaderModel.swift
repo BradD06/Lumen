@@ -971,9 +971,30 @@ final class ReaderModel {
         await addExcerpt(highlight)
     }
 
+    /// Выписку дотащили до заметки: из выделенного сейчас текста или из сохранённого выделения.
+    func dropExcerpt(highlightId: UUID?, into notes: PageEditorModel) async {
+        let highlight: Highlight?
+        if let highlightId {
+            highlight = highlights.first { $0.id == highlightId }
+            activeHighlightId = nil
+        } else {
+            highlight = await highlightSelection(.yellow)
+        }
+        guard let highlight else { return }
+        await addExcerpt(highlight, into: notes)
+    }
+
     /// Выписка из уже сохранённого выделения. Если заметок к книге ещё нет, они заводятся.
-    func addExcerpt(_ highlight: Highlight) async {
-        guard let notes = await excerptTarget() else { return }
+    /// `target`: заметка, куда выписку дотащили; без неё выписка идёт в заметку рядом с книгой.
+    func addExcerpt(_ highlight: Highlight, into target: PageEditorModel? = nil) async {
+        let notes: PageEditorModel
+        if let target {
+            notes = target
+        } else if let found = await excerptTarget() {
+            notes = found
+        } else {
+            return
+        }
         notes.appendExcerpt(
             text: highlight.text,
             reference: ExcerptReference(sourceId: sourceId, highlightId: highlight.id, label: highlight.label)
