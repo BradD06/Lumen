@@ -16,11 +16,6 @@ enum ScreenOptions {
     static let homeInboxKey = "screen.home.inbox"
     static let homeRecentKey = "screen.home.recent"
 
-    static let sidebarRecentKey = "screen.sidebar.recent"
-    static let sidebarFavoritesKey = "screen.sidebar.favorites"
-    static let sidebarDatabasesKey = "screen.sidebar.databases"
-    static let sidebarFoldersKey = "screen.sidebar.folders"
-
     /// «Назад / Вперёд» и «Разделить экран» вверху окна. На Mac есть ⌘[ ⌘] ⌘\, поэтому кнопки
     /// спрятаны; на iPad клавиатуры может не быть, там они видны.
     static var windowButtonsDefault: Bool {
@@ -123,11 +118,6 @@ struct ScreenOptionsSection: View {
     @AppStorage(ScreenOptions.homeInboxKey) private var homeInbox = true
     @AppStorage(ScreenOptions.homeRecentKey) private var homeRecent = true
 
-    @AppStorage(ScreenOptions.sidebarRecentKey) private var sidebarRecent = true
-    @AppStorage(ScreenOptions.sidebarFavoritesKey) private var sidebarFavorites = true
-    @AppStorage(ScreenOptions.sidebarDatabasesKey) private var sidebarDatabases = true
-    @AppStorage(ScreenOptions.sidebarFoldersKey) private var sidebarFolders = true
-
     var body: some View {
         Section {
             Picker("Вкладки", selection: $tabStrip) {
@@ -177,21 +167,6 @@ struct ScreenOptionsSection: View {
             Text("Библиотека и книги")
         } footer: {
             Text("С сеткой всё в библиотеке встаёт по ячейкам и примагничивается к ним.")
-        }
-
-        Section {
-            Toggle("Недавние", isOn: $sidebarRecent)
-                .keyHint("Недавние") { sidebarRecent.toggle() }
-            Toggle("Избранное", isOn: $sidebarFavorites)
-                .keyHint("Избранное") { sidebarFavorites.toggle() }
-            Toggle("Базы данных", isOn: $sidebarDatabases)
-                .keyHint("Базы данных") { sidebarDatabases.toggle() }
-            Toggle("Папки", isOn: $sidebarFolders)
-                .keyHint("Папки") { sidebarFolders.toggle() }
-        } header: {
-            Text("Боковая панель")
-        } footer: {
-            Text("Видна только в теме «Закат». «Сегодня», «Входящие», «Задачи» и «Библиотека» остаются всегда.")
         }
     }
 }
