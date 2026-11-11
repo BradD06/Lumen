@@ -31,7 +31,7 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 22) {
                 header
                 // Сверху полка с книгами, ниже то, что лежит на столе.
-                BookShelf(database: database, onOpen: onOpenSource, showsLamp: true) {
+                BookShelf(database: database, onOpen: onOpenSource, mode: .recent, showsLamp: true) {
                     appActions.create(.book)
                 }
                 deskLabel

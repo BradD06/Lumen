@@ -15,8 +15,17 @@ import AppKit
 struct BookShelf: View {
     static let sortKey = "shelf.sort"
 
+    /// Что стоит на полке.
+    enum Mode {
+        /// Все книги по полкам, с заметками-папками (комната «Полка»).
+        case shelves
+        /// Одна полка с книгами, которые читали последними, от самой свежей к давней (комната «Стол»).
+        case recent
+    }
+
     let database: AppDatabase
     var onOpen: (UUID) -> Void
+    var mode = Mode.shelves
     /// Лампа стоит только на полке главного экрана.
     var showsLamp = false
     var onAdd: () -> Void
@@ -46,23 +55,7 @@ struct BookShelf: View {
     }
 
     var body: some View {
-        let groups = snapshot.groups
-        // Между полками просторно: над каждой видно, что книги разной высоты.
-        VStack(alignment: .leading, spacing: 22) {
-            HStack(alignment: .center, spacing: 12) {
-                ViewThatFits(in: .horizontal) {
-                    caption("На полке · лента показывает, докуда дочитано")
-                    caption("На полке")
-                }
-                Spacer(minLength: 0)
-                ShelfSortPicker(sort: sort, onPick: choose)
-                    .layoutPriority(1)
-            }
-            ForEach(groups) { group in
-                shelfRow(group, titled: groups.count > 1)
-            }
-            newShelfButton
-        }
+        content
         // Полки всегда в полный рост: соседний список не сжимает их и не срезает верх книг.
         .fixedSize(horizontal: false, vertical: true)
         .task { await observe() }
@@ -97,6 +90,154 @@ struct BookShelf: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("bookShelf")
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch mode {
+        case .shelves:
+            let groups = snapshot.groups
+            // Между полками просторно: над каждой видно, что книги разной высоты.
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(alignment: .center, spacing: 12) {
+                    ViewThatFits(in: .horizontal) {
+                        caption("На полке · лента показывает, докуда дочитано")
+                        caption("На полке")
+                    }
+                    Spacer(minLength: 0)
+                    ShelfSortPicker(sort: sort, onPick: choose)
+                        .layoutPriority(1)
+                }
+                ForEach(groups) { group in
+                    shelfRow(group, titled: groups.count > 1)
+                }
+                newShelfButton
+            }
+        case .recent:
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 12) {
+                    ViewThatFits(in: .horizontal) {
+                        caption("Недавно читал · от свежей к давней")
+                        caption("Недавно читал")
+                    }
+                    Spacer(minLength: 0)
+                    Button {
+                        appActions.open(.library(nil))
+                    } label: {
+                        Label("Все книги", systemImage: "books.vertical")
+                            .font(.callout)
+                            .foregroundStyle(theme.accent)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Все книги и полки")
+                    .keyHint("Все книги") { appActions.open(.library(nil)) }
+                }
+                recentRow
+            }
+        }
+    }
+
+    /// Книги, которые открывали, от самой свежей к давней. Ещё не открытые сюда не попадают.
+    nonisolated static func recentlyRead(_ books: [Source], limit: Int = 30) -> [Source] {
+        let opened = books.filter { $0.lastOpenedAt != nil }
+        return Array(opened.sorted { ($0.lastOpenedAt ?? .distantPast) > ($1.lastOpenedAt ?? .distantPast) }.prefix(limit))
+    }
+
+    /// Полка «Стола»: порядок задаёт время чтения, поэтому книги здесь не перетаскивают.
+    private var recentRow: some View {
+        let books = Self.recentlyRead(snapshot.books)
+        return VStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .bottom, spacing: ShelfLayout.spacing) {
+                    ForEach(books) { book in
+                        recentBook(book)
+                    }
+                    HStack(alignment: .bottom, spacing: 0) {
+                        if !books.isEmpty {
+                            Bookend()
+                        }
+                        addButton(title: "Добавить книгу", help: "Поставить на полку книгу или файл", add: onAdd)
+                    }
+                    if books.isEmpty {
+                        Text(snapshot.books.isEmpty
+                            ? "Добавьте первую книгу, и она встанет на полку"
+                            : "Откройте книгу, и она встанет сюда")
+                            .font(.callout.italic())
+                            .foregroundStyle(theme.textSecondary)
+                            .padding(.leading, 12)
+                            .padding(.bottom, 16)
+                    }
+                }
+                .frame(minHeight: ShelfLayout.tallestSpine, alignment: .bottomLeading)
+                .padding(.horizontal, ShelfLayout.leading)
+                .padding(.top, ShelfLayout.headroom)
+            }
+            .safeAreaInset(edge: .trailing, spacing: 0) {
+                if showsLamp {
+                    ShelfLamp()
+                        .padding(.horizontal, 8)
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                }
+            }
+            .frame(height: ShelfLayout.rowHeight)
+            .keyHintClip()
+            plank
+        }
+    }
+
+    private func recentBook(_ book: Source) -> some View {
+        Button {
+            show(book)
+        } label: {
+            bookLabel(book)
+        }
+        .buttonStyle(SpineButtonStyle())
+        .keyHint(book.displayTitle) { show(book) }
+        .contextMenu {
+            Button("Открыть", systemImage: "book") { onOpen(book.id) }
+            BookCoverMenu(book: book)
+            Divider()
+            Button("Убрать в корзину", systemImage: "trash", role: .destructive) { trash(book) }
+        }
+        .zIndex(hoveredId == book.id ? 1 : 0)
+        .accessibilityLabel(BookSpineStyle.summary(book))
+        .accessibilityHint("Показать книгу и статистику чтения")
+        .onHover { hover(book, $0) }
+    }
+
+    /// Книга на полке: корешок, выдвинутая обложка или пустое место, пока книга в центре окна.
+    @ViewBuilder
+    private func bookLabel(_ book: Source) -> some View {
+        let isShown = showcase?.selectedId == book.id
+        let isPulled = hoveredId == book.id && !isDragging
+        if isShown, showcase != nil {
+            // Книга сейчас в центре окна: на полке пустое место под неё.
+            let style = BookSpineStyle(source: book)
+            Color.clear.frame(width: style.slotWidth, height: style.slotHeight)
+        } else if let showcase {
+            ShelfBook(source: book, attachments: database.attachments, isPulled: isPulled)
+                .matchedGeometryEffect(id: book.id, in: showcase.namespace)
+        } else {
+            ShelfBook(source: book, attachments: database.attachments, isPulled: isPulled)
+        }
+    }
+
+    private func hover(_ book: Source, _ hovering: Bool) {
+        // Пока книгу тащат, книги под мышью не выдвигаются и не поворачиваются.
+        if isDragging {
+            hoveredId = nil
+            return
+        }
+        // Перетаскивание бросили за полкой: забываем его.
+        draggingId = nil
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+            if hovering {
+                hoveredId = book.id
+            } else if hoveredId == book.id {
+                hoveredId = nil
+            }
+        }
     }
 
     /// Одна полка: табличка с названием, корешки и доска.
@@ -263,20 +404,11 @@ struct BookShelf: View {
     /// Где витрины нет, нажатие сразу открывает книгу.
     @ViewBuilder
     private func shelfBook(_ book: Source, index: Int, count: Int, group: ShelfGroup) -> some View {
-        let isShown = showcase?.selectedId == book.id
         let isDragged = draggingId == book.id && dragOrders[group.id] != nil
         Button {
             show(book)
         } label: {
-            if isShown, showcase != nil {
-                // Книга сейчас в центре окна: на полке пустое место под неё.
-                Color.clear.frame(width: BookSpineStyle(source: book).width, height: BookSpineStyle(source: book).height)
-            } else if let showcase {
-                ShelfBook(source: book, attachments: database.attachments, isPulled: hoveredId == book.id && !isDragging)
-                    .matchedGeometryEffect(id: book.id, in: showcase.namespace)
-            } else {
-                ShelfBook(source: book, attachments: database.attachments, isPulled: hoveredId == book.id && !isDragging)
-            }
+            bookLabel(book)
         }
         .buttonStyle(SpineButtonStyle())
         .keyHint(book.displayTitle) { show(book) }
@@ -317,22 +449,7 @@ struct BookShelf: View {
         .zIndex(hoveredId == book.id ? 1 : 0)
         .accessibilityLabel(BookSpineStyle.summary(book))
         .accessibilityHint("Показать книгу и статистику чтения")
-        .onHover { hovering in
-            // Пока книгу тащат, книги под мышью не выдвигаются и не поворачиваются.
-            if isDragging {
-                hoveredId = nil
-                return
-            }
-            // Перетаскивание бросили за полкой: забываем его.
-            draggingId = nil
-            withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
-                if hovering {
-                    hoveredId = book.id
-                } else if hoveredId == book.id {
-                    hoveredId = nil
-                }
-            }
-        }
+        .onHover { hover(book, $0) }
     }
 
     private func show(_ book: Source) {
@@ -365,7 +482,8 @@ struct BookShelf: View {
     }
 
     private var spineWidths: [UUID: CGFloat] {
-        Dictionary(snapshot.books.map { ($0.id, BookSpineStyle(source: $0).width) }, uniquingKeysWith: { first, _ in first })
+        // Место книги на полке: наклонённой и лежащей нужно больше, чем стоящей ровно.
+        Dictionary(snapshot.books.map { ($0.id, BookSpineStyle(source: $0).slotWidth) }, uniquingKeysWith: { first, _ in first })
     }
 
     private func orderBinding(_ id: UUID?) -> Binding<[UUID]?> {
@@ -491,11 +609,15 @@ struct BookShelf: View {
             if !shownBooks(group).isEmpty {
                 Bookend()
             }
-            addButton(title: title, group: group, add: add)
+            addButton(
+                title: title,
+                help: group.shelf == nil ? "Поставить на полку книгу или файл" : "Поставить книгу на эту полку",
+                add: add
+            )
         }
     }
 
-    private func addButton(title: String, group: ShelfGroup, add: @escaping () -> Void) -> some View {
+    private func addButton(title: String, help: String, add: @escaping () -> Void) -> some View {
         Button(action: add) {
             RoundedRectangle(cornerRadius: 3, style: .continuous)
                 .strokeBorder(theme.accent.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
@@ -509,7 +631,7 @@ struct BookShelf: View {
         }
         .buttonStyle(.plain)
         .padding(.leading, 6)
-        .help(group.shelf == nil ? "Поставить на полку книгу или файл" : "Поставить книгу на эту полку")
+        .help(help)
         .keyHint(title, perform: add)
         .accessibilityLabel(title)
     }
@@ -551,6 +673,8 @@ struct BookShelf: View {
 
 /// Книга на полке: корешок, а взятая в руки (`isPulled`) выдвигается вверх
 /// и поворачивается обложкой к читателю, как будто её сняли с полки.
+/// Одни книги стоят ровно, другие наклонились или лежат (`BookSpineStyle.Pose`);
+/// взятая в руки книга сначала выпрямляется.
 struct ShelfBook: View {
     let source: Source
     let attachments: AttachmentStore
@@ -559,6 +683,7 @@ struct ShelfBook: View {
     var body: some View {
         let style = BookSpineStyle(source: source)
         let coverWidth = style.coverWidth
+        let pose = isPulled ? BookSpineStyle.Pose.upright : style.pose
         ZStack {
             BookSpine(source: source, attachments: attachments)
                 .rotation3DEffect(.degrees(isPulled ? -90 : 0), axis: (x: 0, y: 1, z: 0), anchor: .trailing, perspective: 0.6)
@@ -569,6 +694,12 @@ struct ShelfBook: View {
                 .shadow(color: .black.opacity(isPulled ? 0.45 : 0), radius: 10, y: 8)
         }
         .frame(width: isPulled ? coverWidth : style.width, height: style.height)
+        .rotationEffect(.degrees(pose.angle), anchor: pose.anchor)
+        .frame(
+            width: isPulled ? coverWidth : style.slotWidth,
+            height: isPulled ? style.height : style.slotHeight,
+            alignment: pose.alignment
+        )
         .offset(y: isPulled ? -20 : 0)
         .scaleEffect(isPulled ? 1.04 : 1, anchor: .bottom)
     }
@@ -820,9 +951,47 @@ struct BookSpineStyle: Equatable {
         case leather, cloth, paperback
     }
 
+    /// Как книга стоит: ровно, наклонилась вправо или влево, лежит.
+    enum Pose: Equatable, CaseIterable {
+        case upright, leanRight, leanLeft, lying
+
+        /// Наклон в градусах: лежащая книга повёрнута на бок.
+        var angle: Double {
+            switch self {
+            case .upright: 0
+            case .leanRight: BookSpineStyle.leanAngle
+            case .leanLeft: -BookSpineStyle.leanAngle
+            case .lying: 90
+            }
+        }
+
+        /// Наклонённая книга опирается на нижний угол, лежащая поворачивается вокруг середины.
+        var anchor: UnitPoint {
+            switch self {
+            case .upright: .bottom
+            case .leanRight: .bottomTrailing
+            case .leanLeft: .bottomLeading
+            case .lying: .center
+            }
+        }
+
+        /// Где книга стоит в своём месте на полке: свободное место остаётся с той стороны, куда она наклонилась.
+        var alignment: Alignment {
+            switch self {
+            case .leanLeft: .bottomTrailing
+            case .lying: .center
+            case .upright, .leanRight: .bottomLeading
+            }
+        }
+    }
+
+    /// Наклон книги, которая прислонилась к соседке.
+    static let leanAngle = 8.0
+
     var width: CGFloat
     var height: CGFloat
     var kind: Kind
+    var pose: Pose
     /// Дочитанная книга выглядит зачитанной.
     var isWorn: Bool
     /// Лента от верха корешка до прочитанного места. Нет ленты, пока книгу не открывали.
@@ -833,6 +1002,7 @@ struct BookSpineStyle: Equatable {
         height = 128 + CGFloat(seed % 5) * 10
         width = 30 + CGFloat(min(source.displayTitle.count, 36) / 4) + CGFloat(seed / 5 % 3) * 2
         kind = Self.kind(seed: seed)
+        pose = Self.pose(seed: seed)
         isWorn = source.progress >= 0.98
         ribbonLength = Self.ribbon(progress: source.progress, opened: source.lastOpenedAt != nil, height: height)
     }
@@ -845,6 +1015,29 @@ struct BookSpineStyle: Equatable {
         default: .paperback
         }
     }
+
+    /// Примерно две книги из трёх стоят ровно, остальные наклонились или лежат.
+    static func pose(seed: Int) -> Pose {
+        switch seed / 7 % 11 {
+        case 0, 1: .leanRight
+        case 2: .leanLeft
+        case 3: .lying
+        default: .upright
+        }
+    }
+
+    /// Место книги на полке по ширине. Наклонённой нужно место под наклон, лежащая занимает свою длину.
+    /// От этой ширины считается, куда встанет перетаскиваемая книга.
+    var slotWidth: CGFloat {
+        switch pose {
+        case .upright: width
+        case .leanRight, .leanLeft: width + (height * CGFloat(sin(Self.leanAngle * .pi / 180))).rounded(.up)
+        case .lying: height
+        }
+    }
+
+    /// Высота места: лежащая книга поднимается над полкой на свою толщину.
+    var slotHeight: CGFloat { pose == .lying ? width : height }
 
     /// Ширина обложки, когда книгу повернули лицом: пропорции обычной книги.
     var coverWidth: CGFloat { (height * 0.68).rounded() }
