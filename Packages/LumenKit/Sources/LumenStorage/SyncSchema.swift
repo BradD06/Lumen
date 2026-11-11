@@ -212,7 +212,9 @@ extension AppDatabase {
             t.column("isDeleted", .boolean).notNull()
             t.primaryKey(["tableName", "recordId"])
         }
-        for table in SyncTable.allCases {
+        // Таблицы на момент этой миграции. Более новые получают часы в своих миграциях:
+        // их самих здесь ещё нет.
+        for table: SyncTable in [.folder, .source, .page, .dataTable, .block, .highlight, .readingSession] {
             try createSyncClockTriggers(db, table: table.rawValue)
         }
     }
