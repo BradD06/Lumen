@@ -116,7 +116,7 @@ extension AppDatabase {
                 }
             case .source:
                 if let source = try Source.fetchOne(db, key: id.id) {
-                    removedFiles += [source.file] + (source.cover.map { [$0] } ?? [])
+                    removedFiles += source.attachmentNames
                 }
             case .folder, .highlight, .dataTable, .readingSession:
                 break

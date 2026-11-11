@@ -38,6 +38,8 @@ targets:
     info:
       path: App/Info.plist
       properties:
+        # Своё фото обложки книги можно снять камерой iPhone или iPad.
+        NSCameraUsageDescription: Lumen снимает камерой обложку книги, если вы хотите поставить своё фото.
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: app.lumen.block
             UTTypeDescription: Lumen Block

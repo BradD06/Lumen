@@ -13,6 +13,11 @@ public struct Source: Identifiable, Hashable, Codable, Sendable {
     public var originalName: String
     /// Картинка обложки во вложениях, если её удалось достать из файла.
     public var cover: String?
+    /// Своё фото обложки во вложениях: заменяет обложку из файла, пока его не уберут.
+    public var customCover: String?
+    /// Какая вертикальная полоска обложки стоит на корешке: середина полоски от 0 (левый край)
+    /// до 1 (правый). `nil`: середина обложки.
+    public var spineCenter: Double?
     /// Папка библиотеки и место на её холсте, как у страниц.
     public var folderId: UUID?
     public var canvasX: Double?
@@ -37,6 +42,8 @@ public struct Source: Identifiable, Hashable, Codable, Sendable {
         file: String,
         originalName: String,
         cover: String? = nil,
+        customCover: String? = nil,
+        spineCenter: Double? = nil,
         folderId: UUID? = nil,
         position: LibraryPoint? = nil,
         locator: SourceLocator? = nil,
@@ -54,6 +61,8 @@ public struct Source: Identifiable, Hashable, Codable, Sendable {
         self.file = file
         self.originalName = originalName
         self.cover = cover
+        self.customCover = customCover
+        self.spineCenter = spineCenter
         self.folderId = folderId
         self.canvasX = position?.x
         self.canvasY = position?.y
@@ -72,6 +81,14 @@ public struct Source: Identifiable, Hashable, Codable, Sendable {
     }
 
     public var isTrashed: Bool { deletedAt != nil }
+
+    /// Обложка, которую видно на полке и на плитке: своё фото, иначе обложка из файла.
+    public var shownCover: String? { customCover ?? cover }
+
+    /// Все файлы книги во вложениях: сам файл и обе обложки. Удаляются вместе с книгой.
+    public var attachmentNames: [String] {
+        [file] + [cover, customCover].compactMap { $0 }
+    }
 
     public var position: LibraryPoint? {
         get { LibraryPoint(x: canvasX, y: canvasY) }

@@ -28,6 +28,28 @@ struct BookShelfTests {
         #expect(BookSpineStyle.ribbon(progress: 1.4, opened: true, height: 150) == 150)
     }
 
+    @Test func spineShowsTheChosenStripOfTheCover() {
+        #expect(BookSpineStyle.stripOffset(center: nil, coverWidth: 100, spineWidth: 30) == 0, "по умолчанию середина")
+        #expect(BookSpineStyle.stripOffset(center: 0.5, coverWidth: 100, spineWidth: 30) == 0)
+        #expect(BookSpineStyle.stripOffset(center: 0.3, coverWidth: 100, spineWidth: 30) == 20)
+        // У края полоска упирается в край обложки, пустоты на корешке нет.
+        #expect(BookSpineStyle.stripOffset(center: 0, coverWidth: 100, spineWidth: 30) == 35)
+        #expect(BookSpineStyle.stripOffset(center: 1, coverWidth: 100, spineWidth: 30) == -35)
+        #expect(SpineStripPicker.fraction(150, width: 300) == 0.5)
+        #expect(SpineStripPicker.fraction(-20, width: 300) == 0)
+        #expect(SpineStripPicker.fraction(400, width: 300) == 1)
+    }
+
+    @Test func ownCoverPhotoIsShownInsteadOfTheBookCover() {
+        var source = book()
+        #expect(source.shownCover == nil)
+        source.cover = "book.jpg"
+        #expect(source.shownCover == "book.jpg")
+        source.customCover = "mine.jpg"
+        #expect(source.shownCover == "mine.jpg")
+        #expect(source.attachmentNames == ["b.epub", "book.jpg", "mine.jpg"])
+    }
+
     @Test func summarySaysHowMuchIsRead() {
         #expect(BookSpineStyle.summary(book(progress: 0.42, opened: true)) == "Мастер и Маргарита, прочитано 42%")
         #expect(BookSpineStyle.summary(book()) == "Мастер и Маргарита, ещё не открывали")

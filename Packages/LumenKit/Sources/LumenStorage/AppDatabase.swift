@@ -274,6 +274,14 @@ extension AppDatabase {
             }
         }
 
+        migrator.registerMigration("v13: custom book covers") { db in
+            // Своё фото обложки и полоска обложки на корешке. Таблица уже синхронизируется.
+            try db.alter(table: "source") { t in
+                t.add(column: "customCover", .text)
+                t.add(column: "spineCenter", .double)
+            }
+        }
+
         return migrator
     }
 }
