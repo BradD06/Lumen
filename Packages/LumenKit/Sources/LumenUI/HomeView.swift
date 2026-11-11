@@ -4,8 +4,8 @@ import LumenStorage
 import LumenThemes
 import SwiftUI
 
-/// «Сегодня», главный экран: поле для быстрой мысли и три карточки дня
-/// (продолжить чтение, задачи на сегодня, разобрать входящие), ниже недавнее.
+/// «Стол», главный экран: сверху полка с книгами, ниже поле для быстрой мысли и три карточки
+/// дня (продолжить чтение, задачи на сегодня, разобрать входящие), ниже недавнее.
 struct HomeView: View {
     let database: AppDatabase
     var onOpen: (UUID) -> Void
@@ -29,31 +29,19 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                if isZen {
-                    zenHeader
-                } else {
-                    header
+                header
+                // Сверху полка с книгами, ниже то, что лежит на столе.
+                BookShelf(database: database, onOpen: onOpenSource) {
+                    appActions.create(.book)
                 }
-                if isStudy {
-                    // «Кабинет»: сверху полка с книгами, ниже то, что лежит на столе.
-                    BookShelf(database: database, onOpen: onOpenSource) {
-                        appActions.create(.book)
-                    }
-                    deskLabel
-                }
+                deskLabel
                 CaptureField { text, asTask in appActions.capture(text, asTask) }
-                if !isZen {
-                    SyncSetupCard()
+                SyncSetupCard()
+                if showsReading || showsTasks || showsInbox {
+                    cards
                 }
-                if isZen {
-                    zenLines
-                } else {
-                    if showsReading || showsTasks || showsInbox {
-                        cards
-                    }
-                    if showsRecent, !snapshot.recent.isEmpty {
-                        recent
-                    }
+                if showsRecent, !snapshot.recent.isEmpty {
+                    recent
                 }
             }
             .padding(20)
@@ -74,7 +62,7 @@ struct HomeView: View {
         }
         .task { await observePages() }
         .task { await observeReading() }
-        // Книга, вынутая с полки «Кабинета», встаёт посередине экрана.
+        // Книга, вынутая с полки, встаёт посередине экрана.
         .bookShowcaseHost(database: database, onOpenBook: onOpenSource)
     }
 
@@ -90,103 +78,6 @@ struct HomeView: View {
                 .padding(.top, 2)
         }
         .padding(.top, 8)
-    }
-
-    private var isStudy: Bool { theme.layout == .rooms }
-    /// «Дзен»: вместо карточек тихие строки без рамок, только то, чем заняться сейчас.
-    private var isZen: Bool { theme.layout == .orb }
-
-    private var zenHeader: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(Self.zenMoment(.now))
-                .font(.caption.weight(.medium))
-                .tracking(2)
-                .foregroundStyle(theme.textSecondary)
-            Text("Что сейчас?")
-                .font(.system(size: 40, weight: .light, design: .serif))
-                .foregroundStyle(theme.textPrimary)
-        }
-        .padding(.top, 40)
-    }
-
-    private var zenLines: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if !showsReading {
-                EmptyView()
-            } else if let source = reading.current {
-                zenLine("Продолжить: \(source.displayTitle)", detail: "\(Int((source.progress * 100).rounded()))%") {
-                    onOpenSource(source.id)
-                }
-            } else {
-                zenLine("Добавить книгу и читать рядом с заметками", action: onShowLibrary)
-            }
-            if showsTasks {
-                zenLine("Дела на сегодня") { appActions.open(.tasks) }
-            }
-            if showsInbox, snapshot.inboxCount > 0 {
-                zenLine(Self.waitingThoughts(snapshot.inboxCount), action: onShowInbox)
-            }
-            zenLine("Минута тишины перед чтением") { appActions.breathe() }
-        }
-        .padding(.top, 8)
-        .frame(maxWidth: 620, alignment: .leading)
-    }
-
-    private func zenLine(_ title: String, detail: String? = nil, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(title)
-                    .font(.system(.title3, design: .serif))
-                    .foregroundStyle(theme.textPrimary)
-                    .lineLimit(1)
-                if let detail {
-                    Text(detail)
-                        .font(.callout)
-                        .foregroundStyle(theme.textSecondary)
-                }
-                Spacer(minLength: 12)
-                Text("→")
-                    .foregroundStyle(theme.accent)
-            }
-            .padding(.vertical, 14)
-            .overlay(alignment: .bottom) {
-                Rectangle().fill(theme.contrast.opacity(0.08)).frame(height: 1)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .keyHint(title, perform: action)
-    }
-
-    /// «СУББОТА · ВЕЧЕР».
-    nonisolated static func zenMoment(_ date: Date, calendar: Calendar = .current) -> String {
-        let weekday = date.formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "ru_RU")))
-        let part: String
-        switch calendar.component(.hour, from: date) {
-        case 5..<12: part = "утро"
-        case 12..<18: part = "день"
-        case 18..<23: part = "вечер"
-        default: part = "ночь"
-        }
-        return "\(weekday) · \(part)".uppercased()
-    }
-
-    /// «1 мысль ждёт во входящих», «3 мысли ждут во входящих».
-    nonisolated static func waitingThoughts(_ count: Int) -> String {
-        let verb = count % 10 == 1 && count % 100 != 11 ? "ждёт" : "ждут"
-        return "\(count) \(thoughts(count)) \(verb) во входящих"
-    }
-
-    /// «мысль», «мысли», «мыслей».
-    nonisolated static func thoughts(_ count: Int) -> String {
-        let lastTwo = count % 100
-        let last = count % 10
-        if (11...14).contains(lastTwo) { return "мыслей" }
-        switch last {
-        case 1: return "мысль"
-        case 2, 3, 4: return "мысли"
-        default: return "мыслей"
-        }
     }
 
     private var deskLabel: some View {

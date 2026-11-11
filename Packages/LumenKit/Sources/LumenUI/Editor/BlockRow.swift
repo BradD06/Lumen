@@ -855,10 +855,8 @@ private struct ExcerptBlock: View {
         Group {
             if reference?.isPlace == true {
                 placeLink
-            } else if theme.layout == .rooms {
-                clipping
             } else {
-                quote
+                clipping
             }
         }
         // Курсор задержался на цитате: карточка с книгой и местом, откуда она.
@@ -915,48 +913,7 @@ private struct ExcerptBlock: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var quote: some View {
-        Button(action: onOpen) {
-            HStack(alignment: .top, spacing: 10) {
-                Text("\u{201C}")
-                    .font(.system(size: 34, weight: .bold, design: .serif))
-                    .foregroundStyle(tint.opacity(0.85))
-                    .frame(height: 22, alignment: .top)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(text)
-                        .font(.system(size: 17, design: .serif))
-                        .italic()
-                        .foregroundStyle(theme.textPrimary)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    HStack(spacing: 6) {
-                        Image(systemName: source?.format.symbolName ?? "book.closed")
-                        Text(caption)
-                            .lineLimit(1)
-                        if source != nil {
-                            Image(systemName: "arrow.up.right")
-                                .font(.caption2.weight(.bold))
-                        }
-                    }
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(source == nil ? theme.textSecondary.opacity(0.7) : theme.accent)
-                }
-            }
-            .padding(.top, 14)
-            .padding(.bottom, 12)
-            .padding(.horizontal, 14)
-            .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(tint.opacity(0.16), lineWidth: 1))
-            .fixedSize(horizontal: false, vertical: true)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(source == nil)
-        .help(source == nil ? "Книгу удалили" : "Открыть книгу на этом месте")
-    }
-
-    /// «Кабинет»: выписка вклеена в тетрадь, как вырезка из книги, с полосками скотча сверху.
+    /// Выписка вклеена в тетрадь, как вырезка из книги, с полосками скотча сверху.
     private var clipping: some View {
         let paper = Color(hex: 0xEFE4CC)
         let ink = Color(hex: 0x2A2118)

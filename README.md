@@ -17,7 +17,7 @@
 
 ---
 
-Lumen takes the flexible block pages of Notion and puts your reading next to them. Open a book or any document, read it in the app, and write notes beside it. Every quote you save remembers the exact spot in the book it came from, so one tap takes you back there. Write by hand like in a paper notebook, track your tasks in databases, and keep everything in a warm, dark "Sunset" look.
+Lumen takes the flexible block pages of Notion and puts your reading next to them. Open a book or any document, read it in the app, and write notes beside it. Every quote you save remembers the exact spot in the book it came from, so one tap takes you back there. Write by hand like in a paper notebook, track your tasks in databases, and keep everything in a dark green and brass "Study" look, a home library with books on shelves.
 
 ## Features
 
@@ -35,7 +35,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Page covers from the theme's gradients or your own photos.
 - One **Create** button for everything: note (⌘N), task (⇧⌘N), handwritten notebook, book or file (⌘O), database, folder. On iPhone it is a round `+` button.
 - Quick note with ⌘N, from Shortcuts or from Siri. It lands in the Inbox to sort later.
-- A ⌘K command palette: search pages, books and quotes, open recent items, and run actions (⌘↵ opens a result beside the current one): switch the theme, tabs and panes, go back and forward, and act on the open note or book (favorite, move to a folder, copy its link, delete).
+- A ⌘K command palette: search pages, books and quotes, open recent items, and run actions (⌘↵ opens a result beside the current one): tabs and panes, go back and forward, and act on the open note or book (favorite, move to a folder, copy its link, delete).
 - Use the whole app without a mouse: ⌘J puts a short letter on everything you can click (cards, tiles, books on the shelf, list rows, tabs, buttons, settings), type the letter to press it, and ⇧ with the letter opens that item's menu. It works with a Russian keyboard layout too, since it goes by the key, not the letter.
 
 ### 📚 Reader for almost any file
@@ -67,18 +67,17 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - A ready-made task tracker with Today, Board, All tasks and Calendar views.
 
 ### 🗂️ Library and workspace
-- A visual library for pages, notebooks, books and folders. Notes made from a book stay right next to it. Give any folder, note or database its own emoji icon (pick one or type any), and folders always stand out from the background in every theme.
+- A visual library for pages, notebooks, books and folders. Notes made from a book stay right next to it. Give any folder, note or database its own emoji icon (pick one or type any), and folders always stand out from the background.
 - Browser-style back and forward, tabs (⌘T, ⌘1…9, ⌃Tab and ⌃⇧Tab to the next and previous tab) and split screen on Mac and iPad (⌥⌘← and ⌥⌘→ jump between the two halves). Drag a tab to one side of the window to open it next to another one.
 - Favorites, an Inbox for quick notes, and a trash you can restore from.
 - Sort the Inbox one note at a time: swipe, pick one of three suggested folders, turn a note into a task, keep it or delete it. Changed your mind? "Undo" (⌘Z) brings the last note back.
-- A sidebar with search on top, Today, Inbox, Tasks, Library, Recent and folders, and Trash and Settings at the bottom. On iPad in portrait, an icon rail with labels keeps everything one tap away.
 - Export a page to Markdown or PDF, plus full backups of your data.
 - Free sync between Mac, iPhone and iPad through your iCloud Drive: notes, books, pictures, highlights and reading time follow you. Turn it on with one button on Today or at the top of Settings. On Mac that is all (Lumen finds iCloud Drive itself); on iPhone and iPad you tap iCloud Drive and "Open" once. Lumen then tells you which devices it found (or what to do on the next one), warns you if the chosen folder is not in iCloud Drive, and a line under the greeting on Today shows whether everything is synced; tap it to sync right away. A book you had added on two devices before syncing is merged into one, with its highlights, notes and reading place kept. No paid Apple account needed.
 - On iPhone: Today, Inbox, Library and Search tabs at the bottom of the screen.
 
 ### 🌅 Design
-- Five themes to pick in Settings: dark "Sunset" with warm gradients, light "Paper" with serif type, red ink and no sidebar (sections run along the top like a newspaper masthead), near-black "Monochrome" with a monospaced font and no sidebar, made for the keyboard (a command line at the bottom opens ⌘K for everything and reminds you of ⌘J; on iPhone the same command line replaces the tab bar: tap it to search, go anywhere, create or switch themes, or tap + for a new note), dark green and brass "Study" with no sidebar (brass room plaques along the top: Desk, Shelf, Notes, Tasks, Archive; books stand on a shelf as spines cut from the middle of their covers (or in the cover's colors), and a ribbon bookmark on each spine shows how far you have read; make your own shelves (each shelf is a folder in the library) with a + on every shelf to add a book right there, drag books between them, or use "Move to shelf", "Take off the shelf" and "Move to Trash" in a book's menu; drag books to put them in your own order, or sort the shelf by title, author, progress, last read or date added with the buttons above it; hover over a book and it slides off the shelf and turns its cover to you; click it and it flies to the middle of the window as a large cover with a translucent panel beside it: reading time, when you last read it, highlights and the notes with its quotes; quotes from books sit in notes like clippings pasted into a notebook), and quiet light "Zen" with no panels at all (only text and air: the whole menu hides in one breathing dot at the bottom, Home asks "What now?" in a few quiet lines, and a one-minute breathing exercise is a click away; on iPhone the breathing dot replaces the tab bar too). A theme changes colors, the font and light or dark mode across the whole app, and the app icon follows it (an alternate icon on iPhone and iPad, the Dock icon on Mac).
-- A calm screen by default: Settings → "What to show on screen" brings back only what you want. The tab bar appears once you open a second tab, the back, forward and split buttons give way to ⌘[, ⌘] and ⌘\, "Saved" shows for a couple of seconds after an edit, and the word count, the page path, the library grid, each Today card, each sidebar section and the book progress bar (always or on hover) can be turned on or off. The library has a single "Create" button.
+- The "Study" look: a home library in dark green and brass. Brass room plaques along the top instead of a sidebar: Desk, Shelf, Notes, Tasks, Archive (on iPhone they are the tabs at the bottom). Books stand on a shelf as spines cut from the middle of their covers (or in the cover's colors), and a ribbon bookmark on each spine shows how far you have read; make your own shelves (each shelf is a folder in the library) with a + on every shelf to add a book right there, drag books between them, or use "Move to shelf", "Take off the shelf" and "Move to Trash" in a book's menu; drag books to put them in your own order, or sort the shelf by title, author, progress, last read or date added with the buttons above it; hover over a book and it slides off the shelf and turns its cover to you; click it and it flies to the middle of the window as a large cover with a translucent panel beside it: reading time, when you last read it, highlights and the notes with its quotes. Quotes from books sit in notes like clippings pasted into a notebook.
+- A calm screen by default: Settings → "What to show on screen" brings back only what you want. The tab bar appears once you open a second tab, the back, forward and split buttons give way to ⌘[, ⌘] and ⌘\, "Saved" shows for a couple of seconds after an edit, and the word count, the page path, the library grid, each Today card and the book progress bar (always or on hover) can be turned on or off. The library has a single "Create" button.
 - A **Today** screen: a capture field (tick "This is a task" to add it to today's tasks), Continue reading, today's tasks you can check off, the Inbox, and recent pages.
 
 ## Roadmap
@@ -114,10 +113,10 @@ Packages/LumenKit/
   Sources/
     LumenCore/          models: pages, blocks, databases, notebooks, sources, links
     LumenStorage/       SQLite via GRDB: schema, migrations, repositories, FTS5 search, backups
-    LumenThemes/        design tokens, the five themes, backgrounds, widget cards
+    LumenThemes/        design tokens, the "Study" theme, backgrounds, widget cards
     LumenReader/        reader: EPUB, FB2, PDF, Word, PowerPoint and text converters
     LumenSync/          sync: through an iCloud Drive folder, or CloudKit with a paid account
-    LumenUI/            screens: home, inbox, sidebar, library, editor, reader,
+    LumenUI/            screens: home, inbox, rooms bar, library, editor, reader,
                         handwriting, databases, search; Phone/ holds the iPhone tabs
   Tests/                tests written with Swift Testing
 UITests/                macOS UI tests (XCUITest)

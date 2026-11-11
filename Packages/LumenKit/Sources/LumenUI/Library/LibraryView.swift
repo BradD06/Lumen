@@ -42,7 +42,7 @@ struct LibraryView: View {
     @State var importingCount = 0
     /// Над холстом держат файлы из Finder.
     @State private var isDropTargeted = false
-    /// iPhone: избранное в начале корня библиотеки, сайдбара с ним на телефоне нет.
+    /// iPhone: избранное в начале корня библиотеки.
     @State var favorites: [Page] = []
     @State var trashCount = 0
     @State var isSyncInfoPresented = false
@@ -83,9 +83,9 @@ struct LibraryView: View {
         var content: Content
     }
 
-    /// Полки «Кабинета» в корне библиотеки.
+    /// Полки с книгами в корне библиотеки.
     var showsShelf: Bool {
-        theme.layout == .rooms && folderId == nil && !snapshot.isMissing
+        folderId == nil && !snapshot.isMissing
     }
 
     var bookShelf: some View {
@@ -99,7 +99,7 @@ struct LibraryView: View {
             if !usesList {
                 header
             }
-            // «Кабинет»: в корне библиотеки книги стоят на полке над остальным. Полки внутри
+            // В корне библиотеки книги стоят на полке над остальным. Полки внутри
             // прокрутки (на iPhone в списке, на Mac и iPad над холстом), чтобы листались вместе со страницей.
             if snapshot.isMissing {
                 ContentUnavailableView {
@@ -201,7 +201,7 @@ struct LibraryView: View {
                         .keyHint("Назад") { onOpenFolder(snapshot.path.last?.id) }
                         .accessibilityLabel("Назад")
                     }
-                    Text(snapshot.folder?.displayName ?? (theme.layout == .rooms ? "Полка" : "Библиотека"))
+                    Text(snapshot.folder?.displayName ?? "Полка")
                         .font(.largeTitle.weight(.bold))
                         .foregroundStyle(theme.textPrimary)
                         .lineLimit(1)
