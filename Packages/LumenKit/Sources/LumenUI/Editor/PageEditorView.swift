@@ -54,8 +54,10 @@ struct PageEditorView: View {
     @State private var showsSubpages = false
     @AppStorage(LumenSounds.enabledKey) private var soundsEnabled = true
     @AppStorage(ScreenOptions.breadcrumbsKey) private var showsBreadcrumbs = false
-    /// Блоки верхнего уровня, видные на экране: по ним подсвечивается заголовок на карте.
-    @State private var visibleBlockIds: [UUID] = []
+    /// Листы, видные на экране (по якорю листа): по ним подсвечивается заголовок на карте и номер листа.
+    @State private var visibleSheetIds: [UUID] = []
+    /// Ширина редактора: миниатюры листов слева видны, только если есть место рядом с листом.
+    @State private var editorWidth: CGFloat = 0
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -205,6 +207,11 @@ struct PageEditorView: View {
             if model.title.isEmpty, !model.isNotebook {
                 focus = .title
             }
+            // Заметку открыли с полки приколотым листом: прокрутка к нему, когда листы построятся.
+            if let sheet = SheetJump.take(model.pageId), sheet > 0, !model.isNotebook {
+                try? await Task.sleep(for: .milliseconds(150))
+                model.sheetScrollRequest = sheet
+            }
             await model.observeLinks()
         }
         .focusedSceneValue(\.pageEditor, isActivePane ? model : nil)
@@ -321,7 +328,33 @@ struct PageEditorView: View {
             }
             .keyHintClip()
             .onScrollTargetVisibilityChange(idType: UUID.self) { ids in
-                visibleBlockIds = ids
+                visibleSheetIds = ids
+                let anchors = model.sheets.map { sheetAnchor($0) }
+                if let first = ids.compactMap({ anchors.firstIndex(of: $0) }).min(), model.visibleSheet != first {
+                    model.visibleSheet = first
+                }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { editorWidth = $0 }
+            .onChange(of: model.sheetScrollRequest) { _, request in
+                guard let request else { return }
+                model.sheetScrollRequest = nil
+                scrollToSheet(request, proxy: proxy)
+            }
+            .overlay(alignment: .topLeading) {
+                if showsSheetRail {
+                    SheetRail(
+                        count: model.sheetCount,
+                        current: model.visibleSheet,
+                        pinned: model.pinnedSheet,
+                        onSelect: { scrollToSheet($0, proxy: proxy) },
+                        onAdd: {
+                            LumenSounds.play(.create)
+                            model.addSheet()
+                        }
+                    )
+                    .padding(.leading, 16)
+                    .padding(.top, 24)
+                }
             }
             .overlay(alignment: .bottomTrailing) {
                 if !isEmbedded, !isCompact, isActivePane {
@@ -359,8 +392,15 @@ struct PageEditorView: View {
                 if showsOutline, !showsSubpages, outline.count >= 2 {
                     PageOutlineView(items: outline, currentId: currentHeadingId(in: outline)) { item in
                         LumenSounds.play(.navigate)
-                        withAnimation(.easeInOut(duration: 0.35)) {
-                            proxy.scrollTo(item.anchorId, anchor: .top)
+                        // Лист в ленивом списке мог ещё не построиться: сначала к листу, потом к заголовку.
+                        if let sheet = model.sheets.first(where: { $0.blocks.contains { $0.id == item.anchorId } }) {
+                            proxy.scrollTo(sheetAnchor(sheet), anchor: .top)
+                        }
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(30))
+                            withAnimation(.easeInOut(duration: 0.35)) {
+                                proxy.scrollTo(item.anchorId, anchor: .top)
+                            }
                         }
                     }
                     .padding(.trailing, 6)
@@ -541,13 +581,17 @@ struct PageEditorView: View {
     }
 
     /// Заголовок, в разделе которого сейчас верх экрана: последний, что начинается не ниже
-    /// первого видного блока. Пока виден текст до первого заголовка, не подсвечен ни один.
+    /// начала первого видного листа. Пока виден текст до первого заголовка, не подсвечен ни один.
     private func currentHeadingId(in outline: [OutlineItem]) -> UUID? {
         let topLevel = model.children(of: nil).map(\.id)
-        let visible = visibleBlockIds.compactMap { topLevel.firstIndex(of: $0) }
+        let sheets = model.sheets
+        let visible = visibleSheetIds.compactMap { id in sheets.firstIndex { sheetAnchor($0) == id } }
         guard let first = visible.min() else { return nil }
+        // Первый блок видного листа; у пустого листа его граница.
+        guard let start = sheets[first].blocks.first?.id ?? sheets[first].breakId,
+              let startIndex = topLevel.firstIndex(of: start) else { return nil }
         return outline.last { item in
-            (topLevel.firstIndex(of: item.anchorId) ?? .max) <= first
+            (topLevel.firstIndex(of: item.anchorId) ?? .max) <= startIndex
         }?.id
     }
 
@@ -560,17 +604,18 @@ struct PageEditorView: View {
         #endif
     }
 
-    /// Колонка с текстом страницы: заголовок, блоки и обратные ссылки.
+    /// Листы заметки: на первом заголовок, под последним «Добавить лист», ниже обратные ссылки.
     private var content: some View {
-        LazyVStack(alignment: .leading, spacing: 6) {
-            header
-                .padding(.bottom, 12)
-            ForEach(model.children(of: nil)) { block in
-                BlockTree(block: block, depth: 0, model: model, focus: $focus)
-                    .id(block.id)
+        let sheets = model.sheets
+        let lastFull = sheets.last.map { model.fillShare(of: $0) >= NoteSheets.fullShare } ?? false
+        return LazyVStack(alignment: .leading, spacing: isCompact ? 16 : 28) {
+            ForEach(sheets, id: \.index) { sheet in
+                sheetView(sheet, count: sheets.count)
+                    .id(sheetAnchor(sheet))
             }
+            AddSheetBar(sheetCount: sheets.count, isLastFull: lastFull) { model.addSheet() }
             Color.clear
-                .frame(height: model.links.backlinks.isEmpty ? 200 : 60)
+                .frame(height: model.links.backlinks.isEmpty ? 120 : 30)
                 .contentShape(Rectangle())
                 .onTapGesture { model.focusEnd() }
             if !model.links.backlinks.isEmpty {
@@ -579,10 +624,128 @@ struct PageEditorView: View {
         }
         .scrollTargetLayout()
         .floatingFormatBar(model: model)
-        .padding(.horizontal, isCompact ? 16 : 28)
-        .padding(.vertical, isCompact ? 16 : 24)
-        .frame(maxWidth: 780, alignment: .leading)
+        .padding(.horizontal, isCompact ? 8 : 24)
+        .padding(.vertical, isCompact ? 12 : 24)
+        .frame(maxWidth: CGFloat(NoteSheets.width) + (isCompact ? 16 : 48), alignment: .leading)
         .frame(maxWidth: .infinity)
+    }
+
+    /// Один лист: шапка на первом, блоки, просьба разложить лишнее, если текст не поместился.
+    private func sheetView(_ sheet: NoteSheets.Sheet, count: Int) -> some View {
+        let share = model.fillShare(of: sheet)
+        let overflows = model.overflowIndex(of: sheet) != nil
+        return SheetPaper(
+            number: sheet.index + 1,
+            title: displayTitle,
+            isPinned: model.pinnedSheet == sheet.index,
+            isFull: share >= NoteSheets.fullShare && !overflows,
+            isCompact: isCompact
+        ) {
+            VStack(alignment: .leading, spacing: 6) {
+                if sheet.isFirst {
+                    header
+                        .padding(.bottom, 12)
+                }
+                ForEach(sheet.blocks) { block in
+                    BlockTree(block: block, depth: 0, model: model, focus: $focus)
+                        .id(block.id)
+                }
+                if sheet.blocks.isEmpty {
+                    Button {
+                        model.startWriting(on: sheet)
+                    } label: {
+                        Text("Чистый лист: нажмите, чтобы писать")
+                            .font(.callout)
+                            .foregroundStyle(theme.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 6)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                if overflows {
+                    overflowNotice(sheet)
+                }
+            }
+        } menu: {
+            sheetMenu(sheet.index, count: count)
+        }
+    }
+
+    /// Текст не поместился на лист: лишнее можно разложить по новым листам одной кнопкой.
+    private func overflowNotice(_ sheet: NoteSheets.Sheet) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "doc.on.doc")
+                .foregroundStyle(theme.accent)
+            Text("Текст не помещается на лист")
+                .font(.callout.weight(.medium))
+                .foregroundStyle(theme.textPrimary)
+            Spacer(minLength: 8)
+            Button {
+                LumenSounds.play(.arrange)
+                model.paginateAll()
+            } label: {
+                Text("Разложить по листам")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(theme.accent)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(theme.accent.opacity(0.16), in: Capsule())
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help("Лишнее с каждого листа переедет на новые листы сразу за ним")
+            .accessibilityIdentifier("paginate-sheets")
+        }
+        .padding(12)
+        .background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.top, 10)
+    }
+
+    @ViewBuilder
+    private func sheetMenu(_ index: Int, count: Int) -> some View {
+        if model.pinnedSheet == index {
+            Button("Открепить от полки", systemImage: "pin.slash") { model.pinSheet(nil) }
+        } else {
+            Button("Приколоть к полке", systemImage: "pin") {
+                LumenSounds.play(.toggle)
+                model.pinSheet(index)
+            }
+        }
+        Divider()
+        Button("Переместить выше", systemImage: "arrow.up") { model.moveSheet(index, by: -1) }
+            .disabled(index == 0)
+        Button("Переместить ниже", systemImage: "arrow.down") { model.moveSheet(index, by: 1) }
+            .disabled(index >= count - 1)
+        Button("Соединить с листом выше", systemImage: "arrow.up.and.down.text.horizontal") {
+            model.mergeSheetWithPrevious(index)
+        }
+        .disabled(index == 0)
+        Divider()
+        Button("Удалить лист", systemImage: "trash", role: .destructive) {
+            LumenSounds.play(.trash)
+            model.deleteSheet(index)
+        }
+        .disabled(count < 2)
+    }
+
+    /// Якорь листа для прокрутки: граница листа, у первого листа id страницы.
+    private func sheetAnchor(_ sheet: NoteSheets.Sheet) -> UUID {
+        sheet.breakId ?? model.pageId
+    }
+
+    private func scrollToSheet(_ index: Int, proxy: ScrollViewProxy) {
+        let sheets = model.sheets
+        guard sheets.indices.contains(index) else { return }
+        LumenSounds.play(.navigate)
+        withAnimation(.easeInOut(duration: 0.35)) {
+            proxy.scrollTo(sheetAnchor(sheets[index]), anchor: .top)
+        }
+    }
+
+    /// Миниатюры листов слева: на широком экране, когда листов больше одного и рядом с листом есть место.
+    private var showsSheetRail: Bool {
+        !isEmbedded && !isCompact && model.sheetCount > 1 && editorWidth >= CGFloat(NoteSheets.width) + 48 + 2 * 110
     }
 
     private var displayTitle: String {

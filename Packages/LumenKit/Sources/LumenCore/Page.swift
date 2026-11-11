@@ -28,6 +28,8 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
     /// Вид страницы строкой, см. `pageKind`. Строкой, а не перечислением: вид из более новой
     /// версии приложения не должен ломать чтение страницы в старой.
     public var kind: String?
+    /// Лист заметки (номер с нуля), приколотый к полке «Кабинета». `nil`: ничего не приколото.
+    public var shelfPin: Int?
     /// Дробный индекс порядка среди соседей, см. `SortKey`.
     public var sortKey: String
     public var createdAt: Date
@@ -50,6 +52,7 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
         databaseId: UUID? = nil,
         properties: PropertyValues? = nil,
         kind: PageKind? = nil,
+        shelfPin: Int? = nil,
         sortKey: String,
         createdAt: Date = Date(),
         updatedAt: Date? = nil,
@@ -70,6 +73,7 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
         self.databaseId = databaseId
         self.properties = properties
         self.kind = kind?.rawValue
+        self.shelfPin = shelfPin
         self.sortKey = sortKey
         self.createdAt = createdAt
         self.updatedAt = updatedAt ?? createdAt

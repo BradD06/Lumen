@@ -139,3 +139,58 @@ struct BookDuplicateMergeTests {
         #expect(groups[0].books.isEmpty)
     }
 }
+
+struct ShelfNotesTests {
+    @Test func sortedNotesStandOnTheShelfWithTheirSheets() async throws {
+        let db = try AppDatabase.inMemory()
+        let shelf = try await db.createShelf(name: "Учёба")
+        let single = try await db.createPage(title: "Список литературы")
+        let binder = try await db.createPage(title: "Конспекты", folderId: shelf.id)
+        let inbox = try await db.createPage(title: "Мысль", inInbox: true)
+        let child = try await db.createPage(title: "Подстраница", parentId: binder.id)
+        let trashed = try await db.createPage(title: "Удалена")
+        try await db.trashPage(trashed.id)
+
+        // Две границы листов: у заметки три листа. Граница внутри блока не считается.
+        let keys = SortKey.sequence(count: 3, after: "z")
+        for key in keys.prefix(2) {
+            try await db.saveBlock(Block(pageId: binder.id, type: .sheetBreak, sortKey: key))
+        }
+
+        let notes = try await db.reader.read { try ShelfQuery.notes($0) }
+        let ids = Set(notes.map(\.id))
+        #expect(ids.contains(single.id))
+        #expect(ids.contains(binder.id))
+        #expect(!ids.contains(inbox.id))
+        #expect(!ids.contains(child.id))
+        #expect(!ids.contains(trashed.id))
+        #expect(notes.first { $0.id == binder.id }?.sheetCount == 3)
+        #expect(notes.first { $0.id == single.id }?.sheetCount == 1)
+
+        let groups = try await db.reader.read { try ShelfQuery.snapshot($0) }.groups
+        #expect(groups.first { $0.shelf?.id == shelf.id }?.folders.map(\.id) == [binder.id])
+        #expect(groups.first { $0.shelf == nil }?.singleSheets.map(\.id) == [single.id])
+    }
+
+    @Test func sheetPinnedToTheShelfIsRemembered() async throws {
+        let db = try AppDatabase.inMemory()
+        let page = try await db.createPage(title: "Позвонить научруку")
+        try await db.setShelfPin(page.id, sheet: 0)
+        #expect(try await db.page(page.id)?.shelfPin == 0)
+        var notes = try await db.reader.read { try ShelfQuery.notes($0) }
+        #expect(notes.first?.shelfPin == 0)
+
+        try await db.setShelfPin(page.id, sheet: nil)
+        notes = try await db.reader.read { try ShelfQuery.notes($0) }
+        #expect(notes.first?.shelfPin == nil)
+    }
+
+    @Test func notebookStandsWithItsSheets() async throws {
+        let db = try AppDatabase.inMemory()
+        let notebook = try await db.createNotebook(title: "От руки")
+        let notes = try await db.reader.read { try ShelfQuery.notes($0) }
+        let entry = try #require(notes.first { $0.id == notebook.id })
+        #expect(entry.isNotebook)
+        #expect(entry.sheetCount >= 1)
+    }
+}

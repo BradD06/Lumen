@@ -108,6 +108,15 @@ extension ReaderView {
                 .presentationCompactAdaptation(.sheet)
             }
             Spacer(minLength: 4)
+            if let notes, notes.isLoaded, !notes.isNotebook, notes.sheetCount > 1 {
+                // Листы заметки: номера прокручивают к листу, «+» добавляет новый.
+                SheetPager(
+                    count: notes.sheetCount,
+                    current: notes.visibleSheet,
+                    onSelect: { notes.sheetScrollRequest = $0 },
+                    onAdd: { notes.addSheet() }
+                )
+            }
             if let notes, notes.isLoaded, !notes.isNotebook {
                 InputModeToggle(isPen: notes.activeDrawingId != nil) { pen in
                     LumenSounds.play(.toggle)

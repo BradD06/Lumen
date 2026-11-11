@@ -425,31 +425,84 @@ public enum ShelfQuery {
             .fetchAll(db)
     }
 
-    /// Все книги и все полки «Кабинета» (полки в том порядке, в каком их завели).
+    /// Все книги, заметки и полки «Кабинета» (полки в том порядке, в каком их завели).
     public static func snapshot(_ db: Database) throws -> ShelfSnapshot {
         ShelfSnapshot(
             books: try fetch(db),
             shelves: try Folder
                 .filter(Column("isShelf") == true && Column("deletedAt") == nil)
                 .order(Column("createdAt"), Column("name"))
-                .fetchAll(db)
+                .fetchAll(db),
+            notes: try notes(db)
         )
+    }
+
+    /// Заметки, которые стоят на полках рядом с книгами: разобранные (не во «Входящих»),
+    /// верхнего уровня, не базы данных и не их строки. Сколько у каждой листов, считается
+    /// по границам листов, у рукописной заметки по листам тетради.
+    public static func notes(_ db: Database, limit: Int = 500) throws -> [ShelfNote] {
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT page.id, page.title, page.icon, page.folderId, page.shelfPin, page.kind, page.updatedAt,
+                (SELECT COUNT(*) FROM block
+                    WHERE block.pageId = page.id AND block.type = 'sheetBreak' AND block.parentBlockId IS NULL) AS breaks
+            FROM page
+            LEFT JOIN folder ON folder.id = page.folderId
+            WHERE page.deletedAt IS NULL AND page.parentId IS NULL AND page.inInbox = 0
+                AND page.databaseId IS NULL
+                AND NOT EXISTS (SELECT 1 FROM dataTable WHERE dataTable.pageId = page.id)
+                AND (folder.id IS NULL OR folder.deletedAt IS NULL)
+            ORDER BY page.createdAt, page.rowid
+            LIMIT ?
+            """, arguments: [limit])
+        return try rows.map { row in
+            let id: UUID = row["id"]
+            let isNotebook = (row["kind"] as String?) == PageKind.notebook.rawValue
+            let breaks: Int = row["breaks"] ?? 0
+            let sheetCount = try isNotebook ? notebookSheets(db, pageId: id) : breaks + 1
+            return ShelfNote(
+                id: id,
+                title: row["title"] ?? "",
+                icon: row["icon"],
+                folderId: row["folderId"],
+                sheetCount: sheetCount,
+                shelfPin: row["shelfPin"],
+                isNotebook: isNotebook,
+                updatedAt: row["updatedAt"]
+            )
+        }
+    }
+
+    /// Листы рукописной заметки: их число лежит в содержимом её блока «Рисунок».
+    private static func notebookSheets(_ db: Database, pageId: UUID) throws -> Int {
+        guard let value = try DatabaseValue.fetchOne(db, sql: """
+            SELECT content FROM block WHERE pageId = ? AND type = 'drawing' ORDER BY sortKey LIMIT 1
+            """, arguments: [pageId]) else { return 1 }
+        let data: Data
+        switch value.storage {
+        case .string(let text): data = Data(text.utf8)
+        case .blob(let blob): data = blob
+        default: return 1
+        }
+        struct Sheets: Decodable { var sheetCount: Int? }
+        return max((try? JSONDecoder().decode(Sheets.self, from: data))?.sheetCount ?? 1, 1)
     }
 }
 
-/// Книги и полки для «Кабинета».
+/// Книги, заметки и полки для «Кабинета».
 public struct ShelfSnapshot: Equatable, Sendable {
     public var books: [Source]
     public var shelves: [Folder]
+    public var notes: [ShelfNote]
 
     public static let empty = ShelfSnapshot(books: [], shelves: [])
 
-    public init(books: [Source], shelves: [Folder]) {
+    public init(books: [Source], shelves: [Folder], notes: [ShelfNote] = []) {
         self.books = books
         self.shelves = shelves
+        self.notes = notes
     }
 
-    public var groups: [ShelfGroup] { ShelfGroup.make(books: books, shelves: shelves) }
+    public var groups: [ShelfGroup] { ShelfGroup.make(books: books, shelves: shelves, notes: notes) }
 }
 
 /// Данные для главного экрана-дашборда.

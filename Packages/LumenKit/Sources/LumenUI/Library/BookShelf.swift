@@ -110,8 +110,16 @@ struct BookShelf: View {
                         ForEach(Array(shown.enumerated()), id: \.element.id) { index, book in
                             shelfBook(book, index: index, count: shown.count, group: group)
                         }
+                        // Заметки из нескольких листов стоят папками после книг.
+                        ForEach(group.folders) { note in
+                            sheetBinder(note, group: group)
+                        }
                         addSpine(group)
-                        if shown.isEmpty {
+                        if !group.singleSheets.isEmpty {
+                            SheetTray(notes: group.singleSheets, others: otherGroups(group), actions: noteActions)
+                                .padding(.leading, 14)
+                        }
+                        if shown.isEmpty, group.notes.isEmpty {
                             Text(emptyText(group))
                                 .font(.callout.italic())
                                 .foregroundStyle(theme.textSecondary)
@@ -133,6 +141,10 @@ struct BookShelf: View {
                 }
                 .keyHintClip()
                 plank
+                // Приколотые листы висят под доской.
+                if !group.pinned.isEmpty {
+                    PinnedSheetsRow(notes: group.pinned, others: otherGroups(group), actions: noteActions)
+                }
             }
         }
         // Книгу ловит вся полка с табличкой и доской, а не только корешки: иначе её трудно попасть.
@@ -145,6 +157,30 @@ struct BookShelf: View {
             scrollOffset: scrollOffsets[group.id] ?? 0,
             onDrop: { place($0, on: group) }
         ))
+    }
+
+    /// Папка с листами на полке: нажатие открывает заметку.
+    private func sheetBinder(_ note: ShelfNote, group: ShelfGroup) -> some View {
+        Button {
+            noteActions.show(note)
+        } label: {
+            SheetBinder(note: note)
+        }
+        .buttonStyle(SpineButtonStyle())
+        .help("«\(note.displayTitle)»: \(ShelfNote.sheetsLabel(note.sheetCount))")
+        .keyHint(note.displayTitle) { noteActions.show(note) }
+        .contextMenu {
+            ShelfNoteMenu(note: note, others: otherGroups(group), actions: noteActions)
+        }
+        .padding(.leading, note.id == group.folders.first?.id ? 6 : 0)
+    }
+
+    private var noteActions: ShelfNoteActions {
+        ShelfNoteActions(database: database) { appActions.open(.page($0)) }
+    }
+
+    private func otherGroups(_ group: ShelfGroup) -> [ShelfGroup] {
+        snapshot.groups.filter { $0.id != group.id }
     }
 
     private func emptyText(_ group: ShelfGroup) -> String {

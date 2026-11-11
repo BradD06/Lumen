@@ -151,6 +151,13 @@ extension AppDatabase {
         }
     }
 
+    /// Прикалывает лист заметки к полке (`sheet` с нуля) или открепляет (`nil`).
+    public func setShelfPin(_ id: UUID, sheet: Int?) async throws {
+        try await writer.write { db in
+            try Self.updatePage(db, id) { $0.shelfPin = sheet.map { max($0, 0) } }
+        }
+    }
+
     public func setFavorite(_ id: UUID, _ isFavorite: Bool) async throws {
         try await writer.write { db in
             try Self.updatePage(db, id) { $0.isFavorite = isFavorite }

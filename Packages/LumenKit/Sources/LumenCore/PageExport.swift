@@ -162,6 +162,9 @@ extension PageExport {
                 // Штрихи в текст не перевести: в Markdown остаётся пометка, сам рисунок есть в PDF.
                 guard block.drawing?.isEmpty == false else { continue }
                 line = "_✍️ Рисунок от руки_"
+            case .sheetBreak:
+                // Новый лист заметки: в Markdown это линия между листами.
+                line = "---"
             case .columnList, .column:
                 continue
             }
