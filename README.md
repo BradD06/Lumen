@@ -72,7 +72,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Favorites, an Inbox for quick notes, and a trash you can restore from.
 - Sort the Inbox one note at a time: swipe, pick one of three suggested folders, turn a note into a task, keep it or delete it. Changed your mind? "Undo" (⌘Z) brings the last note back.
 - Export a page to Markdown or PDF, plus full backups of your data.
-- Free sync between Mac, iPhone and iPad through a folder in your iCloud Drive: pick the same folder on every device in Data and backups, and notes, books, pictures, highlights and reading time follow you. A book you had added on two devices before syncing is merged into one, with its highlights, notes and reading place kept. No paid Apple account needed.
+- Free sync between Mac, iPhone and iPad through your iCloud Drive: notes, books, pictures, highlights and reading time follow you. Turn it on with one button on Today or at the top of Settings. On Mac that is all (Lumen finds iCloud Drive itself); on iPhone and iPad you tap iCloud Drive and "Open" once. Lumen then tells you which devices it found (or what to do on the next one), warns you if the chosen folder is not in iCloud Drive, and a line under the greeting on Today shows whether everything is synced; tap it to sync right away. A book you had added on two devices before syncing is merged into one, with its highlights, notes and reading place kept. No paid Apple account needed.
 - On iPhone: Today, Inbox, Library and Search tabs at the bottom of the screen.
 
 ### 🌅 Design
@@ -128,7 +128,7 @@ project.yml             Xcode project definition for XcodeGen
 
 Your data stays on your device until you turn on sync. Sync works through a folder you pick yourself, usually iCloud Drive, so it needs no paid Apple Developer Program account. Later the plan is to add Supabase, which will also work with the future Windows app.
 
-**Turn it on:** Settings (or ⋯ in the Library on iPhone) → Data and backups → Sync → "Choose a folder in iCloud Drive…". Pick the same folder on every device, simplest is iCloud Drive itself. Lumen creates a `Lumen Sync` folder in it.
+**Turn it on:** tap "Turn on sync" on the Today screen, or at the top of Settings (also in Data and backups). On Mac, Lumen uses iCloud Drive right away. On iPhone and iPad, a folder picker opens: tap iCloud Drive, then "Open". Do the same on every device. Lumen creates a `Lumen Sync` folder in iCloud Drive.
 
 <details>
 <summary>How folder sync works</summary>
