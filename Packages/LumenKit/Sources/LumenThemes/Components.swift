@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Фон рабочего пространства: градиент темы и мягкое закатное свечение.
+/// Фон кабинета: градиент схемы, за «стеклом» размыто виден книжный шкаф,
+/// в углу тёплая лампа, в противоположном углу второй, холодный свет.
 public struct ThemedBackground: View {
     @Environment(\.lumenTheme) private var theme
 
@@ -9,20 +10,100 @@ public struct ThemedBackground: View {
     public var body: some View {
         ZStack {
             theme.backgroundGradient
+            if theme.wallOpacity > 0, !theme.wallColors.isEmpty {
+                BookcaseWall(colors: theme.wallColors, plank: theme.accent)
+                    .blur(radius: 14)
+                    .opacity(theme.wallOpacity)
+            }
             RadialGradient(
                 colors: [theme.glow.opacity(theme.glowStrength), theme.glow.opacity(0)],
-                center: UnitPoint(x: 0.85, y: 0.0),
+                center: UnitPoint(x: 0.88, y: 0.0),
                 startRadius: 0,
-                endRadius: 520
+                endRadius: 620
             )
             RadialGradient(
-                colors: [theme.accent.opacity(theme.glowStrength * 0.4), theme.accent.opacity(0)],
-                center: UnitPoint(x: 0.05, y: 1.0),
+                colors: [theme.glow2.opacity(theme.glowStrength * 0.55), theme.glow2.opacity(0)],
+                center: UnitPoint(x: 0.04, y: 1.0),
                 startRadius: 0,
-                endRadius: 480
+                endRadius: 560
             )
         }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
         .ignoresSafeArea()
+    }
+}
+
+/// Ряды корешков и полок для фона. Рисуется один раз и размывается,
+/// поэтому детали не нужны: только цвет, высота и ритм.
+struct BookcaseWall: View {
+    let colors: [Color]
+    let plank: Color
+
+    var body: some View {
+        Canvas { context, size in
+            let rowHeight: CGFloat = 200
+            var top: CGFloat = 30
+            var row = 0
+            while top < size.height {
+                let shelfY = top + rowHeight - 18
+                var x: CGFloat = 16
+                var index = row * 7
+                while x < size.width {
+                    let width = 14 + CGFloat((index * 37) % 17)
+                    let height = 112 + CGFloat((index * 53) % 52)
+                    let rect = CGRect(x: x, y: shelfY - height, width: width, height: height)
+                    context.fill(
+                        Path(roundedRect: rect, cornerRadius: 2),
+                        with: .color(colors[index % colors.count])
+                    )
+                    x += width + 3
+                    // Иногда на полке пустое место, как в настоящем шкафу.
+                    if index % 13 == 12 { x += 30 }
+                    index += 1
+                }
+                context.fill(
+                    Path(CGRect(x: 0, y: shelfY, width: size.width, height: 10)),
+                    with: .color(plank.opacity(0.45))
+                )
+                top += rowHeight
+                row += 1
+            }
+        }
+    }
+}
+
+extension View {
+    /// Матовое стекло любой формы: размытие, лёгкий цвет схемы и светлая кромка сверху.
+    public func lumenGlass<S: InsettableShape>(_ shape: S, prominent: Bool = false) -> some View {
+        modifier(GlassModifier(shape: shape, prominent: prominent))
+    }
+}
+
+private struct GlassModifier<S: InsettableShape>: ViewModifier {
+    @Environment(\.lumenTheme) private var theme
+    let shape: S
+    let prominent: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                shape.fill(prominent ? .regularMaterial : .ultraThinMaterial)
+                    .overlay(shape.fill(theme.cardFill))
+            }
+            .overlay(shape.strokeBorder(theme.glassEdge, lineWidth: 1))
+            .shadow(color: .black.opacity(theme.shadowOpacity * 0.8), radius: 14, y: 6)
+    }
+}
+
+extension Theme {
+    /// Обводка стекла: светлее сверху, где на кромку падает свет лампы.
+    public var glassEdge: LinearGradient {
+        LinearGradient(
+            colors: [glassHighlight, cardStroke, cardStroke.opacity(0.5)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 }
 
@@ -59,7 +140,7 @@ private struct LumenCardModifier: ViewModifier {
                     )
                 }
             }
-            .overlay(shape.strokeBorder(theme.cardStroke, lineWidth: 1))
+            .overlay(shape.strokeBorder(theme.glassEdge, lineWidth: 1))
             .clipShape(shape)
             .shadow(color: .black.opacity(theme.shadowOpacity), radius: 16, y: 8)
     }

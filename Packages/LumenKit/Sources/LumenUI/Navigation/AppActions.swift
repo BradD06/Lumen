@@ -441,10 +441,15 @@ struct SettingsSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                AppearanceSection()
                 ScreenOptionsSection()
-                Section("Звук") {
-                    Toggle("Звуки при действиях", isOn: $soundsEnabled)
+                Section {
+                    Toggle("Звуки кабинета", isOn: $soundsEnabled)
                         .keyHint("Звуки") { soundsEnabled.toggle() }
+                } header: {
+                    Text("Звук")
+                } footer: {
+                    Text("Тихие звуки: книга встаёт на полку, щёлкает лампа, шелестит страница.")
                 }
                 Section {
                     NavigationLink {

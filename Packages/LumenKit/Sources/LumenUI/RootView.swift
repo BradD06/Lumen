@@ -117,6 +117,7 @@ public struct RootView: View {
             workspaceDetail
                 .themedToolbar()
                 .safeAreaInset(edge: .top, spacing: 0) { topBar }
+                .overlay { LampLight() }
                 .toolbar {
                     // Сочетания ⌘[ ⌘] ⌘\ живут в `tabShortcuts`: кнопки можно спрятать в настройках.
                     if showsWindowButtons {

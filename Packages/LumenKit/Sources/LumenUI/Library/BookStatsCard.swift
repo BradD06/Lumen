@@ -166,7 +166,7 @@ struct BookStatsCard: View {
             Button(action: onOpenBook) {
                 Text(snapshot.source?.lastOpenedAt == nil ? "Начать читать" : "Читать дальше")
                     .font(.callout.weight(.semibold))
-                    .foregroundStyle(theme.backgroundStops.last ?? .black)
+                    .foregroundStyle(theme.onAccent)
                     .padding(.horizontal, 14)
                     .frame(height: 32)
                     .background(theme.accent, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
