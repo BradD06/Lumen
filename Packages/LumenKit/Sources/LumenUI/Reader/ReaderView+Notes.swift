@@ -204,7 +204,7 @@ extension ReaderView {
             isActive: isHandleHovered || dragStartFraction != nil,
             label: axis == .stacked ? "Высота заметок" : "Ширина заметок"
         ) { hovering in
-            withAnimation(.easeOut(duration: 0.15)) { isHandleHovered = hovering }
+            withAnimation(LumenMotion.quick) { isHandleHovered = hovering }
         }
         .gesture(
             // Сдвиг мыши считается в координатах окна. В своих координатах ручка уезжает
@@ -231,7 +231,7 @@ extension ReaderView {
                 }
         )
         .onTapGesture(count: 2) {
-            withAnimation(.snappy) {
+            withAnimation(LumenMotion.standard) {
                 arrangement.setFraction(PaneArrangement().fraction(for: axis), for: axis)
             }
         }
@@ -242,7 +242,7 @@ extension ReaderView {
 
     func setNotes(_ isOpen: Bool) {
         LumenSounds.play(isOpen ? .panelOpen : .panelClose)
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+        withAnimation(LumenMotion.standard) {
             showsNotes = isOpen
         }
     }

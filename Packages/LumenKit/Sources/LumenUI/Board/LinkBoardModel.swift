@@ -2,6 +2,7 @@ import Foundation
 import GRDB
 import LumenCore
 import LumenStorage
+import LumenThemes
 import Observation
 import SwiftUI
 
@@ -126,7 +127,7 @@ final class LinkBoardModel {
     // MARK: Выбор
 
     func toggleSelection(_ item: LibraryItemID) {
-        withAnimation(.snappy) {
+        withAnimation(LumenMotion.standard) {
             selection = selection == item ? nil : item
             if selection == nil { onlyTheme = false }
         }
@@ -135,7 +136,7 @@ final class LinkBoardModel {
 
     func clearSelection() {
         guard selection != nil else { return }
-        withAnimation(.snappy) {
+        withAnimation(LumenMotion.standard) {
             selection = nil
             onlyTheme = false
         }

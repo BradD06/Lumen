@@ -63,7 +63,7 @@ struct FolderArt: View {
         }
         .frame(width: 136, height: 108, alignment: .topLeading)
         .scaleEffect(isTargeted ? 1.08 : 1, anchor: .bottom)
-        .animation(.spring(duration: 0.25), value: isTargeted)
+        .animation(LumenMotion.standard, value: isTargeted)
     }
 
     private func paper(_ color: Color, width: CGFloat) -> some View {
@@ -332,7 +332,7 @@ struct LibraryTile<Art: View>: View {
         .scaleEffect(isDragging ? 1.06 : 1)
         .rotationEffect(.degrees(isDragging ? -3 : 0))
         .shadow(color: .black.opacity(isDragging ? 0.45 : 0), radius: 24, y: 20)
-        .animation(.spring(duration: 0.2), value: isDragging)
+        .animation(LumenMotion.quick, value: isDragging)
     }
 }
 

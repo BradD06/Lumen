@@ -120,6 +120,7 @@ struct GlassMenu: View {
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(theme.accent.opacity(highlighted == index ? 0.28 : 0))
+                        .animation(LumenMotion.quick, value: highlighted == index)
                 )
                 .contentShape(Rectangle())
             }

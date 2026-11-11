@@ -26,6 +26,15 @@ public enum SidebarItem: Hashable, Codable, Sendable {
     case sourceInfo(UUID)
 }
 
+extension SidebarItem {
+    /// Какой экран показывает этот пункт. Переход к выписке в открытой книге тот же экран:
+    /// книга прокручивается, а не открывается заново.
+    var screenKey: SidebarItem {
+        if case .source(let id, _) = self { return .source(id, highlight: nil) }
+        return self
+    }
+}
+
 /// Корневой экран «Кабинета»: сверху стеклянное табло с комнатами (стол, полка, доска,
 /// записки, дела, архив), под ним вкладки, у каждой своя история «Назад / Вперёд», вкладку можно
 /// разделить на две панели. На iPhone (узкий экран) вместо табло вкладки внизу, см. `PhoneRootView`.
@@ -102,7 +111,7 @@ public struct RootView: View {
     /// Переводит клавиши в панель: курсор уходит из текста прежней, а в заметку возвращается туда, где был.
     private func focusPane(_ index: Int) {
         guard workspace.isSplit else { return }
-        withAnimation(.snappy) { workspace.focus(pane: index) }
+        withAnimation(LumenMotion.standard) { workspace.focus(pane: index) }
         #if os(macOS)
         NSApp.keyWindow?.makeFirstResponder(nil)
         #endif
@@ -113,7 +122,7 @@ public struct RootView: View {
     }
 
     private func toggleSplit() {
-        withAnimation(.snappy) { workspace.toggleSplit() }
+        withAnimation(LumenMotion.standard) { workspace.toggleSplit() }
     }
 
     /// Панели активной вкладки рядом или друг под другом: что выбрано для такого окна.
@@ -124,14 +133,14 @@ public struct RootView: View {
     private func setPaneAxis(_ axis: PaneArrangement.Axis) {
         guard axis != paneAxis else { return }
         LumenSounds.play(.toggle)
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+        withAnimation(LumenMotion.standard) {
             workspace.setPaneAxis(axis, isTall: isTallWindow)
         }
     }
 
     private func swapPanes() {
         LumenSounds.play(.toggle)
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { workspace.swapPanes() }
+        withAnimation(LumenMotion.standard) { workspace.swapPanes() }
     }
 
     private var splitView: some View {
@@ -206,7 +215,7 @@ public struct RootView: View {
                 onOpen: { item, beside in
                     isSearchPresented = false
                     if beside {
-                        withAnimation(.snappy) { workspace.openBeside(item) }
+                        withAnimation(LumenMotion.standard) { workspace.openBeside(item) }
                     } else {
                         selection = item
                     }
@@ -302,8 +311,8 @@ public struct RootView: View {
     private var workspaceActions: WorkspaceActions {
         let workspace = workspace
         return WorkspaceActions(
-            openInNewTab: { item in withAnimation(.snappy) { workspace.newTab(item) } },
-            openBeside: { item in withAnimation(.snappy) { workspace.openBeside(item) } }
+            openInNewTab: { item in withAnimation(LumenMotion.standard) { workspace.newTab(item) } },
+            openBeside: { item in withAnimation(LumenMotion.standard) { workspace.openBeside(item) } }
         )
     }
 
@@ -314,23 +323,27 @@ public struct RootView: View {
                 WorkspaceTabStrip(database: database, workspace: workspace)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
-            panes
-                // Своя вкладка у каждого набора панелей: при переключении экраны создаются заново.
-                .id(workspace.selectedTabId)
-                // Вкладку можно бросить к левому или правому краю: она откроется рядом.
-                // Подсветка только пока вкладку держат: после броска или отмены она гаснет.
-                .overlay { TabDropHighlight(side: workspace.draggingTabId == nil ? nil : tabDropSide) }
-                .onChange(of: workspace.draggingTabId) { _, id in
-                    if id == nil { tabDropSide = nil }
-                }
-                .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
-                    panesWidth = size.width
-                    isTallWindow = PaneArrangement.isTall(width: Double(size.width), height: Double(size.height))
-                }
-                .onDrop(
-                    of: [.lumenTab],
-                    delegate: TabEdgeDropDelegate(workspace: workspace, width: panesWidth, side: $tabDropSide)
-                )
+            ZStack {
+                panes
+                    .transition(.lumenScreen)
+                    // Своя вкладка у каждого набора панелей: при переключении экраны создаются заново.
+                    .id(workspace.selectedTabId)
+            }
+            .animation(LumenMotion.screen, value: workspace.selectedTabId)
+            // Вкладку можно бросить к левому или правому краю: она откроется рядом.
+            // Подсветка только пока вкладку держат: после броска или отмены она гаснет.
+            .overlay { TabDropHighlight(side: workspace.draggingTabId == nil ? nil : tabDropSide) }
+            .onChange(of: workspace.draggingTabId) { _, id in
+                if id == nil { tabDropSide = nil }
+            }
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                panesWidth = size.width
+                isTallWindow = PaneArrangement.isTall(width: Double(size.width), height: Double(size.height))
+            }
+            .onDrop(
+                of: [.lumenTab],
+                delegate: TabEdgeDropDelegate(workspace: workspace, width: panesWidth, side: $tabDropSide)
+            )
         }
         .background {
             // Под вкладками и в просвете между панелями виден фон темы.
@@ -360,7 +373,7 @@ public struct RootView: View {
     /// Сочетания клавиш для вкладок, как в браузере. Кнопки невидимые: в панели окна им места нет.
     private var tabShortcuts: some View {
         ZStack {
-            Button("Новая вкладка") { withAnimation(.snappy) { workspace.newTab() } }
+            Button("Новая вкладка") { withAnimation(LumenMotion.standard) { workspace.newTab() } }
                 .keyboardShortcut("t", modifiers: .command)
             Button("Назад") { workspace.goBack() }
                 .keyboardShortcut("[", modifiers: .command)
@@ -376,7 +389,7 @@ public struct RootView: View {
             Button("Правая панель") { focusPane(1) }
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
             // ⌘W закрывает вкладку, а последнюю вкладку закрывает вместе с окном, как обычно.
-            Button("Закрыть вкладку") { withAnimation(.snappy) { workspace.closeTab(workspace.selectedTabId) } }
+            Button("Закрыть вкладку") { withAnimation(LumenMotion.standard) { workspace.closeTab(workspace.selectedTabId) } }
                 .keyboardShortcut(workspace.tabs.count > 1 ? KeyboardShortcut("w", modifiers: .command) : nil)
             Button("Следующая вкладка") { workspace.selectNextTab() }
                 .keyboardShortcut(.tab, modifiers: .control)
@@ -417,17 +430,24 @@ public struct RootView: View {
                     onToggleAxis: { setPaneAxis(paneAxis == .stacked ? .sideBySide : .stacked) }
                 )
             }
-            detail(tab.panes[index].current, pane: index)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .environment(\.isActivePane, isActive)
-                .environment(\.isSplitScreen, tab.isSplit)
-                .environment(\.besidePageId, besidePageId(of: index, in: tab))
-                .environment(\.appActions, appActions(pane: index))
-                // Щелчок в панели делает её активной. Без разделения жест выключен.
-                .simultaneousGesture(
-                    TapGesture().onEnded { workspace.focus(pane: index) },
-                    including: tab.isSplit ? .all : .subviews
-                )
+            // Смена экрана в панели мягкая: новый проявляется, старый быстро гаснет.
+            // Переход к выписке в уже открытой книге экран не меняет (`screenKey`).
+            ZStack {
+                detail(tab.panes[index].current, pane: index)
+                    .transition(.lumenScreen)
+                    .id(tab.panes[index].current.screenKey)
+            }
+            .animation(LumenMotion.screen, value: tab.panes[index].current.screenKey)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .environment(\.isActivePane, isActive)
+            .environment(\.isSplitScreen, tab.isSplit)
+            .environment(\.besidePageId, besidePageId(of: index, in: tab))
+            .environment(\.appActions, appActions(pane: index))
+            // Щелчок в панели делает её активной. Без разделения жест выключен.
+            .simultaneousGesture(
+                TapGesture().onEnded { workspace.focus(pane: index) },
+                including: tab.isSplit ? .all : .subviews
+            )
         }
     }
 
@@ -527,7 +547,7 @@ public struct RootView: View {
                 systemImage: "rectangle.split.2x1",
                 shortcut: "⌘\\",
                 keywords: ["рядом", "две", "панели"],
-                run: { withAnimation(.snappy) { workspace.toggleSplit() } }
+                run: { withAnimation(LumenMotion.standard) { workspace.toggleSplit() } }
             ),
             PaletteCommand(
                 id: "focus",
@@ -551,7 +571,7 @@ public struct RootView: View {
                 systemImage: "plus.square.on.square",
                 shortcut: "⌘T",
                 keywords: ["вкладки"],
-                run: { withAnimation(.snappy) { workspace.newTab() } }
+                run: { withAnimation(LumenMotion.standard) { workspace.newTab() } }
             ),
             PaletteCommand(
                 id: "next-tab",
@@ -585,7 +605,7 @@ public struct RootView: View {
                 systemImage: "xmark.square",
                 shortcut: "⌘W",
                 keywords: ["вкладки"],
-                run: { withAnimation(.snappy) { workspace.closeTab(workspace.selectedTabId) } }
+                run: { withAnimation(LumenMotion.standard) { workspace.closeTab(workspace.selectedTabId) } }
             ))
         }
         if workspace.isSplit {

@@ -427,7 +427,7 @@ struct LibraryView: View {
         commitRename()
         selection = item.id
         LumenSounds.play(.tap)
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+        withAnimation(LumenMotion.quick) {
             contextMenu = ContextMenuState(
                 item: item.id,
                 point: CGPoint(x: item.position.x + local.x, y: item.position.y + local.y)
@@ -436,7 +436,7 @@ struct LibraryView: View {
     }
 
     private func closeContextMenu() {
-        withAnimation(.easeOut(duration: 0.12)) { contextMenu = nil }
+        withAnimation(LumenMotion.quick) { contextMenu = nil }
     }
 
     /// Меню встаёт правее и ниже точки щелчка, но не вылезает за край холста.
@@ -610,9 +610,12 @@ struct LibraryView: View {
         let observation = ValueObservation.tracking { db in try LibrarySnapshot.fetch(db, folderId: folderId) }
         do {
             for try await value in observation.values(in: database.reader) {
-                snapshot = value
-                hasLoaded = true
-                pendingPositions = [:]
+                // Новое на холсте проявляется, удалённое гаснет. Первый показ сразу, без анимации.
+                withAnimation(hasLoaded && value != snapshot ? LumenMotion.standard : nil) {
+                    snapshot = value
+                    hasLoaded = true
+                    pendingPositions = [:]
+                }
             }
         } catch {
             lumenLog.error("Library observation failed: \(String(describing: error), privacy: .public)")

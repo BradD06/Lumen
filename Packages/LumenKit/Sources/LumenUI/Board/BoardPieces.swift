@@ -128,7 +128,7 @@ struct BoardPinHead: View {
             // Палец больше кнопки: место, за которое берут, шире.
             .frame(width: 34, height: 34)
             .contentShape(Circle())
-            .animation(.snappy, value: isActive)
+            .animation(LumenMotion.standard, value: isActive)
     }
 }
 

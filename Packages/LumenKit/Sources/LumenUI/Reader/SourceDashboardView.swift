@@ -393,6 +393,6 @@ private struct DashboardPillButtonStyle: ButtonStyle {
             .contentShape(Capsule())
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .opacity(configuration.isPressed ? 0.85 : 1)
-            .animation(.spring(duration: 0.2), value: configuration.isPressed)
+            .animation(LumenMotion.quick, value: configuration.isPressed)
     }
 }

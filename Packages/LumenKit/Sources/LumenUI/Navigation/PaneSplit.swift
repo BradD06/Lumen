@@ -50,7 +50,7 @@ struct PaneSplit<Leading: View, Trailing: View>: View {
     private func handle(length: CGFloat) -> some View {
         let available = max(length - PaneStyle.gap, 1)
         return PaneDivider(axis: axis, isActive: isHovered || dragStart != nil, label: "Граница панелей") { hovering in
-            withAnimation(.easeOut(duration: 0.15)) { isHovered = hovering }
+            withAnimation(LumenMotion.quick) { isHovered = hovering }
         }
         .gesture(
             // Сдвиг считается в координатах окна: ручка едет вместе с мышью,
@@ -73,7 +73,7 @@ struct PaneSplit<Leading: View, Trailing: View>: View {
                 .onEnded { _ in dragStart = nil }
         )
         .onTapGesture(count: 2) {
-            withAnimation(.snappy) { fractions[axis] = 0.5 }
+            withAnimation(LumenMotion.standard) { fractions[axis] = 0.5 }
         }
         .help(axis == .stacked
             ? "Потяните, чтобы поменять высоту панелей. Двойной щелчок делит поровну"
@@ -102,6 +102,7 @@ struct PaneCard: ViewModifier {
             .clipShape(shape)
             .overlay {
                 shape.strokeBorder(isFocused ? theme.accent.opacity(0.45) : theme.cardStroke, lineWidth: 1)
+                    .animation(LumenMotion.quick, value: isFocused)
             }
             .shadow(color: .black.opacity(0.3), radius: 14, y: 6)
     }

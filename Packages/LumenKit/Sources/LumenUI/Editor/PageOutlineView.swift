@@ -22,7 +22,7 @@ struct PageOutlineView: View {
                     .transition(.opacity)
             }
         }
-        .animation(.spring(duration: 0.25), value: isExpanded)
+        .animation(LumenMotion.standard, value: isExpanded)
         #if os(macOS)
         .onHover { isExpanded = $0 }
         #endif

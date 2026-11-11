@@ -153,7 +153,7 @@ struct NoticeOverlay: ViewModifier {
                     .id(notice.id)
             }
         }
-        .animation(.spring(duration: 0.3), value: center.current)
+        .animation(LumenMotion.standard, value: center.current)
     }
 }
 

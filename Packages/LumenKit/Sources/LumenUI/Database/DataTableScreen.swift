@@ -107,7 +107,7 @@ struct DataTableScreen: View {
                     let isSelected = view.id == model.view?.id
                     Button {
                         LumenSounds.play(.tap)
-                        withAnimation(.snappy) { model.selectedViewId = view.id }
+                        withAnimation(LumenMotion.standard) { model.selectedViewId = view.id }
                     } label: {
                         Label(view.name, systemImage: view.layout.symbolName)
                             .font(.subheadline.weight(isSelected ? .semibold : .regular))
@@ -121,7 +121,7 @@ struct DataTableScreen: View {
                     .buttonStyle(.plain)
                     .keyHint(view.name) {
                         LumenSounds.play(.tap)
-                        withAnimation(.snappy) { model.selectedViewId = view.id }
+                        withAnimation(LumenMotion.standard) { model.selectedViewId = view.id }
                     }
                     .contextMenu {
                         Button {
