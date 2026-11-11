@@ -21,6 +21,40 @@ struct BookShelfTests {
         #expect(first.width >= 30)
     }
 
+    @Test func someBooksLeanOrLieButMostStandUpright() {
+        let styles = (0..<400).map { _ in BookSpineStyle(source: book()) }
+        let counts = Dictionary(grouping: styles, by: \.pose).mapValues(\.count)
+        #expect(Set(counts.keys) == Set(BookSpineStyle.Pose.allCases), "на полке есть и наклонённые, и лежащие")
+        #expect((counts[.upright] ?? 0) > styles.count / 2, "большинство стоит ровно")
+    }
+
+    @Test func leaningAndLyingBooksTakeTheirRoom() {
+        var style = BookSpineStyle(source: book())
+        style.pose = .upright
+        #expect(style.slotWidth == style.width)
+        #expect(style.slotHeight == style.height)
+        style.pose = .leanRight
+        #expect(style.slotWidth > style.width, "место под наклон")
+        #expect(style.slotWidth < style.width + 30)
+        style.pose = .lying
+        #expect(style.slotWidth == style.height, "лежащая книга занимает свою длину")
+        #expect(style.slotHeight == style.width)
+    }
+
+    @Test func deskShelfShowsRecentlyReadNewestFirst() {
+        let now = Date()
+        var old = book(title: "Давняя", opened: true)
+        old.lastOpenedAt = now.addingTimeInterval(-86_400 * 30)
+        var fresh = book(title: "Свежая", opened: true)
+        fresh.lastOpenedAt = now
+        var middle = book(title: "Вчерашняя", opened: true)
+        middle.lastOpenedAt = now.addingTimeInterval(-86_400)
+        let unread = book(title: "Не открывали")
+        let shelf = BookShelf.recentlyRead([old, unread, fresh, middle])
+        #expect(shelf.map(\.displayTitle) == ["Свежая", "Вчерашняя", "Давняя"])
+        #expect(BookShelf.recentlyRead([old, fresh, middle], limit: 2).count == 2)
+    }
+
     @Test func ribbonHangsDownToTheReadPlace() {
         #expect(BookSpineStyle.ribbon(progress: 0.5, opened: false, height: 150) == nil, "неоткрытая книга без ленты")
         #expect(BookSpineStyle.ribbon(progress: 0, opened: true, height: 150) == 14, "начатая показывает кончик")
