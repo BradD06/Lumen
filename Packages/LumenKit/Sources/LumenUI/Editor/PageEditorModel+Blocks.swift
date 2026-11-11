@@ -238,6 +238,17 @@ extension PageEditorModel {
             outdent(id)
             return true
         }
+        // Пустой единственный абзац листа: лист убирается, курсор уходит на лист выше.
+        if block.parentBlockId == nil,
+           let sheet = sheets.first(where: { $0.blocks.map(\.id) == [id] }),
+           let breakId = sheet.breakId {
+            recordUndo()
+            let index = position(of: id) ?? 0
+            let previous = blocks[..<index].last { $0.type.hasText }
+            removeBlocks([id, breakId])
+            focusRequest = previous?.id ?? blocks.first { $0.type.hasText }?.id
+            return true
+        }
         // Пустой блок удаляется, курсор встаёт в конец блока выше. Единственный блок на странице остаётся.
         guard children(of: id).isEmpty, blocks.contains(where: { $0.id != id && $0.type.hasText }) else {
             return false

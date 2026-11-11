@@ -282,6 +282,15 @@ extension AppDatabase {
             }
         }
 
+        migrator.registerMigration("v14: pinned sheets") { db in
+            // Лист заметки, приколотый к полке «Кабинета». Сами листы это блоки-границы
+            // (`sheetBreak`), новых таблиц не нужно: старые заметки остаются одним листом как есть.
+            // Таблица уже синхронизируется, триггеры видят новый столбец сами.
+            try db.alter(table: "page") { t in
+                t.add(column: "shelfPin", .integer)
+            }
+        }
+
         return migrator
     }
 }
