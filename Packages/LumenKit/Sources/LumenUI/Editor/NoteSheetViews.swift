@@ -153,7 +153,7 @@ struct AddSheetBar: View {
     }
 
     private func add() {
-        LumenSounds.play(.create)
+        LumenSounds.play(.addSheet)
         onAdd()
     }
 }
@@ -286,7 +286,7 @@ struct SheetPager: View {
                 .accessibilityLabel("Лист ниже")
             }
             Button {
-                LumenSounds.play(.create)
+                LumenSounds.play(.addSheet)
                 onAdd()
             } label: {
                 Image(systemName: "plus")

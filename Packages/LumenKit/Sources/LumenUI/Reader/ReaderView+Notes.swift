@@ -196,39 +196,48 @@ extension ReaderView {
         .help(help)
     }
 
-    /// Ручка в зазоре между книгой и заметками: тянется, чтобы поменять ширину колонок.
-    func splitHandle(totalWidth: CGFloat) -> some View {
-        Capsule()
-            .fill(theme.textSecondary.opacity(isHandleHovered || dragStartFraction != nil ? 0.6 : 0.22))
-            .frame(width: 4, height: 40)
-            .frame(width: ReaderStyle.gap)
-            .frame(maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .onHover { hovering in
-                withAnimation(.easeOut(duration: 0.15)) { isHandleHovered = hovering }
-                #if os(macOS)
-                if hovering { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-                #endif
+    /// Ручка в зазоре между книгой и заметками: тянется, чтобы поменять ширину колонок
+    /// (или высоту листов, когда заметки под книгой). Двойной щелчок возвращает как было.
+    func splitHandle(axis: PaneArrangement.Axis, length: CGFloat) -> some View {
+        PaneDivider(
+            axis: axis,
+            isActive: isHandleHovered || dragStartFraction != nil,
+            label: axis == .stacked ? "Высота заметок" : "Ширина заметок"
+        ) { hovering in
+            withAnimation(.easeOut(duration: 0.15)) { isHandleHovered = hovering }
+        }
+        .gesture(
+            // Сдвиг мыши считается в координатах окна. В своих координатах ручка уезжает
+            // вместе с мышью, сдвиг выходил то больше, то меньше, и колонки дёргались туда-сюда.
+            DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { value in
+                    let start = dragStartFraction ?? arrangement.fraction(for: axis)
+                    if dragStartFraction == nil { dragStartFraction = start }
+                    let fraction = PaneArrangement.dragged(
+                        from: start,
+                        delta: Double(axis == .stacked ? value.translation.height : value.translation.width),
+                        length: Double(length),
+                        axis: axis,
+                        isSwapped: arrangement.isSwapped
+                    )
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) { dragFraction = fraction }
+                }
+                .onEnded { _ in
+                    if let dragFraction { arrangement.setFraction(dragFraction, for: axis) }
+                    dragFraction = nil
+                    dragStartFraction = nil
+                }
+        )
+        .onTapGesture(count: 2) {
+            withAnimation(.snappy) {
+                arrangement.setFraction(PaneArrangement().fraction(for: axis), for: axis)
             }
-            .gesture(
-                // Сдвиг мыши считается в координатах окна. В своих координатах ручка уезжает
-                // вместе с мышью, сдвиг выходил то больше, то меньше, и колонки дёргались туда-сюда.
-                DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                    .onChanged { value in
-                        let start = dragStartFraction ?? notesFraction
-                        if dragStartFraction == nil { dragStartFraction = start }
-                        let fraction = min(max(start - value.translation.width / max(totalWidth, 1), 0.25), 0.65)
-                        var transaction = Transaction()
-                        transaction.disablesAnimations = true
-                        withTransaction(transaction) { dragFraction = fraction }
-                    }
-                    .onEnded { _ in
-                        if let dragFraction { notesFraction = dragFraction }
-                        dragFraction = nil
-                        dragStartFraction = nil
-                    }
-            )
-            .accessibilityLabel("Ширина заметок")
+        }
+        .help(axis == .stacked
+            ? "Потяните, чтобы поменять высоту книги и заметок. Двойной щелчок возвращает как было"
+            : "Потяните, чтобы поменять ширину книги и заметок. Двойной щелчок возвращает как было")
     }
 
     func setNotes(_ isOpen: Bool) {

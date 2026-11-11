@@ -3,6 +3,7 @@ import LumenStorage
 import LumenThemes
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
 #endif
@@ -58,6 +59,8 @@ struct PageEditorView: View {
     @State private var visibleSheetIds: [UUID] = []
     /// Ширина редактора: миниатюры листов слева видны, только если есть место рядом с листом.
     @State private var editorWidth: CGFloat = 0
+    /// Над заметкой держат выписку, утащенную из книги.
+    @State private var isExcerptTargeted = false
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -348,7 +351,7 @@ struct PageEditorView: View {
                         pinned: model.pinnedSheet,
                         onSelect: { scrollToSheet($0, proxy: proxy) },
                         onAdd: {
-                            LumenSounds.play(.create)
+                            LumenSounds.play(.addSheet)
                             model.addSheet()
                         }
                     )
@@ -356,6 +359,12 @@ struct PageEditorView: View {
                     .padding(.top, 24)
                 }
             }
+            // Выписку из книги можно дотащить до заметки: она встанет выпиской со ссылкой на место.
+            .onDrop(of: [.lumenExcerpt], isTargeted: $isExcerptTargeted) { providers in
+                ExcerptDrag.accept(providers, into: model)
+            }
+            .overlay { ExcerptDropHighlight(isTargeted: isExcerptTargeted) }
+            .animation(.easeOut(duration: 0.15), value: isExcerptTargeted)
             .overlay(alignment: .bottomTrailing) {
                 if !isEmbedded, !isCompact, isActivePane {
                     WordCountCapsule(
@@ -708,7 +717,7 @@ struct PageEditorView: View {
             Button("Открепить от полки", systemImage: "pin.slash") { model.pinSheet(nil) }
         } else {
             Button("Приколоть к полке", systemImage: "pin") {
-                LumenSounds.play(.toggle)
+                LumenSounds.play(.pin)
                 model.pinSheet(index)
             }
         }

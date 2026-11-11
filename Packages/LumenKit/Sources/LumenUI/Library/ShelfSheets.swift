@@ -41,7 +41,7 @@ struct ShelfNoteActions {
             await NoticeCenter.shared.attempt("Не удалось переставить заметку") {
                 try await database.movePage(note.id, toFolder: shelf?.id)
             }
-            LumenSounds.play(.dropIntoFolder)
+            LumenSounds.play(.ringClick)
         }
     }
 
@@ -62,7 +62,7 @@ struct ShelfNoteMenu: View {
             Button("Открепить от полки", systemImage: "pin.slash") { actions.pin(note, sheet: nil) }
         } else {
             Button(note.isFolder ? "Приколоть первый лист к полке" : "Приколоть к полке", systemImage: "pin") {
-                LumenSounds.play(.toggle)
+                LumenSounds.play(.pin)
                 actions.pin(note, sheet: 0)
             }
         }
