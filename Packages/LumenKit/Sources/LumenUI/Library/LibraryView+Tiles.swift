@@ -189,7 +189,7 @@ extension LibraryView {
         if snapToGrid, target == nil {
             position = LibraryLayout.snapped(position)
         }
-        withAnimation(.spring(duration: 0.3)) {
+        withAnimation(LumenMotion.standard) {
             pendingPositions[drag.item] = position
         }
 

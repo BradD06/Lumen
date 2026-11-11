@@ -156,7 +156,7 @@ private struct IncomingOpenModifier: ViewModifier {
 
     private func handle(_ urls: [URL]) async {
         let hasFiles = urls.contains(where: \.isFileURL)
-        if hasFiles { withAnimation(.snappy) { isImporting = true } }
+        if hasFiles { withAnimation(LumenMotion.standard) { isImporting = true } }
         var last: SidebarItem?
         for url in urls {
             switch await IncomingOpen.resolve(url, database: database) {
@@ -164,7 +164,7 @@ private struct IncomingOpenModifier: ViewModifier {
             case .failure(let error): failure = error
             }
         }
-        if hasFiles { withAnimation(.snappy) { isImporting = false } }
+        if hasFiles { withAnimation(LumenMotion.standard) { isImporting = false } }
         // Открыли сразу несколько файлов: все легли в библиотеку, на экране последний.
         if let last {
             if hasFiles { LumenSounds.play(.create) }

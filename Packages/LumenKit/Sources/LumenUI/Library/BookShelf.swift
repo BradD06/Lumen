@@ -231,7 +231,7 @@ struct BookShelf: View {
         }
         // Перетаскивание бросили за полкой: забываем его.
         draggingId = nil
-        withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+        withAnimation(LumenMotion.gentle) {
             if hovering {
                 hoveredId = book.id
             } else if hoveredId == book.id {
@@ -505,7 +505,7 @@ struct BookShelf: View {
     }
 
     private func choose(_ option: ShelfSort) {
-        withAnimation(.snappy) {
+        withAnimation(LumenMotion.standard) {
             dragOrders = [:]
             sort = option
         }
@@ -517,7 +517,7 @@ struct BookShelf: View {
         let present = Set(group.books.map(\.id))
         let arrivals = order.filter { !present.contains($0) }
         LumenSounds.play(.shelveBook)
-        withAnimation(.snappy) {
+        withAnimation(LumenMotion.standard) {
             dragOrders = [group.id: order]
             sort = .custom
         }
@@ -1074,7 +1074,7 @@ private struct SpineButtonStyle: ButtonStyle {
     func makeBody(configuration: ButtonStyleConfiguration) -> some View {
         configuration.label
             .offset(y: configuration.isPressed ? -6 : 0)
-            .animation(.snappy(duration: 0.15), value: configuration.isPressed)
+            .animation(LumenMotion.quick, value: configuration.isPressed)
             .contentShape(Rectangle())
     }
 }
@@ -1167,7 +1167,7 @@ struct ShelfDropDelegate: DropDelegate {
     }
 
     func dropExited(info: DropInfo) {
-        withAnimation(.snappy) { order = nil }
+        withAnimation(LumenMotion.standard) { order = nil }
     }
 
     func performDrop(info: DropInfo) -> Bool {
@@ -1184,7 +1184,7 @@ struct ShelfDropDelegate: DropDelegate {
         guard let id = draggingId else { return current }
         let next = ShelfLayout.reorder(current, moving: id, x: x + scrollOffset, widths: widths)
         if next != current || order == nil {
-            withAnimation(.snappy) { order = next }
+            withAnimation(LumenMotion.standard) { order = next }
         }
         return next
     }

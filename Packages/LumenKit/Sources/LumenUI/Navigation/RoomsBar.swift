@@ -14,14 +14,16 @@ struct RoomsBar: View {
 
     @Environment(\.lumenTheme) private var theme
     @State private var counts = SidebarSnapshot.empty
+    /// Латунная плашка переезжает с комнаты на комнату, а не гаснет и зажигается.
+    @Namespace private var plaqueSpace
 
     var body: some View {
         VStack(spacing: 0) {
             ViewThatFits(in: .horizontal) {
-                row(wideSearch: true)
-                row(wideSearch: false)
+                row(wideSearch: true, variant: 0)
+                row(wideSearch: false, variant: 1)
                 ScrollView(.horizontal, showsIndicators: false) {
-                    row(wideSearch: false)
+                    row(wideSearch: false, variant: 2)
                 }
             }
             .padding(.horizontal, 16)
@@ -43,13 +45,15 @@ struct RoomsBar: View {
         .accessibilityIdentifier("roomsBar")
     }
 
-    private func row(wideSearch: Bool) -> some View {
+    /// `variant` различает варианты строки внутри `ViewThatFits`: у каждого своя плашка.
+    private func row(wideSearch: Bool, variant: Int) -> some View {
         HStack(spacing: 10) {
             HStack(spacing: 2) {
                 ForEach(StudyRoom.allCases) { room in
-                    plaque(room)
+                    plaque(room, variant: variant)
                 }
             }
+            .animation(LumenMotion.standard, value: selection)
             .padding(3)
             .lumenGlass(Capsule())
             Spacer(minLength: 12)
@@ -91,7 +95,7 @@ struct RoomsBar: View {
     }
 
     /// Комната в капсуле. Открытая залита латунью, текст на ней цвета `onAccent`.
-    private func plaque(_ room: StudyRoom) -> some View {
+    private func plaque(_ room: StudyRoom, variant: Int) -> some View {
         let isSelected = room.contains(selection)
         let shape = Capsule()
         let count = room.count(in: counts)
@@ -104,6 +108,7 @@ struct RoomsBar: View {
                 if count > 0 {
                     Text("\(count)")
                         .font(.caption2.weight(.bold))
+                        .contentTransition(.numericText())
                         .padding(.horizontal, 5)
                         .frame(minWidth: 16, minHeight: 16)
                         .background(
@@ -123,6 +128,7 @@ struct RoomsBar: View {
                         startPoint: .top, endPoint: .bottom
                     ))
                     .shadow(color: theme.accent.opacity(0.35), radius: 6, y: 2)
+                    .matchedGeometryEffect(id: variant, in: plaqueSpace)
                 }
             }
             .contentShape(shape)
@@ -132,14 +138,13 @@ struct RoomsBar: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("room.\(room.rawValue)")
         .help(room.hint)
-        .animation(.snappy(duration: 0.2), value: isSelected)
     }
 
     private func observe() async {
         let observation = ValueObservation.tracking { db in try SidebarSnapshot.fetch(db) }
         do {
-            for try await value in observation.values(in: database.reader) {
-                counts = value
+            for try await value in observation.values(in: database.reader) where value != counts {
+                withAnimation(LumenMotion.standard) { counts = value }
             }
         } catch {
             lumenLog.error("Rooms bar observation failed: \(String(describing: error), privacy: .public)")

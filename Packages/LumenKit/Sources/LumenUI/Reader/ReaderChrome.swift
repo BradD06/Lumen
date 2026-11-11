@@ -145,7 +145,7 @@ struct ReaderRoundButtonStyle: ButtonStyle {
             .contentShape(Circle())
             .opacity(isEnabled ? 1 : 0.35)
             .scaleEffect(configuration.isPressed ? 0.92 : 1)
-            .animation(.spring(duration: 0.2), value: configuration.isPressed)
+            .animation(LumenMotion.quick, value: configuration.isPressed)
     }
 }
 

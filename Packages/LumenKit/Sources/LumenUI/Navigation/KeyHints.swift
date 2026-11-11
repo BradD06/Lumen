@@ -254,7 +254,7 @@ struct KeyHintOverlay: View {
         }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { center.bounds = $0 }
         .allowsHitTesting(center.isActive)
-        .animation(.easeOut(duration: 0.12), value: center.isActive)
+        .animation(LumenMotion.quick, value: center.isActive)
         #if os(macOS)
         .onChange(of: center.isActive) { _, active in
             if active { installMonitor() } else { removeMonitor() }

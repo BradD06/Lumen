@@ -238,14 +238,14 @@ struct ReaderView: View {
     func setNotesAxis(_ axis: PaneArrangement.Axis) {
         guard axis != notesAxis else { return }
         LumenSounds.play(.toggle)
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+        withAnimation(LumenMotion.standard) {
             arrangement.setAxis(axis, isTall: isTallReader)
         }
     }
 
     func swapNotesSide() {
         LumenSounds.play(.toggle)
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+        withAnimation(LumenMotion.standard) {
             arrangement.swap()
         }
     }
@@ -380,7 +380,7 @@ struct ReaderView: View {
         }
         #endif
         LumenSounds.play(showsToc ? .panelClose : .panelOpen)
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+        withAnimation(LumenMotion.standard) {
             showsToc.toggle()
         }
     }

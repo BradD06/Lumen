@@ -189,7 +189,7 @@ struct HomeView: View {
         let observation = ValueObservation.tracking { db in try HomeSnapshot.fetch(db) }
         do {
             for try await value in observation.values(in: database.reader) {
-                withAnimation { snapshot = value }
+                withAnimation(LumenMotion.standard) { snapshot = value }
             }
         } catch {
             lumenLog.error("Home observation failed: \(String(describing: error), privacy: .public)")
@@ -200,7 +200,7 @@ struct HomeView: View {
         let observation = ValueObservation.tracking { db in try HomeReadingSnapshot.fetch(db) }
         do {
             for try await value in observation.values(in: database.reader) {
-                withAnimation { reading = value }
+                withAnimation(LumenMotion.standard) { reading = value }
             }
         } catch {
             lumenLog.error("Home reading observation failed: \(String(describing: error), privacy: .public)")
@@ -381,7 +381,7 @@ private struct TodayTasksCard: View {
         let observation = ValueObservation.tracking { db in try DataTableSnapshot.fetch(db, pageId: pageId) }
         do {
             for try await value in observation.values(in: database.reader) {
-                withAnimation(.snappy) { snapshot = value }
+                withAnimation(LumenMotion.standard) { snapshot = value }
             }
         } catch {
             lumenLog.error("Today tasks observation failed: \(String(describing: error), privacy: .public)")
@@ -456,6 +456,8 @@ struct DarkPillButtonStyle: ButtonStyle {
             .padding(.horizontal, 16)
             .frame(minHeight: 36)
             .background(Color.black.opacity(configuration.isPressed ? 0.55 : 0.72), in: Capsule())
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(LumenMotion.quick, value: configuration.isPressed)
             .contentShape(Capsule())
     }
 }

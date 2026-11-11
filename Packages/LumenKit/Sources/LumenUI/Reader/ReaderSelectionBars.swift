@@ -16,6 +16,8 @@ struct SheetRoundButtonStyle: ButtonStyle {
             .foregroundStyle(ink)
             .frame(width: 30, height: 30)
             .background(ink.opacity(configuration.isPressed ? 0.16 : 0.09), in: Circle())
+            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .animation(LumenMotion.quick, value: configuration.isPressed)
             .contentShape(Circle())
             .opacity(isEnabled ? 1 : 0.35)
     }
@@ -242,7 +244,7 @@ private struct ReaderPillButtonStyle: ButtonStyle {
             }
             .contentShape(Capsule())
             .scaleEffect(configuration.isPressed ? 0.95 : 1)
-            .animation(.spring(duration: 0.2), value: configuration.isPressed)
+            .animation(LumenMotion.quick, value: configuration.isPressed)
     }
 }
 

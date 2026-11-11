@@ -132,7 +132,7 @@ struct InboxView: View {
         let observation = ValueObservation.tracking { db in try InboxQuery.fetch(db) }
         do {
             for try await value in observation.values(in: database.reader) {
-                withAnimation { notes = value }
+                withAnimation(LumenMotion.standard) { notes = value }
             }
         } catch {
             lumenLog.error("Inbox observation failed: \(String(describing: error), privacy: .public)")
@@ -286,7 +286,7 @@ struct InboxTriageView: View {
                 .onChanged { drag = $0.translation }
                 .onEnded { value in
                     let width = value.translation.width
-                    withAnimation(.snappy) { drag = .zero }
+                    withAnimation(LumenMotion.standard) { drag = .zero }
                     if width < -Self.swipeDistance {
                         delete(note)
                     } else if width > Self.swipeDistance {
@@ -402,7 +402,7 @@ struct InboxTriageView: View {
         LumenSounds.play(.tap)
         handled += 1
         lastStep = .kept(note.page.id)
-        withAnimation(.snappy) { _ = skipped.insert(note.id) }
+        withAnimation(LumenMotion.standard) { _ = skipped.insert(note.id) }
     }
 
     private func delete(_ note: PagePreview) {
@@ -420,7 +420,7 @@ struct InboxTriageView: View {
         let database = database
         switch step {
         case .kept(let id):
-            withAnimation(.snappy) { _ = skipped.remove(id) }
+            withAnimation(LumenMotion.standard) { _ = skipped.remove(id) }
         case .filed(let id):
             Task {
                 await NoticeCenter.shared.attempt("Не удалось вернуть заметку") {
@@ -482,7 +482,7 @@ struct InboxTriageView: View {
         do {
             for try await value in observation.values(in: database.reader) {
                 if !isLoaded { total = value.count }
-                withAnimation(.snappy) { notes = value }
+                withAnimation(LumenMotion.standard) { notes = value }
                 isLoaded = true
             }
         } catch {
@@ -655,8 +655,9 @@ struct TrashView: View {
     private func observe() async {
         let observation = ValueObservation.tracking { db in try TrashSnapshot.fetch(db) }
         do {
-            for try await value in observation.values(in: database.reader) {
-                trash = value
+            for try await value in observation.values(in: database.reader) where value != trash {
+                // Восстановленное и удалённое навсегда уходит из списка плавно.
+                withAnimation(LumenMotion.standard) { trash = value }
             }
         } catch {
             lumenLog.error("Trash observation failed: \(String(describing: error), privacy: .public)")

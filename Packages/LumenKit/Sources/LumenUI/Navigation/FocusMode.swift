@@ -22,7 +22,7 @@ final class FocusModeState {
 
     func toggle() {
         LumenSounds.play(isOn ? .panelClose : .panelOpen)
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(LumenMotion.standard) {
             isOn.toggle()
             if !isOn { isLampLit = false }
         }

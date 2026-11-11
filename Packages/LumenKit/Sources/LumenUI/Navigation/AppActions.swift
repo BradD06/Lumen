@@ -294,6 +294,8 @@ struct MenuRowButtonStyle: ButtonStyle {
                 .background {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(fill)
+                        .animation(LumenMotion.quick, value: isHovered)
+                        .animation(LumenMotion.quick, value: configuration.isPressed)
                 }
                 .onHover { isHovered = $0 }
         }
@@ -359,7 +361,7 @@ struct CaptureField: View {
         .padding(.trailing, 10)
         .frame(minHeight: 54)
         .lumenCard(padding: 0)
-        .animation(.snappy, value: text.isEmpty)
+        .animation(LumenMotion.standard, value: text.isEmpty)
     }
 
     private func save() {

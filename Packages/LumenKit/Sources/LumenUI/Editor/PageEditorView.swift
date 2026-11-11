@@ -364,7 +364,7 @@ struct PageEditorView: View {
                 ExcerptDrag.accept(providers, into: model)
             }
             .overlay { ExcerptDropHighlight(isTargeted: isExcerptTargeted) }
-            .animation(.easeOut(duration: 0.15), value: isExcerptTargeted)
+            .animation(LumenMotion.quick, value: isExcerptTargeted)
             .overlay(alignment: .bottomTrailing) {
                 if !isEmbedded, !isCompact, isActivePane {
                     WordCountCapsule(
@@ -565,7 +565,7 @@ struct PageEditorView: View {
     private func setSubpagesPanel(_ isOpen: Bool) {
         guard isOpen != showsSubpages else { return }
         LumenSounds.play(isOpen ? .panelOpen : .panelClose)
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) {
+        withAnimation(LumenMotion.standard) {
             showsSubpages = isOpen
         }
         remembersSubpages = isOpen

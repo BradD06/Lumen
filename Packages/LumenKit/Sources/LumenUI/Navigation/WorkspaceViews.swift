@@ -98,6 +98,8 @@ struct WorkspaceTabStrip: View {
     @Bindable var workspace: Workspace
 
     @Environment(\.lumenTheme) private var theme
+    /// Подсветка выбранной вкладки переезжает к новой, а не мигает.
+    @Namespace private var tabSpace
 
     var body: some View {
         HStack(spacing: 6) {
@@ -109,16 +111,17 @@ struct WorkspaceTabStrip: View {
                                 .id(tab.id)
                         }
                     }
+                    .animation(LumenMotion.standard, value: workspace.selectedTabId)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 5)
                 }
                 .onChange(of: workspace.selectedTabId) { _, id in
-                    withAnimation(.snappy) { proxy.scrollTo(id) }
+                    withAnimation(LumenMotion.standard) { proxy.scrollTo(id) }
                 }
             }
 
             Button {
-                withAnimation(.snappy) { workspace.newTab() }
+                withAnimation(LumenMotion.standard) { workspace.newTab() }
             } label: {
                 Image(systemName: "plus")
                     .font(.callout.weight(.semibold))
@@ -127,7 +130,7 @@ struct WorkspaceTabStrip: View {
             .buttonStyle(PaneHeaderButtonStyle())
             .foregroundStyle(theme.textSecondary)
             .help("Новая вкладка (⌘T)")
-            .keyHint("Новая вкладка") { withAnimation(.snappy) { workspace.newTab() } }
+            .keyHint("Новая вкладка") { withAnimation(LumenMotion.standard) { workspace.newTab() } }
             .accessibilityLabel("Новая вкладка")
             .padding(.trailing, 8)
         }
@@ -161,7 +164,7 @@ struct WorkspaceTabStrip: View {
 
             if workspace.tabs.count > 1 {
                 Button {
-                    withAnimation(.snappy) { workspace.closeTab(tab.id) }
+                    withAnimation(LumenMotion.standard) { workspace.closeTab(tab.id) }
                 } label: {
                     Image(systemName: "xmark")
                         .font(.caption2.weight(.bold))
@@ -179,11 +182,13 @@ struct WorkspaceTabStrip: View {
         .padding(.trailing, workspace.tabs.count > 1 ? 8 : 12)
         .frame(height: 32)
         .background {
-            Capsule()
-                .fill(isSelected ? theme.cardFill : Color.clear)
-                .overlay {
-                    Capsule().strokeBorder(isSelected ? theme.accent.opacity(0.55) : theme.cardStroke, lineWidth: 1)
-                }
+            Capsule().strokeBorder(theme.cardStroke, lineWidth: 1)
+            if isSelected {
+                Capsule()
+                    .fill(theme.cardFill)
+                    .overlay { Capsule().strokeBorder(theme.accent.opacity(0.55), lineWidth: 1) }
+                    .matchedGeometryEffect(id: "selectedTab", in: tabSpace)
+            }
         }
         .contentShape(Capsule())
         .onTapGesture { workspace.select(tab: tab.id) }
@@ -201,7 +206,7 @@ struct WorkspaceTabStrip: View {
         .onDrop(of: [.lumenTab], isTargeted: nil) { _ in
             guard let id = workspace.draggingTabId else { return false }
             workspace.draggingTabId = nil
-            withAnimation(.snappy) { workspace.moveTab(id, before: tab.id) }
+            withAnimation(LumenMotion.standard) { workspace.moveTab(id, before: tab.id) }
             return true
         }
         .contextMenu {
@@ -280,7 +285,7 @@ struct PaneHeader: View {
             .keyHint(axis == .stacked ? "Панели рядом" : "Панели друг под другом", perform: onToggleAxis)
             .accessibilityLabel(axis == .stacked ? "Поставить панели рядом" : "Поставить панели друг под другом")
             Button {
-                withAnimation(.snappy) { workspace.swapPanes() }
+                withAnimation(LumenMotion.standard) { workspace.swapPanes() }
             } label: {
                 Image(systemName: axis == .stacked ? "arrow.up.arrow.down" : "arrow.left.arrow.right")
                     .frame(width: 26, height: 26)
@@ -289,12 +294,12 @@ struct PaneHeader: View {
             .keyHint("Поменять панели местами") { workspace.swapPanes() }
             .accessibilityLabel("Поменять панели местами")
             Button {
-                withAnimation(.snappy) { workspace.closePane(pane) }
+                withAnimation(LumenMotion.standard) { workspace.closePane(pane) }
             } label: {
                 Image(systemName: "xmark").frame(width: 26, height: 26)
             }
             .help("Закрыть панель")
-            .keyHint("Закрыть панель") { withAnimation(.snappy) { workspace.closePane(pane) } }
+            .keyHint("Закрыть панель") { withAnimation(LumenMotion.standard) { workspace.closePane(pane) } }
             .accessibilityLabel("Закрыть панель")
         }
         .buttonStyle(PaneHeaderButtonStyle())
@@ -310,6 +315,7 @@ struct PaneHeader: View {
                     Capsule(style: .continuous)
                         .strokeBorder(isFocused ? theme.accent.opacity(0.5) : theme.cardStroke, lineWidth: 1)
                 }
+                .animation(LumenMotion.quick, value: isFocused)
         }
         .contentShape(Capsule(style: .continuous))
         .padding(.horizontal, 8)
@@ -341,7 +347,7 @@ private struct PaneHeaderButton: View {
             .contentShape(Circle())
             .opacity(isEnabled ? 1 : 0.4)
             .onHover { isHovered = $0 }
-            .animation(.easeOut(duration: 0.12), value: isHovered)
+            .animation(LumenMotion.quick, value: isHovered)
     }
 }
 
@@ -444,14 +450,14 @@ struct TabEdgeDropDelegate: DropDelegate {
             return false
         }
         workspace.draggingTabId = nil
-        withAnimation(.snappy) { workspace.dropTab(id, toTrailing: target == .trailing) }
+        withAnimation(LumenMotion.standard) { workspace.dropTab(id, toTrailing: target == .trailing) }
         return true
     }
 
     private func update(_ info: DropInfo) {
         let new = TabDropSide(x: info.location.x, width: width)
         if new != side {
-            withAnimation(.easeOut(duration: 0.15)) { side = new }
+            withAnimation(LumenMotion.quick) { side = new }
         }
     }
 }

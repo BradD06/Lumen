@@ -46,7 +46,7 @@ extension LibraryView {
         for (index, item) in placedItems.enumerated() {
             positions[item.id] = LibraryLayout.cell(index, columns: columns)
         }
-        withAnimation(.spring(duration: 0.4)) {
+        withAnimation(LumenMotion.standard) {
             for (id, position) in positions {
                 pendingPositions[id] = position
             }

@@ -187,6 +187,7 @@ private struct ColumnDivider: View {
         Rectangle()
             .fill(theme.textSecondary.opacity(isHovered ? 0.45 : 0.18))
             .frame(width: isHovered ? 2 : 1)
+            .animation(LumenMotion.quick, value: isHovered)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
             .onHover { isHovered = $0 }

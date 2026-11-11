@@ -99,10 +99,12 @@ private struct CrumbButtonStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
-                .background(
-                    theme.textPrimary.opacity(configuration.isPressed ? 0.14 : (isHovered ? 0.08 : 0)),
-                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                )
+                .background {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(theme.textPrimary.opacity(configuration.isPressed ? 0.14 : (isHovered ? 0.08 : 0)))
+                        .animation(LumenMotion.quick, value: isHovered)
+                        .animation(LumenMotion.quick, value: configuration.isPressed)
+                }
                 .onHover { isHovered = $0 }
         }
     }
@@ -149,7 +151,7 @@ struct SaveStatusLabel: View {
         }
         .font(.caption)
         .foregroundStyle(theme.textSecondary)
-        .animation(.easeInOut(duration: 0.2), value: hasUnsavedChanges)
+        .animation(LumenMotion.quick, value: hasUnsavedChanges)
         .accessibilityIdentifier("save-status")
     }
 }

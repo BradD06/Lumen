@@ -75,7 +75,8 @@ struct BlockRow: View {
         .overlay { dropIndicator }
         .contentShape(Rectangle())
         .onHover { hovering in
-            isHovered = hovering
+            // Ручка и «+» слева проявляются и гаснут плавно.
+            withAnimation(LumenMotion.quick) { isHovered = hovering }
             // Перетаскивание отменили мимо строк: обычное наведение убирает оставшуюся линию.
             // Во время самого перетаскивания линию сразу ставит заново приём блока.
             if hovering, model.dropIndicator != nil {
@@ -450,7 +451,7 @@ struct BlockRow: View {
                         .font(.footnote.weight(.bold))
                         .foregroundStyle(theme.textSecondary)
                         .rotationEffect(.degrees(block.content.isCollapsed ? 0 : 90))
-                        .animation(.snappy, value: block.content.isCollapsed)
+                        .animation(LumenMotion.standard, value: block.content.isCollapsed)
                         .frame(width: 14)
                 }
                 .buttonStyle(.plain)

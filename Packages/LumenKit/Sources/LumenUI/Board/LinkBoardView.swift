@@ -77,10 +77,10 @@ struct LinkBoardView: View {
     private var controls: some View {
         HStack(spacing: 8) {
             chip("Всё", isOn: !model.onlyTheme) {
-                withAnimation(.snappy) { model.onlyTheme = false }
+                withAnimation(LumenMotion.standard) { model.onlyTheme = false }
             }
             chip("Только эта тема", isOn: model.onlyTheme) {
-                withAnimation(.snappy) { model.onlyTheme = true }
+                withAnimation(LumenMotion.standard) { model.onlyTheme = true }
             }
             .disabled(model.selection == nil)
             .help(model.selection == nil ? "Сначала нажмите на карточку" : "Показать только то, что связано с выбранной карточкой")
@@ -225,6 +225,8 @@ struct LinkBoardView: View {
             )
             .rotationEffect(.degrees(isMoving ? 0 : BoardCardMetrics.tilt(pin.id)))
             .scaleEffect(isMoving ? 1.05 : 1)
+            // Карточку берут в руку плавно: выпрямляется и чуть подрастает.
+            .animation(LumenMotion.quick, value: isMoving)
             .contentShape(Rectangle())
             .gesture(moveGesture(item))
             .onTapGesture(count: 2) { open(item) }

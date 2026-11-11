@@ -65,9 +65,9 @@ extension ReaderView {
                     }
                     .padding(.horizontal, isCompact ? 10 : 18)
                     .padding(.bottom, isCompact ? 10 : 16)
-                    .animation(.spring(duration: 0.3), value: model.selection)
-                    .animation(.spring(duration: 0.3), value: model.activeHighlightId)
-                    .animation(.spring(duration: 0.3), value: model.toast)
+                    .animation(LumenMotion.standard, value: model.selection)
+                    .animation(LumenMotion.standard, value: model.activeHighlightId)
+                    .animation(LumenMotion.standard, value: model.toast)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 footer
@@ -75,7 +75,7 @@ extension ReaderView {
                     // Прозрачная подложка ловит мышь, даже когда сама полоса спрятана.
                     .background(Color.clear.contentShape(Rectangle()))
                     .onHover { isFooterHovered = $0 }
-                    .animation(.easeInOut(duration: 0.25), value: showsFooter)
+                    .animation(LumenMotion.standard, value: showsFooter)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .readerSheet(sheetColors, radius: isCompact ? 30 : ReaderStyle.sheetRadius)
@@ -98,7 +98,7 @@ extension ReaderView {
     var tableOfContents: some View {
         TableOfContents(model: model) {
             LumenSounds.play(.panelClose)
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { showsToc = false }
+            withAnimation(LumenMotion.standard) { showsToc = false }
         }
     }
 

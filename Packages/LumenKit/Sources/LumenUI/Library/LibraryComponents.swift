@@ -67,5 +67,7 @@ struct LibraryButtonStyle: ButtonStyle {
                 lineWidth: 1
             ))
             .opacity(configuration.isPressed ? 0.8 : (isEnabled ? 1 : 0.5))
+            .animation(LumenMotion.quick, value: configuration.isPressed)
+            .animation(LumenMotion.quick, value: isOn)
     }
 }
