@@ -48,42 +48,7 @@ struct DataSafetyView: View {
 
     var body: some View {
         List {
-            Section {
-                SyncStatusRow()
-                if let folderSync {
-                    if let folderName = folderSync.folderName {
-                        LabeledContent("Папка", value: folderName)
-                        LabeledContent("Другие устройства", value: otherDevicesText(folderSync.otherDevices))
-                        Button {
-                            folderSync.syncNow()
-                        } label: {
-                            Label("Синхронизировать сейчас", systemImage: "arrow.triangle.2.circlepath")
-                        }
-                        Button {
-                            pickSyncFolder()
-                        } label: {
-                            Label("Выбрать другую папку…", systemImage: "folder")
-                        }
-                        Button(role: .destructive) {
-                            folderSync.turnOff()
-                        } label: {
-                            Label("Выключить синхронизацию", systemImage: "icloud.slash")
-                        }
-                    } else {
-                        Button {
-                            pickSyncFolder()
-                        } label: {
-                            Label("Выбрать папку в iCloud Drive…", systemImage: "icloud.and.arrow.up")
-                        }
-                    }
-                }
-            } header: {
-                Text("Синхронизация")
-            } footer: {
-                if folderSync != nil {
-                    Text("На Mac, iPhone и iPad выберите одну и ту же папку, проще всего сам iCloud Drive. Lumen создаст в ней папку «Lumen Sync» и будет хранить там правки, книги и картинки. Платный аккаунт не нужен, место берётся из вашего iCloud.")
-                }
-            }
+            SyncSection(pickFolder: pickSyncFolder)
 
             Section {
                 Toggle("Вместе с книгами и картинками", isOn: $includeFiles)
@@ -193,11 +158,6 @@ struct DataSafetyView: View {
     private func pickSyncFolder() {
         pickerMode = .syncFolder
         isPickingFile = true
-    }
-
-    private func otherDevicesText(_ devices: [FolderSyncDevice]) -> String {
-        guard !devices.isEmpty else { return "пока нет" }
-        return devices.map(\.name).joined(separator: ", ")
     }
 
     private var backupFooter: String {
