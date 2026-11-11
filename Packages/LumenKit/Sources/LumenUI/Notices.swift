@@ -122,6 +122,21 @@ extension NoticeCenter {
     }
 }
 
+extension NoticeCenter {
+    /// Прикалывает вещь к доске связей из меню библиотеки или из ⌘K и говорит, что вышло.
+    func pinToBoard(_ item: LibraryItemID, in database: AppDatabase) {
+        Task {
+            guard let pinned = await perform("Не удалось приколоть к доске", { try await database.pinToBoard(item) }) else { return }
+            if pinned {
+                LumenSounds.play(.pin)
+                show("Приколото к доске связей")
+            } else {
+                show("Уже на доске связей")
+            }
+        }
+    }
+}
+
 /// Плашка из `NoticeCenter` поверх экрана. Ставится один раз у корня приложения.
 struct NoticeOverlay: ViewModifier {
     /// Отступ снизу: на iPhone плашка не должна закрывать вкладки.

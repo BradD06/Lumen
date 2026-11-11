@@ -16,6 +16,8 @@ enum PhoneRoute: Hashable {
     case folder(UUID)
     case inbox
     case trash
+    /// Доска связей, открывается с полки.
+    case board
 }
 
 extension PhoneRoute {
@@ -76,6 +78,7 @@ struct PhoneRootView: View {
             Tab("Полка", systemImage: "books.vertical", value: PhoneTab.library) {
                 stack(.library) {
                     library(folderId: nil)
+                        .toolbar { boardButton }
                 }
             }
             Tab(value: PhoneTab.search, role: .search) {
@@ -144,6 +147,17 @@ struct PhoneRootView: View {
             .padding(.bottom, 16)
     }
 
+    /// Доска связей на iPhone живёт на полке: отдельной вкладке внизу нет места.
+    private var boardButton: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                push(.board)
+            } label: {
+                Label("Доска связей", systemImage: "pin")
+            }
+        }
+    }
+
     private var settingsButton: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             Button {
@@ -208,6 +222,8 @@ struct PhoneRootView: View {
             InboxView(database: database, onOpen: { push(.page($0)) }, onNewNote: newQuickNote)
         case .trash:
             TrashView(database: database)
+        case .board:
+            LinkBoardView(database: database)
         }
     }
 
@@ -280,6 +296,9 @@ struct PhoneRootView: View {
             tab = .tasks
             return
         case .trash: route = .trash
+        case .board:
+            tab = .library
+            route = .board
         }
         if case .source(let id, _) = route, case .source(id, _)? = paths[tab]?.last {
             paths[tab]?.removeLast()

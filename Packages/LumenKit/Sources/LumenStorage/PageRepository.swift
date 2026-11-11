@@ -310,6 +310,7 @@ extension AppDatabase {
             try Page.filter(Column("deletedAt") != nil).deleteAll(db)
             try Folder.filter(Column("deletedAt") != nil).deleteAll(db)
             try Highlight.filter(Column("deletedAt") != nil).deleteAll(db)
+            try Self.removeOrphanBoardPins(db)
             return sources.flatMap(\.attachmentNames)
         }
         for file in files {

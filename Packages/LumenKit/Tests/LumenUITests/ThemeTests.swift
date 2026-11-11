@@ -80,14 +80,15 @@ struct DaylightScheduleTests {
 
 struct StudyRoomTests {
     @Test func studyLightsTheOpenRoom() {
-        #expect(StudyRoom.allCases.map(\.title) == ["Стол", "Полка", "Записки", "Дела", "Архив"])
+        #expect(StudyRoom.allCases.map(\.title) == ["Стол", "Полка", "Доска", "Записки", "Дела", "Архив"])
         #expect(StudyRoom.allCases.allSatisfy { $0.contains($0.item) })
         #expect(StudyRoom.desk.contains(nil))
         #expect(StudyRoom.shelf.contains(.library(UUID())))
         #expect(StudyRoom.archive.item == .trash)
+        #expect(StudyRoom.board.item == .board)
         #expect(!StudyRoom.allCases.contains { $0.contains(.source(UUID(), highlight: nil)) })
         // Каждое открытое место горит не больше чем на одной табличке.
-        let places: [SidebarItem?] = [nil, .home, .inbox, .tasks, .library(nil), .trash, .page(UUID())]
+        let places: [SidebarItem?] = [nil, .home, .inbox, .tasks, .library(nil), .board, .trash, .page(UUID())]
         for place in places {
             #expect(StudyRoom.allCases.filter { $0.contains(place) }.count <= 1)
         }

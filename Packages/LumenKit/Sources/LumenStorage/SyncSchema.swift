@@ -14,6 +14,8 @@ public enum SyncTable: String, CaseIterable, Codable, Sendable {
     case highlight
     /// Время чтения: строки только добавляются, поля `updatedAt` у них нет.
     case readingSession
+    /// Что приколото к доске связей. Ни на что не ссылается внешним ключом.
+    case boardPin
 
     /// Тип записи в CloudKit.
     public var recordType: String {
@@ -25,6 +27,7 @@ public enum SyncTable: String, CaseIterable, Codable, Sendable {
         case .block: "Block"
         case .highlight: "Highlight"
         case .readingSession: "ReadingSession"
+        case .boardPin: "BoardPin"
         }
     }
 
@@ -209,7 +212,9 @@ extension AppDatabase {
             t.column("isDeleted", .boolean).notNull()
             t.primaryKey(["tableName", "recordId"])
         }
-        for table in SyncTable.allCases {
+        // Таблицы на момент этой миграции. Более новые получают часы в своих миграциях:
+        // их самих здесь ещё нет.
+        for table: SyncTable in [.folder, .source, .page, .dataTable, .block, .highlight, .readingSession] {
             try createSyncClockTriggers(db, table: table.rawValue)
         }
     }
