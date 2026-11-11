@@ -1,5 +1,6 @@
 import LumenCore
 import LumenStorage
+import LumenSync
 import LumenThemes
 import SwiftUI
 
@@ -476,10 +477,16 @@ struct SettingsSheet: View {
     var onDone: () -> Void
 
     @AppStorage(LumenSounds.enabledKey) private var soundsEnabled = true
+    @Environment(FolderSyncController.self) private var folderSync: FolderSyncController?
+    @State private var isPickingSyncFolder = false
 
     var body: some View {
         NavigationStack {
             Form {
+                // Синхронизация на виду, а не в глубине «Данных и копий»: её ищут первой.
+                if folderSync != nil {
+                    SyncSection { isPickingSyncFolder = true }
+                }
                 Section {
                     ThemePicker()
                 } header: {
@@ -500,10 +507,11 @@ struct SettingsSheet: View {
                         Label("Данные и копии", systemImage: "externaldrive")
                     }
                 } footer: {
-                    Text("Резервная копия, восстановление и синхронизация.")
+                    Text("Резервная копия и восстановление.")
                 }
             }
             .formStyle(.grouped)
+            .syncFolderPicker(isPresented: $isPickingSyncFolder, folderSync: folderSync)
             .navigationTitle("Настройки")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

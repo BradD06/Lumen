@@ -42,6 +42,9 @@ struct HomeView: View {
                     deskLabel
                 }
                 CaptureField { text, asTask in appActions.capture(text, asTask) }
+                if !isZen {
+                    SyncSetupCard()
+                }
                 if isZen {
                     zenLines
                 } else {
@@ -83,6 +86,8 @@ struct HomeView: View {
             Text(greeting)
                 .font(.largeTitle.weight(.bold))
                 .foregroundStyle(theme.textPrimary)
+            SyncBadge()
+                .padding(.top, 2)
         }
         .padding(.top, 8)
     }
