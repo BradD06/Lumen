@@ -111,21 +111,32 @@ extension SortKey {
 }
 
 /// Одна полка «Кабинета» и книги на ней. `shelf == nil`: общая полка, на ней всё,
-/// что не стоит на своих полках.
+/// что не стоит на своих полках. Заметки стоят рядом с книгами: из нескольких листов
+/// папкой, одиночные листы лежат в лотке, приколотые висят под доской.
 public struct ShelfGroup: Identifiable, Equatable, Sendable {
     public var shelf: Folder?
     public var books: [Source]
+    public var notes: [ShelfNote]
 
     public var id: UUID? { shelf?.id }
 
-    public init(shelf: Folder?, books: [Source]) {
+    public init(shelf: Folder?, books: [Source], notes: [ShelfNote] = []) {
         self.shelf = shelf
         self.books = books
+        self.notes = notes
     }
+
+    /// Заметки из нескольких листов: на полке они стоят папками.
+    public var folders: [ShelfNote] { notes.filter(\.isFolder) }
+    /// Заметки из одного листа: лежат стопкой в лотке в конце полки.
+    public var singleSheets: [ShelfNote] { notes.filter { !$0.isFolder } }
+    /// Приколотые к полке листы.
+    public var pinned: [ShelfNote] { notes.filter { $0.shelfPin != nil } }
 
     /// Общая полка первой, дальше свои полки по порядку. Книга стоит на полке своей папки;
     /// книги из обычных папок и из корня библиотеки на общей. Порядок книг сохраняется.
-    public static func make(books: [Source], shelves: [Folder]) -> [ShelfGroup] {
+    /// Заметки расходятся по полкам так же, по своей папке.
+    public static func make(books: [Source], shelves: [Folder], notes: [ShelfNote] = []) -> [ShelfGroup] {
         let shelfIds = Set(shelves.map(\.id))
         var byShelf: [UUID: [Source]] = [:]
         var loose: [Source] = []
@@ -136,6 +147,78 @@ public struct ShelfGroup: Identifiable, Equatable, Sendable {
                 loose.append(book)
             }
         }
-        return [ShelfGroup(shelf: nil, books: loose)] + shelves.map { ShelfGroup(shelf: $0, books: byShelf[$0.id] ?? []) }
+        var notesByShelf: [UUID: [ShelfNote]] = [:]
+        var looseNotes: [ShelfNote] = []
+        for note in notes {
+            if let folderId = note.folderId, shelfIds.contains(folderId) {
+                notesByShelf[folderId, default: []].append(note)
+            } else {
+                looseNotes.append(note)
+            }
+        }
+        return [ShelfGroup(shelf: nil, books: loose, notes: looseNotes)]
+            + shelves.map { ShelfGroup(shelf: $0, books: byShelf[$0.id] ?? [], notes: notesByShelf[$0.id] ?? []) }
+    }
+}
+
+/// Заметка на полке: сколько в ней листов и приколот ли какой-то лист к полке.
+public struct ShelfNote: Identifiable, Hashable, Sendable {
+    public var id: UUID
+    public var title: String
+    public var icon: String?
+    public var folderId: UUID?
+    /// Сколько листов: у обычной заметки по границам листов, у рукописной по листам тетради.
+    public var sheetCount: Int
+    /// Номер приколотого листа с нуля, см. `Page.shelfPin`.
+    public var shelfPin: Int?
+    public var isNotebook: Bool
+    public var updatedAt: Date
+
+    public init(
+        id: UUID,
+        title: String,
+        icon: String? = nil,
+        folderId: UUID? = nil,
+        sheetCount: Int = 1,
+        shelfPin: Int? = nil,
+        isNotebook: Bool = false,
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.title = title
+        self.icon = icon
+        self.folderId = folderId
+        self.sheetCount = max(sheetCount, 1)
+        self.shelfPin = shelfPin
+        self.isNotebook = isNotebook
+        self.updatedAt = updatedAt
+    }
+
+    public var displayTitle: String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Без названия" : trimmed
+    }
+
+    /// Два листа и больше: заметка стоит на полке папкой.
+    public var isFolder: Bool { sheetCount > 1 }
+
+    /// Приколотый лист, не дальше последнего (листы могли удалить).
+    public var pinnedSheet: Int? { shelfPin.map { min(max($0, 0), sheetCount - 1) } }
+
+    /// «1 лист», «3 листа», «12 листов».
+    public static func sheetsLabel(_ count: Int) -> String {
+        let tens = count % 100
+        let ones = count % 10
+        let word: String
+        if (11...14).contains(tens) {
+            word = "листов"
+        } else if ones == 1 {
+            word = "лист"
+        } else if (2...4).contains(ones) {
+            word = "листа"
+        } else {
+            word = "листов"
+        }
+        return "\(count) \(word)"
     }
 }

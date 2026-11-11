@@ -56,6 +56,10 @@ final class PageEditorModel {
     var selectionRestore: TextSelectionInfo?
     /// Блок, у которого нужно открыть палитру цвета (кнопка на панели оформления).
     var colorPickerRequest: UUID?
+    /// Лист (номер с нуля), к которому прокрутить заметку. Вью сбрасывает его после прокрутки.
+    var sheetScrollRequest: Int?
+    /// Лист, который сейчас наверху экрана: его номер подсвечен в миниатюрах и в шапке панели у книги.
+    var visibleSheet = 0
 
     struct SourceRequest: Equatable {
         var sourceId: UUID
@@ -327,6 +331,16 @@ final class PageEditorModel {
     func trash() async {
         await flush()
         NoticeCenter.shared.moveToTrash(.page(pageId), in: database)
+    }
+
+    /// Прикалывает лист к полке «Кабинета» или открепляет (`nil`). Приколот всегда один лист заметки.
+    func pinSheet(_ index: Int?) {
+        page?.shelfPin = index
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось приколоть лист к полке") {
+                try await database.setShelfPin(pageId, sheet: index)
+            }
+        }
     }
 
     func setCover(_ cover: PageCover?) {

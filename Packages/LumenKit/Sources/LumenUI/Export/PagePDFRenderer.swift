@@ -135,6 +135,10 @@ enum PagePDFRenderer {
                     style.alignment = .center
                     text.append(newline(style))
                 }
+            case .sheetBreak:
+                // Новый лист заметки: линия, как разделитель.
+                text.append(NSAttributedString(attachment: lineAttachment()))
+                text.append(newline(paragraph(indent: indent, before: 10, after: 16)))
             case .columnList, .column:
                 continue
             }

@@ -27,6 +27,9 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     /// Рисунок от руки: штрихи PencilKit (`Block.drawing`), высоту области меняют перетаскиванием (`content.drawingHeight`).
     /// У рукописной заметки (`Page.kind == .notebook`) один такой блок хранит все её листы.
     case drawing
+    /// Граница листа: блоки после неё лежат на следующем листе заметки (A4, см. `NoteSheets`).
+    /// Бывает только на верхнем уровне страницы, сама на листе не видна.
+    case sheetBreak
 
     public var id: String { rawValue }
 
@@ -50,6 +53,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .column: "Колонка"
         case .excerpt: "Выписка"
         case .drawing: "Рисунок"
+        case .sheetBreak: "Новый лист"
         }
     }
 
@@ -72,6 +76,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .columnList, .column: "rectangle.split.3x1"
         case .excerpt: "quote.opening"
         case .drawing: "pencil.and.scribble"
+        case .sheetBreak: "doc.badge.plus"
         }
     }
 
@@ -95,13 +100,14 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .columnList, .column: ["columns", "колонки"]
         case .excerpt: ["excerpt", "quote", "выписка", "цитата"]
         case .drawing: ["draw", "drawing", "sketch", "pencil", "handwriting", "рисунок", "рисовать", "от руки", "почерк", "карандаш"]
+        case .sheetBreak: ["sheet", "page break", "лист", "новый лист"]
         }
     }
 
     /// Есть ли у блока редактируемый текст.
     public var hasText: Bool {
         switch self {
-        case .divider, .page, .image, .columnList, .column, .excerpt, .drawing: false
+        case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak: false
         default: true
         }
     }
@@ -110,7 +116,8 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     public var isLayout: Bool { self == .columnList || self == .column }
 
     /// Можно ли выбрать тип в slash-меню. Выписки появляются только из читалки.
-    public var isInsertable: Bool { !isLayout && self != .excerpt }
+    /// Новый лист добавляет кнопка «Добавить лист» под последним листом.
+    public var isInsertable: Bool { !isLayout && self != .excerpt && self != .sheetBreak }
 
     /// Можно ли превратить в этот тип уже написанный блок (меню «Превратить в»).
     /// Страница и картинка создаются только заново, из slash-меню.
