@@ -12,7 +12,13 @@ final class DataTableModel {
     let database: AppDatabase
     let pageId: UUID
 
-    private(set) var snapshot = DataTableSnapshot.empty
+    private(set) var snapshot = DataTableSnapshot.empty {
+        didSet { rowsCache = nil }
+    }
+    /// Отобранные и отсортированные строки: экран спрашивает их много раз за перерисовку
+    /// (таблица, меню каждой строки), а сортировать заново нужно, только когда пришли новые данные,
+    /// сменилось представление или наступил новый день (условия «сегодня», «на неделе»).
+    @ObservationIgnored private var rowsCache: (viewId: UUID, today: DayDate, rows: [DataRow])?
     private(set) var isLoaded = false
     /// Выбранное представление. `nil` значит первое.
     var selectedViewId: UUID?
@@ -30,7 +36,13 @@ final class DataTableModel {
     /// Строки выбранного представления: отфильтрованные и отсортированные.
     var visibleRows: [DataRow] {
         guard let table, let view else { return [] }
-        return DataQuery.rows(snapshot.rows, in: table, view: view)
+        let today = DayDate.today()
+        if let rowsCache, rowsCache.viewId == view.id, rowsCache.today == today {
+            return rowsCache.rows
+        }
+        let rows = DataQuery.rows(snapshot.rows, in: table, view: view, today: today)
+        rowsCache = (view.id, today, rows)
+        return rows
     }
 
     /// Колонки, которые показаны в выбранном представлении.
@@ -46,6 +58,7 @@ final class DataTableModel {
     func observe() async {
         let pageId = pageId
         let observation = ValueObservation.tracking { db in try DataTableSnapshot.fetch(db, pageId: pageId) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 snapshot = value

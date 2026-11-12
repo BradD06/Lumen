@@ -27,6 +27,39 @@ extension AppDatabase {
         }
     }
 
+    /// Правки открытой страницы одной записью: новое название, изменённые и удалённые блоки.
+    /// Одна транзакция вместо записи на каждый блок: поиск пересчитывается один раз, и экраны,
+    /// которые следят за базой, узнают о правке один раз. Удаления идут после сохранений,
+    /// чтобы каскад не забрал блоки, которые только что перенесли к другому родителю.
+    public func savePageEdits(pageId: UUID, title: String?, saving blocks: [Block], deleting ids: [UUID]) async throws {
+        try await writer.write { db in
+            let now = Date()
+            var touched: Set<UUID> = [pageId]
+            if let title {
+                try Self.updatePage(db, pageId) { $0.title = title }
+            }
+            for var block in blocks {
+                block.updatedAt = now
+                try block.save(db)
+                try Self.updateLinks(db, block: block)
+                try Self.reviveHighlight(db, for: block)
+                touched.insert(block.pageId)
+            }
+            for id in ids {
+                guard let block = try Block.fetchOne(db, key: id) else { continue }
+                try block.delete(db)
+                try Self.releaseHighlight(db, for: block)
+                touched.insert(block.pageId)
+            }
+            for id in touched {
+                if !blocks.isEmpty || !ids.isEmpty {
+                    try db.execute(sql: "UPDATE page SET updatedAt = ? WHERE id = ?", arguments: [now, id])
+                }
+                try Self.reindex(db, pageId: id)
+            }
+        }
+    }
+
     public func deleteBlock(_ id: UUID) async throws {
         try await writer.write { db in
             guard let block = try Block.fetchOne(db, key: id) else { return }
@@ -49,8 +82,10 @@ extension AppDatabase {
     /// Удалили последнюю выписку из выделения: выделение пропадает из книги и из списка выделений.
     static func releaseHighlight(_ db: Database, for block: Block) throws {
         guard block.type == .excerpt, let id = block.content.excerpt?.highlightId else { return }
+        // Сначала дешёвый отбор по тексту: разбирать JSON всех выписок базы долго.
         let isStillQuoted = try Block
             .filter(Column("type") == BlockType.excerpt.rawValue)
+            .filter(Column("content").like("%\(id.uuidString)%"))
             .fetchAll(db)
             .contains { $0.content.excerpt?.highlightId == id }
         guard !isStillQuoted else { return }

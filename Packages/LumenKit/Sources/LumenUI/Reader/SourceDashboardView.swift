@@ -323,6 +323,7 @@ struct SourceDashboardView: View {
     private func observe() async {
         let sourceId = sourceId
         let observation = ValueObservation.tracking { db in try SourceDashboardSnapshot.fetch(db, sourceId: sourceId) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 snapshot = value

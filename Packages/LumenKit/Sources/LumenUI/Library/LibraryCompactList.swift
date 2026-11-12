@@ -68,6 +68,7 @@ extension LibraryView {
 
     func observeFavorites() async {
         let observation = ValueObservation.tracking { db in try SidebarSnapshot.fetch(db) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 favorites = value.favorites

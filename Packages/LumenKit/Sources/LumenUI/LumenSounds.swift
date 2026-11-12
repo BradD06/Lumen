@@ -307,6 +307,11 @@ private final class SoundEngine: @unchecked Sendable {
     private var players: [AVAudioPlayerNode] = []
     private var nextPlayer = 0
     private var buffers: [LumenSound: AVAudioPCMBuffer] = [:]
+    /// Номер последнего звука: движок засыпает, только если после него ничего не играло.
+    private var lastPlay = 0
+    /// Сколько тишины, прежде чем движок отпускает звуковую карту. Работающий вхолостую
+    /// движок держит её включённой и тратит батарею.
+    private static let idleDelay: TimeInterval = 8
     /// В UI-тестах звук не нужен.
     private let isDisabled = ProcessInfo.processInfo.arguments.contains("-uiTesting")
 
@@ -332,6 +337,13 @@ private final class SoundEngine: @unchecked Sendable {
         player.stop()
         player.scheduleBuffer(buffer)
         player.play()
+        lastPlay += 1
+        let played = lastPlay
+        queue.asyncAfter(deadline: .now() + Self.idleDelay) {
+            // Тишина: движок на паузе, следующий звук запустит его снова (`playNow`).
+            guard played == self.lastPlay, let engine = self.engine, engine.isRunning else { return }
+            engine.pause()
+        }
     }
 
     private func startedEngine() -> AVAudioEngine? {

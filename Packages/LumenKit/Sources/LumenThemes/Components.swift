@@ -13,6 +13,9 @@ public struct ThemedBackground: View {
             if theme.wallOpacity > 0, !theme.wallColors.isEmpty {
                 BookcaseWall(colors: theme.wallColors, plank: theme.accent)
                     .blur(radius: 14)
+                    // Размытый шкаф рисуется один раз в картинку. Без этого размытие на всё окно
+                    // пересчитывалось на каждом кадре любой прокрутки и анимации поверх него.
+                    .drawingGroup()
                     .opacity(theme.wallOpacity)
             }
             RadialGradient(
@@ -88,11 +91,13 @@ private struct GlassModifier<S: InsettableShape>: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background {
+                // Тень отбрасывает само стекло, а не всё, что на нём: так её не надо пересчитывать,
+                // когда меняется текст или значки, и у букв нет своей тени.
                 shape.fill(prominent ? .regularMaterial : .ultraThinMaterial)
                     .overlay(shape.fill(theme.cardFill))
+                    .shadow(color: .black.opacity(theme.shadowOpacity * 0.8), radius: 14, y: 6)
             }
             .overlay(shape.strokeBorder(theme.glassEdge, lineWidth: 1))
-            .shadow(color: .black.opacity(theme.shadowOpacity * 0.8), radius: 14, y: 6)
     }
 }
 
@@ -125,24 +130,30 @@ private struct LumenCardModifier: ViewModifier {
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .foregroundStyle(foreground)
+            // Обрезается только содержимое: тень у фона карточки ниже, и обрезка её бы съела.
+            .clipShape(shape)
             .background {
-                switch style {
-                case .glass:
-                    shape.fill(.ultraThinMaterial)
-                        .overlay(shape.fill(theme.cardFill))
-                case .vivid(let index):
-                    shape.fill(
-                        LinearGradient(
-                            colors: theme.vividCard(index).colors,
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                }
+                cardBackground(shape)
+                    .shadow(color: .black.opacity(theme.shadowOpacity), radius: 16, y: 8)
             }
             .overlay(shape.strokeBorder(theme.glassEdge, lineWidth: 1))
-            .clipShape(shape)
-            .shadow(color: .black.opacity(theme.shadowOpacity), radius: 16, y: 8)
+    }
+
+    @ViewBuilder
+    private func cardBackground(_ shape: RoundedRectangle) -> some View {
+        switch style {
+        case .glass:
+            shape.fill(.ultraThinMaterial)
+                .overlay(shape.fill(theme.cardFill))
+        case .vivid(let index):
+            shape.fill(
+                LinearGradient(
+                    colors: theme.vividCard(index).colors,
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+        }
     }
 
     private var foreground: Color {

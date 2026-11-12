@@ -141,7 +141,8 @@ struct RoomsBar: View {
     }
 
     private func observe() async {
-        let observation = ValueObservation.tracking { db in try SidebarSnapshot.fetch(db) }
+        let observation = ValueObservation.tracking { db in try SidebarSnapshot.fetchCounts(db) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) where value != counts {
                 withAnimation(LumenMotion.standard) { counts = value }

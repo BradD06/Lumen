@@ -483,6 +483,7 @@ public struct RootView: View {
     private func removeMissingItems() async {
         let items = workspace.referencedItems
         let observation = ValueObservation.tracking { db in try MissingItemsQuery.fetch(db, items: items) }
+            .removeDuplicates()
         do {
             for try await missing in observation.values(in: database.reader) where !missing.isEmpty {
                 workspace.remove { missing.contains($0) }

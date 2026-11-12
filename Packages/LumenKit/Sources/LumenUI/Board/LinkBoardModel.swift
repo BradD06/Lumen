@@ -42,6 +42,7 @@ final class LinkBoardModel {
 
     func observe() async {
         let observation = ValueObservation.tracking { db in try BoardSnapshot.fetch(db) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 // Пока карточку держат, её место на доске не прыгает назад.

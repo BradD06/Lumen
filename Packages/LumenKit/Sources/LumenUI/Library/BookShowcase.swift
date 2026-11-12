@@ -140,6 +140,7 @@ struct BookShowcase: View {
     private func observe() async {
         let id = book.id
         let observation = ValueObservation.tracking { db in try Source.fetchOne(db, key: id) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 live = value

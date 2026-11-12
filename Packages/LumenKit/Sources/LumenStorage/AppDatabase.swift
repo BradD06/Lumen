@@ -306,6 +306,14 @@ extension AppDatabase {
             try Self.createSyncClockTriggers(db, table: SyncTable.boardPin.rawValue)
         }
 
+        migrator.registerMigration("v16: indexes for speed") { db in
+            // Удаление блока ищет его вложенные блоки (каскад), а каждая запись в синхронизируемую
+            // таблицу берёт следующий номер журнала (MAX(version)): без индексов обе операции
+            // просматривали всю таблицу, и чем больше заметок, тем медленнее печать.
+            try db.create(index: "block_on_parentBlockId", on: "block", columns: ["parentBlockId"])
+            try db.create(index: "syncChange_on_version", on: "syncChange", columns: ["version"])
+        }
+
         return migrator
     }
 }

@@ -661,6 +661,7 @@ struct BookShelf: View {
 
     private func observe() async {
         let observation = ValueObservation.tracking { db in try ShelfQuery.snapshot(db) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 snapshot = value

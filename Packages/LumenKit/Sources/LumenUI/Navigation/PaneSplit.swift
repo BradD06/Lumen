@@ -104,7 +104,28 @@ struct PaneCard: ViewModifier {
                 shape.strokeBorder(isFocused ? theme.accent.opacity(0.45) : theme.cardStroke, lineWidth: 1)
                     .animation(LumenMotion.quick, value: isFocused)
             }
+            // Тень рисуется отдельным слоем по контуру карточки. Раньше её отбрасывало всё содержимое
+            // панели (заметка, книга), и при каждой прокрутке и каждой букве тень считалась заново.
+            .background { PaneShadow(shape: shape) }
+    }
+}
+
+/// Тень вокруг карточки панели, только снаружи: внутри карточка полупрозрачная,
+/// и тёмная подложка под ней была бы видна.
+private struct PaneShadow: View {
+    let shape: RoundedRectangle
+
+    var body: some View {
+        shape.fill(.black)
             .shadow(color: .black.opacity(0.3), radius: 14, y: 6)
+            .mask {
+                Rectangle()
+                    .padding(-40)
+                    .overlay { shape.fill(.black).blendMode(.destinationOut) }
+                    .compositingGroup()
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 

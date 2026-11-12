@@ -200,6 +200,7 @@ struct BookStatsCard: View {
     private func observe() async {
         let id = sourceId
         let observation = ValueObservation.tracking { db in try SourceDashboardSnapshot.fetch(db, sourceId: id) }
+            .removeDuplicates()
         do {
             for try await value in observation.values(in: database.reader) {
                 snapshot = value
