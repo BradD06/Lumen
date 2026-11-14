@@ -50,8 +50,8 @@ struct ReadingInsightsTests {
             session(14, minutes: 30, book: book, from: 0.375, to: 0.5),
         ]
         let forecast = ReadingForecast(progress: 0.5, sessions: sessions, now: date(14, 20), calendar: calendar)
-        #expect(forecast.pacePerHour == 0.25)
-        #expect(forecast.remainingSeconds == 2 * 3600)
+        #expect(abs((forecast.pacePerHour ?? 0) - 0.25) < 0.000001)
+        #expect(abs((forecast.remainingSeconds ?? 0) - 2 * 3600) < 0.001)
         // Читали два дня по 30 минут: 30 минут в день, 4 дня до конца, считая сегодня.
         #expect(forecast.dailySeconds == 30 * 60)
         #expect(forecast.finishDate == calendar.startOfDay(for: date(17)))
@@ -61,8 +61,8 @@ struct ReadingInsightsTests {
         let book = UUID()
         let old = [session(10, minutes: 120, book: book)]
         let forecast = ReadingForecast(progress: 0.5, sessions: old, now: date(14), calendar: calendar)
-        #expect(forecast.pacePerHour == 0.25)
-        #expect(forecast.remainingSeconds == 2 * 3600)
+        #expect(abs((forecast.pacePerHour ?? 0) - 0.25) < 0.000001)
+        #expect(abs((forecast.remainingSeconds ?? 0) - 2 * 3600) < 0.001)
 
         let tooLittle = ReadingForecast(progress: 0.5, sessions: [session(14, minutes: 3, book: book)], now: date(14), calendar: calendar)
         #expect(tooLittle.pacePerHour == nil)

@@ -47,7 +47,8 @@ public struct ReadingForecast: Hashable, Sendable {
             let remaining = (1 - progress) / pacePerHour * 3600
             remainingSeconds = remaining
             if dailySeconds >= 60 {
-                let daysLeft = Int((remaining / dailySeconds).rounded(.up))
+                // Доли секунды от округления не должны добавлять целый день.
+                let daysLeft = Int((remaining / dailySeconds - 0.000001).rounded(.up))
                 finishDate = calendar.date(byAdding: .day, value: max(daysLeft - 1, 0), to: today)
             } else {
                 finishDate = nil
