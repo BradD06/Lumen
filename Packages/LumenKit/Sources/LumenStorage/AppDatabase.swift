@@ -314,6 +314,14 @@ extension AppDatabase {
             try db.create(index: "syncChange_on_version", on: "syncChange", columns: ["version"])
         }
 
+        migrator.registerMigration("v17: reading progress per session") { db in
+            // Сколько книги прочитали за отрезок: из этого считается темп и «осталось читать».
+            try db.alter(table: "readingSession") { t in
+                t.add(column: "startProgress", .double)
+                t.add(column: "endProgress", .double)
+            }
+        }
+
         return migrator
     }
 }

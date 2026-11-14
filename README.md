@@ -54,7 +54,8 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Text size goes up to 48 pt in books and documents.
 - Read the Original view of a PDF comfortably on a phone: Lumen trims the white margins of every page on its own (mirrored book margins included, stray watermarks ignored) so the text is larger at the same width, can read a two-column page column by column (left column fills the screen, then the right one), and remembers your zoom for each book. Scrolling stays straight up and down, without drifting sideways.
 - Turn pages with a swipe: on iPhone and iPad by finger, on a Mac with a two-finger swipe on the trackpad, in books and in PDFs. Or with the arrow keys ← → ↑ ↓ (a zoomed PDF page scrolls first, then turns). ⌥⌘← and ⌥⌘→ move the keyboard between the book and the note beside it.
-- A dashboard for every book with reading time and progress.
+- A dashboard for every book: time spent with it, about how long is left and the day you will finish at your usual pace, your streak, a three-month calendar of reading days, and a list of when you read and how much of the book each sitting covered.
+- A Reading screen for all books (Shelf → Reading, or ⌘K): today against a daily reading goal, this week, month or year as bars split by book, your streak and record, books finished this year, a year of reading days and the books you spent the most time with. The Desk shows a "Reading today" card with the goal ring, the book you are reading and how much of it is left.
 - `lumen://` links to a page, a book, a quote or a place in a book. Paste one into any app, and tapping it opens Lumen right there.
 
 ### 🖊️ Handwriting

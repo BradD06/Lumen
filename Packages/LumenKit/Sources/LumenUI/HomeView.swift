@@ -104,14 +104,14 @@ struct HomeView: View {
             if !showsReading {
                 EmptyView()
             } else if let source = reading.current {
-                Button {
-                    onOpenSource(source.id)
-                } label: {
-                    ContinueReadingCard(source: source, attachments: database.attachments, caption: readingCaption)
-                }
-                .buttonStyle(.plain)
-                .keyHint(source.displayTitle) { onOpenSource(source.id) }
-                .accessibilityIdentifier("home-continue")
+                ReadingTodayCard(
+                    source: source,
+                    attachments: database.attachments,
+                    stats: reading.stats,
+                    forecast: ReadingForecast(progress: source.progress, sessions: reading.currentSessions),
+                    onOpenBook: { onOpenSource(source.id) },
+                    onShowReading: { appActions.open(.reading) }
+                )
             } else {
                 Button(action: onShowLibrary) {
                     ActionCard(
@@ -135,15 +135,6 @@ struct HomeView: View {
                 InboxCard(count: snapshot.inboxCount, onOpen: onShowInbox, onTriage: { isTriaging = true }, onNewNote: onNewNote)
             }
         }
-    }
-
-    private var readingCaption: String {
-        let today = reading.stats.todaySeconds
-        let streak = reading.stats.streakDays
-        var parts: [String] = []
-        if today > 0 { parts.append("сегодня \(ReadingStats.format(today, short: true))") }
-        if streak > 1 { parts.append("\(streak) \(Self.days(streak)) подряд") }
-        return parts.joined(separator: " · ")
     }
 
     /// «день», «дня», «дней» для числа.
@@ -466,45 +457,146 @@ struct DarkPillButtonStyle: ButtonStyle {
 }
 
 /// «Продолжить чтение»: обложка последней книги, сколько прочитано, нажатие открывает её на том же месте.
-private struct ContinueReadingCard: View {
+/// «Чтение сегодня»: кольцо цели на день, серия, книга, которую читаешь, сколько в ней
+/// осталось, и столбики за неделю. Кольцо и столбики открывают экран «Чтение», книга открывается в читалке.
+private struct ReadingTodayCard: View {
     let source: Source
     let attachments: AttachmentStore
-    var caption: String = ""
+    let stats: ReadingStats
+    let forecast: ReadingForecast
+    var onOpenBook: () -> Void
+    var onShowReading: () -> Void
+
+    @AppStorage(ReadingGoal.key) private var goalMinutes = ReadingGoal.defaultMinutes
+    @Environment(\.lumenTheme) private var theme
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            SourceCoverArt(source: source, attachments: attachments, width: 82, height: 120)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(source.lastOpenedAt == nil ? "Начать читать" : "Продолжить")
-                    .font(.caption.weight(.bold))
-                    .textCase(.uppercase)
-                    .opacity(0.75)
-                Text(source.displayTitle)
-                    .font(.title3.weight(.bold))
-                    .lineLimit(2)
-                HStack(spacing: 8) {
-                    ReadingProgressBar(progress: source.progress)
-                    Text("\(Int((source.progress * 100).rounded()))%")
-                        .font(.caption.weight(.semibold).monospacedDigit())
-                        .opacity(0.75)
-                }
-                if !caption.isEmpty {
-                    Text(caption)
-                        .font(.caption)
-                        .opacity(0.8)
-                }
-                Spacer(minLength: 8)
-                Text("Читать дальше")
-                    .font(.subheadline.weight(.bold))
-                    .padding(.horizontal, 16)
-                    .frame(minHeight: 36)
-                    .background(Color.black.opacity(0.72), in: Capsule())
-                    .foregroundStyle(.white)
+        VStack(alignment: .leading, spacing: 12) {
+            Button(action: onShowReading) {
+                summary
             }
-            Spacer(minLength: 0)
+            .buttonStyle(.plain)
+            .keyHint("Чтение", perform: onShowReading)
+            .help("Всё чтение: неделя, год, цель на день")
+            .accessibilityIdentifier("home-reading")
+
+            Button(action: onOpenBook) {
+                book
+            }
+            .buttonStyle(.plain)
+            .keyHint(source.displayTitle, perform: onOpenBook)
+            .accessibilityIdentifier("home-continue")
+
+            Button(action: onShowReading) {
+                week
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Чтение за неделю")
         }
         .frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)
-        .lumenCard(.vivid(0))
+        .readingCard(isAccent: true)
+    }
+
+    private var summary: some View {
+        let goal = Double(goalMinutes * 60)
+        let fraction = goal > 0 ? stats.todaySeconds / goal : 0
+        return HStack(spacing: 14) {
+            ReadingGoalRing(fraction: fraction, size: 60, lineWidth: 7) {
+                if goalMinutes > 0, fraction >= 1 {
+                    Image(systemName: "checkmark")
+                        .font(.headline.weight(.bold))
+                } else {
+                    Text("\(Int(stats.todaySeconds / 60))")
+                        .font(.system(.headline, design: .rounded).weight(.bold))
+                }
+            }
+            .foregroundStyle(theme.textPrimary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Чтение сегодня")
+                    .font(.caption2.weight(.bold))
+                    .textCase(.uppercase)
+                    .tracking(1)
+                    .foregroundStyle(theme.accent)
+                Text(todayTitle)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(theme.textPrimary)
+                Text(caption)
+                    .font(.caption)
+                    .foregroundStyle(theme.textSecondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.textSecondary)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private var todayTitle: String {
+        let minutes = Int(stats.todaySeconds / 60)
+        return goalMinutes > 0 ? "\(minutes) из \(goalMinutes) мин" : ReadingStats.format(stats.todaySeconds, short: true)
+    }
+
+    private var caption: String {
+        var parts: [String] = []
+        if stats.streakDays > 1 { parts.append("\(stats.streakDays) \(ReadingText.days(stats.streakDays)) подряд") }
+        if goalMinutes > 0 { parts.append(ReadingText.goalCaption(today: stats.todaySeconds, goalMinutes: goalMinutes)) }
+        return parts.isEmpty ? "открой книгу, время считается само" : parts.joined(separator: " · ")
+    }
+
+    private var book: some View {
+        HStack(spacing: 12) {
+            SourceCoverArt(source: source, attachments: attachments, width: 38, height: 54)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(source.displayTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(theme.textPrimary)
+                    .lineLimit(1)
+                Text(bookCaption)
+                    .font(.caption)
+                    .foregroundStyle(theme.textSecondary)
+                    .lineLimit(1)
+                ReadingProgressBar(progress: source.progress)
+            }
+            Text(source.lastOpenedAt == nil ? "Начать" : "Читать")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(theme.onAccent)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 30)
+                .background(Capsule().fill(theme.accent))
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(theme.contrast.opacity(0.08)))
+        .contentShape(Rectangle())
+    }
+
+    private var bookCaption: String {
+        let percent = ReadingText.percent(source.progress)
+        guard let remaining = forecast.remainingSeconds, remaining > 0 else { return percent }
+        return "\(percent) · осталось \(SourceDashboardView.remainingValue(forecast))"
+    }
+
+    /// Столбики за семь дней: латунные, если дотянули до цели.
+    private var week: some View {
+        let days = Array(stats.recentDays.suffix(7))
+        let goal = Double(max(goalMinutes, 1) * 60)
+        let tallest = max(days.map(\.seconds).max() ?? 0, goal)
+        return HStack(alignment: .bottom, spacing: 6) {
+            ForEach(days) { day in
+                VStack(spacing: 3) {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(day.seconds <= 0 ? theme.textPrimary.opacity(0.15) : theme.accent.opacity(day.seconds >= goal ? 1 : 0.5))
+                        .frame(height: max(3, 24 * day.seconds / tallest))
+                    Text(day.date.formatted(.dateTime.weekday(.narrow).locale(ReadingText.locale)))
+                        .font(.system(size: 9))
+                        .foregroundStyle(Calendar.current.isDateInToday(day.date) ? theme.textPrimary : theme.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .frame(height: 40, alignment: .bottom)
+        .contentShape(Rectangle())
     }
 }
 

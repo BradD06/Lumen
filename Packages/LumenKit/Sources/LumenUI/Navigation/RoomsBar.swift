@@ -195,7 +195,7 @@ enum StudyRoom: String, CaseIterable, Identifiable {
     /// Горит ли табличка, когда открыто `selection`.
     func contains(_ selection: SidebarItem?) -> Bool {
         switch (self, selection) {
-        case (.desk, .home), (.desk, nil), (.shelf, .library), (.board, .board), (.notes, .inbox), (.tasks, .tasks), (.archive, .trash): true
+        case (.desk, .home), (.desk, nil), (.shelf, .library), (.shelf, .reading), (.board, .board), (.notes, .inbox), (.tasks, .tasks), (.archive, .trash): true
         default: false
         }
     }

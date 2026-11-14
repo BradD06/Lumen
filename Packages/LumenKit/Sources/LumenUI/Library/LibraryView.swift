@@ -36,6 +36,7 @@ struct LibraryView: View {
     @State private var contextMenuHeight: CGFloat = 0
     /// Открыть в новой вкладке или рядом: есть только там, где есть вкладки (Mac и iPad).
     @Environment(\.workspaceActions) private var workspaceActions
+    @Environment(\.appActions) private var appActions
     @State private var canvasWidth: CGFloat = 900
     @State var isImporting = false
     /// Файлы добавляются: на холсте крутится индикатор.
@@ -208,6 +209,17 @@ struct LibraryView: View {
                 }
             }
             Spacer(minLength: 0)
+            if folderId == nil {
+                Button {
+                    appActions.open(.reading)
+                } label: {
+                    Label("Чтение", systemImage: "chart.bar.xaxis")
+                }
+                .buttonStyle(LibraryButtonStyle())
+                .help("Время чтения по всем книгам, цель на день, год чтения")
+                .keyHint("Чтение") { appActions.open(.reading) }
+                .accessibilityIdentifier("library-reading")
+            }
             // Одна кнопка вместо пяти: что создать, выбирают в меню, а сетка ушла в настройки.
             Button {
                 isCreateMenuOpen = true
