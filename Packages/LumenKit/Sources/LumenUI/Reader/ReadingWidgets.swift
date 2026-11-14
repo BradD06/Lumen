@@ -22,11 +22,22 @@ enum ReadingText {
     static let locale = Locale(identifier: "ru_RU")
 
     static func days(_ count: Int) -> String {
-        SourceDashboardView.plural(count, one: "день", few: "дня", many: "дней")
+        plural(count, one: "день", few: "дня", many: "дней")
     }
 
     static func books(_ count: Int) -> String {
-        SourceDashboardView.plural(count, one: "книга", few: "книги", many: "книг")
+        plural(count, one: "книга", few: "книги", many: "книг")
+    }
+
+    /// Русское множественное число: 1 книга, 3 книги, 5 книг, 21 книга.
+    /// Своё, а не у экрана книги: у вида оно привязано к главному потоку.
+    static func plural(_ count: Int, one: String, few: String, many: String) -> String {
+        let tens = count % 100
+        let units = count % 10
+        if (11...14).contains(tens) { return many }
+        if units == 1 { return one }
+        if (2...4).contains(units) { return few }
+        return many
     }
 
     /// «сегодня», «завтра», «25 ноября», в другом году «3 февраля 2027».
