@@ -9,13 +9,31 @@ extension AppDatabase {
     @discardableResult
     public func mergeDuplicateBooks(now: Date = Date()) async throws -> Int {
         let attachments = attachments
+        let books = try await reader.read { db in
+            try Source.filter(Column("deletedAt") == nil).fetchAll(db)
+        }
+        // Файлы сравниваются вне записи в базу: книга бывает большой.
+        let pairs = await Task.detached(priority: .utility) {
+            BookDuplicates.pairs(
+                books,
+                size: { attachments.fileSize($0.file) },
+                sameContent: { attachments.sameContent($0.file, $1.file) }
+            )
+        }.value
+        guard !pairs.isEmpty else { return 0 }
         return try await writer.write { db in
-            let books = try Source.filter(Column("deletedAt") == nil).fetchAll(db)
-            let pairs = BookDuplicates.pairs(books) { attachments.fileSize($0.file) }
+            var merged = 0
             for pair in pairs {
+                // Пока сравнивались файлы, одну из книг могли удалить.
+                let alive = try Source
+                    .filter(keys: [pair.duplicate, pair.keeper])
+                    .filter(Column("deletedAt") == nil)
+                    .fetchCount(db)
+                guard alive == 2 else { continue }
                 try Self.mergeBook(db, pair.duplicate, into: pair.keeper, now: now)
+                merged += 1
             }
-            return pairs.count
+            return merged
         }
     }
 

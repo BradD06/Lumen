@@ -79,6 +79,26 @@ struct BookDuplicatesTests {
         #expect(BookDuplicates.pairs([first, second]) { sizes[$0.id] }.isEmpty)
     }
 
+    @Test func sameFileUnderAnotherNameIsTheSameBook() {
+        let first = book("Война и мир", added: 10)
+        let second = book("war (1)", file: "war (1).epub", added: 20)
+        let other = book("Анна Каренина", file: "anna.epub", added: 30)
+        let sizes = [first.id: Int64(100), second.id: Int64(100), other.id: Int64(100)]
+        let same: Set = [first.id, second.id]
+        let pairs = BookDuplicates.pairs([other, second, first], size: { sizes[$0.id] }) { a, b in
+            same.contains(a.id) && same.contains(b.id)
+        }
+        #expect(pairs == [BookDuplicates.Pair(duplicate: second.id, keeper: first.id)])
+    }
+
+    @Test func contentIsComparedOnlyForFilesOfKnownEqualSize() {
+        let first = book("Война и мир", added: 10)
+        let second = book("Другое", file: "other.epub", added: 20)
+        let sizes = [first.id: Int64(100), second.id: Int64(200)]
+        #expect(BookDuplicates.pairs([first, second], size: { sizes[$0.id] }) { _, _ in true }.isEmpty)
+        #expect(BookDuplicates.pairs([first, second], size: { _ in nil }) { _, _ in true }.isEmpty)
+    }
+
     @Test func trashedBooksAreNotDuplicates() {
         let first = book("Война и мир", added: 10)
         var second = book("Война и мир", added: 20)

@@ -82,6 +82,10 @@ public final class FolderSyncEngine: Sendable {
         report.filesSent = try await pushFiles()
         report.sent = try await pushChanges()
         try await compactIfNeeded()
+        // Чужие правки прочитаны не все: без них не видно, какие файлы ещё нужны.
+        if firstError == nil {
+            report.filesRemoved = try await pruneFiles()
+        }
         report.otherDevices = otherDevices()
         if let firstError { throw firstError }
         return report
@@ -241,6 +245,41 @@ public final class FolderSyncEngine: Sendable {
         }
     }
 
+    /// Сколько дней файл в «files» никому не нужен, прежде чем он удаляется из папки.
+    static let unusedFileDays = 14
+    static let unusedFilesKey = "folder.unusedFiles"
+    static let filesCheckedKey = "folder.filesCheckedAt"
+
+    /// Книги и картинки, удалённые навсегда, и копии « 2», которые делает облако, иначе лежали бы
+    /// в папке вечно. Файл удаляется, только если это устройство `unusedFileDays` дней подряд видит,
+    /// что на него ничего не ссылается: правки с другого устройства, которому файл нужен,
+    /// за это время успевают доехать. Проверка раз в сутки: она читает всю базу.
+    func pruneFiles(now: Date = Date()) async throws -> Int {
+        let checked = try await database.folderSyncNumber(forKey: Self.filesCheckedKey) ?? 0
+        guard now.timeIntervalSince1970 - Double(checked) >= 86_400 else { return 0 }
+
+        let remote = Set(FolderFiles.list(filesFolder))
+        let used = try await database.referencedAttachments(among: remote)
+        let stored = try await database.syncStateValue(forKey: Self.unusedFilesKey)
+        let since = stored.flatMap { try? Self.decoder.decode([String: Date].self, from: $0) } ?? [:]
+
+        var unused: [String: Date] = [:]
+        var removed = 0
+        for name in remote.subtracting(used) {
+            let first = since[name] ?? now
+            if now.timeIntervalSince(first) >= Double(Self.unusedFileDays) * 86_400,
+               (try? FolderFiles.remove(filesFolder.appendingPathComponent(name))) != nil {
+                removed += 1
+            } else {
+                // Не удалился (например, ещё в облаке): попробуем в следующий раз.
+                unused[name] = first
+            }
+        }
+        try await database.setSyncStateValue(try Self.encoder.encode(unused), forKey: Self.unusedFilesKey)
+        try await database.setFolderSyncNumber(Int(now.timeIntervalSince1970), forKey: Self.filesCheckedKey)
+        return removed
+    }
+
     /// Другие устройства, которые пишут в эту папку.
     public func otherDevices() -> [FolderSyncDevice] {
         FolderFiles.list(devicesFolder)
@@ -271,6 +310,8 @@ public struct FolderSyncReport: Sendable, Equatable {
     public var received = 0
     public var filesSent = 0
     public var filesReceived = 0
+    /// Сколько ненужных файлов убрано из папки.
+    public var filesRemoved = 0
     public var otherDevices: [FolderSyncDevice] = []
 
     public init() {}

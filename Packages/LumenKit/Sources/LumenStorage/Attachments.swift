@@ -55,6 +55,34 @@ public struct AttachmentStore: Sendable {
         return (attributes?[.size] as? NSNumber)?.int64Value
     }
 
+    /// Одинаковы ли два вложения байт в байт.
+    public func sameContent(_ a: String, _ b: String) -> Bool {
+        Self.sameContent(url(for: a), url(for: b))
+    }
+
+    /// Одинаковы ли два файла байт в байт. Сначала размер, потом содержимое по кускам:
+    /// книга бывает большой, целиком в память её не читаем.
+    public static func sameContent(_ a: URL, _ b: URL) -> Bool {
+        let sizeA = (try? FileManager.default.attributesOfItem(atPath: a.path))?[.size] as? NSNumber
+        let sizeB = (try? FileManager.default.attributesOfItem(atPath: b.path))?[.size] as? NSNumber
+        guard let sizeA, let sizeB, sizeA == sizeB else { return false }
+        guard let first = try? FileHandle(forReadingFrom: a), let second = try? FileHandle(forReadingFrom: b) else { return false }
+        defer {
+            try? first.close()
+            try? second.close()
+        }
+        do {
+            while true {
+                let left = try first.read(upToCount: 1 << 20) ?? Data()
+                let right = try second.read(upToCount: 1 << 20) ?? Data()
+                guard left == right else { return false }
+                if left.isEmpty { return true }
+            }
+        } catch {
+            return false
+        }
+    }
+
     public func data(for name: String) -> Data? {
         try? Data(contentsOf: url(for: name))
     }

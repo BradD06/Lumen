@@ -95,11 +95,17 @@ public struct RootView: View {
             #endif
         }
         .tint(theme.accent)
-        .task { await purgeOldTrash() }
+        .task { await tidyLibrary() }
     }
 
-    /// Что лежит в корзине дольше 30 дней, удаляется само при запуске.
-    private func purgeOldTrash() async {
+    /// При запуске: повторы одной книги сливаются в одну, а что лежит в корзине дольше 30 дней, удаляется.
+    private func tidyLibrary() async {
+        do {
+            let merged = try await database.mergeDuplicateBooks()
+            if merged > 0 { lumenLog.info("Merged \(merged) duplicate books") }
+        } catch {
+            lumenLog.error("Duplicate books merge failed: \(String(describing: error), privacy: .public)")
+        }
         do {
             let count = try await database.purgeTrash()
             if count > 0 { lumenLog.info("Removed \(count) old items from the trash") }

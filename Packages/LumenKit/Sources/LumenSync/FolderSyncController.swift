@@ -126,8 +126,8 @@ public final class FolderSyncController {
                     hasSynced = true
                 }
                 status.state = .upToDate(Date())
-                if report.sent + report.received + report.filesSent + report.filesReceived > 0 {
-                    folderSyncLog.info("Folder sync: sent \(report.sent), received \(report.received), files \(report.filesSent)/\(report.filesReceived)")
+                if report.sent + report.received + report.filesSent + report.filesReceived + report.filesRemoved > 0 {
+                    folderSyncLog.info("Folder sync: sent \(report.sent), received \(report.received), files \(report.filesSent)/\(report.filesReceived), removed \(report.filesRemoved)")
                 }
             } catch {
                 folderSyncLog.error("Folder sync failed: \(String(describing: error), privacy: .public)")

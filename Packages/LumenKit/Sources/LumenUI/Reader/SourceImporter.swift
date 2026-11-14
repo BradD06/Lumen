@@ -19,13 +19,25 @@ enum SourceImporter {
         positions: [LibraryPoint]
     ) async -> [Source] {
         var sources: [Source] = []
+        var alreadyThere: [Source] = []
         for (index, url) in urls.enumerated() {
             let position = positions.indices.contains(index) ? positions[index] : nil
             do {
+                // Тот же файл второй раз не добавляется: открывается прежняя книга со всеми заметками.
+                if let existing = try await existingCopy(of: url, in: database) {
+                    sources.append(existing)
+                    alreadyThere.append(existing)
+                    continue
+                }
                 sources.append(try await importFile(url, into: database, folderId: folderId, position: position))
             } catch {
                 await NoticeCenter.shared.report("Не удалось добавить «\(url.lastPathComponent)»", error)
             }
+        }
+        if alreadyThere.count == 1, let book = alreadyThere.first {
+            await NoticeCenter.shared.show("«\(book.title)» уже есть в библиотеке")
+        } else if alreadyThere.count > 1 {
+            await NoticeCenter.shared.show("Уже есть в библиотеке: \(alreadyThere.count)")
         }
         return sources
     }
@@ -53,8 +65,8 @@ enum SourceImporter {
     }
 
     /// Файл, который открыли в Lumen снаружи: из «Файлов», Telegram, «Поделиться» или Finder.
-    /// Книга ложится в корень библиотеки. Если этот же файл уже добавляли (то же имя и размер),
-    /// открывается прежняя книга со всеми заметками, а не копия.
+    /// Книга ложится в корень библиотеки. Если этот же файл уже добавляли, открывается
+    /// прежняя книга со всеми заметками, а не копия.
     static func importIncomingFile(_ url: URL, into database: AppDatabase) async throws -> Source {
         defer { removeInboxCopy(url) }
         if let existing = try await existingCopy(of: url, in: database) {
@@ -63,15 +75,22 @@ enum SourceImporter {
         return try await importFile(url, into: database, folderId: nil, position: nil)
     }
 
-    /// Книга в библиотеке, добавленная из этого же файла.
+    /// Книга в библиотеке (не в корзине) с тем же файлом байт в байт. Имя не важно:
+    /// Telegram присылает «Книга (1).pdf», iCloud делает «Книга 2.pdf», а это та же книга.
     static func existingCopy(of url: URL, in database: AppDatabase) async throws -> Source? {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
         guard let size = fileSize(url) else { return nil }
         let attachments = database.attachments
-        return try await database.sources(originalName: url.lastPathComponent).first { source in
-            fileSize(attachments.url(for: source.file)) == size
-        }
+        let name = url.lastPathComponent
+        let candidates = try await database.sources(format: SourceFormat(fileExtension: url.pathExtension))
+            .filter { attachments.fileSize($0.file) == Int64(size) }
+        guard !candidates.isEmpty else { return nil }
+        // Сначала книги с тем же именем файла: из двух одинаковых откроется та, что добавлена из него.
+        let ordered = candidates.filter { $0.originalName == name } + candidates.filter { $0.originalName != name }
+        return await Task.detached(priority: .userInitiated) {
+            ordered.first { AttachmentStore.sameContent(url, attachments.url(for: $0.file)) }
+        }.value
     }
 
     private static func fileSize(_ url: URL) -> Int? {
