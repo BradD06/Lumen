@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="800" viewBox="0 0 1400 800" fill="none">
+  <title>Lumen — 10 вариантов иконки</title>
+  <defs>
+    <linearGradient id="g1" x1="70" y1="10" x2="40" y2="96" gradientUnits="userSpaceOnUse"><stop stop-color="#FFD59A"/><stop offset="1" stop-color="#F18D63"/></linearGradient>
+    <linearGradient id="g2" x1="10" y1="15" x2="90" y2="90" gradientUnits="userSpaceOnUse"><stop stop-color="#E5D7FF"/><stop offset="1" stop-color="#9A83E8"/></linearGradient>
+    <linearGradient id="g3" x1="20" y1="10" x2="82" y2="92" gradientUnits="userSpaceOnUse"><stop stop-color="#A6F0E3"/><stop offset="1" stop-color="#55BDAF"/></linearGradient>
+    <linearGradient id="g4" x1="15" y1="10" x2="85" y2="90" gradientUnits="userSpaceOnUse"><stop stop-color="#FFC1B9"/><stop offset="1" stop-color="#E56F83"/></linearGradient>
+    <linearGradient id="g5" x1="15" y1="20" x2="87" y2="82" gradientUnits="userSpaceOnUse"><stop stop-color="#F7E4B3"/><stop offset="1" stop-color="#D3A75C"/></linearGradient>
+    <linearGradient id="g6" x1="20" y1="12" x2="80" y2="90" gradientUnits="userSpaceOnUse"><stop stop-color="#C1D9FF"/><stop offset="1" stop-color="#729CE8"/></linearGradient>
+    <linearGradient id="g7" x1="20" y1="18" x2="84" y2="87" gradientUnits="userSpaceOnUse"><stop stop-color="#FFD0AE"/><stop offset="1" stop-color="#D98265"/></linearGradient>
+    <linearGradient id="g8" x1="10" y1="15" x2="87" y2="88" gradientUnits="userSpaceOnUse"><stop stop-color="#F0D0FF"/><stop offset="1" stop-color="#B084E2"/></linearGradient>
+    <linearGradient id="g9" x1="15" y1="12" x2="87" y2="86" gradientUnits="userSpaceOnUse"><stop stop-color="#E0F5A0"/><stop offset="1" stop-color="#91BB4C"/></linearGradient>
+    <linearGradient id="g10" x1="18" y1="12" x2="85" y2="90" gradientUnits="userSpaceOnUse"><stop stop-color="#FFE3A1"/><stop offset="1" stop-color="#E49B4F"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#111827" flood-opacity=".15"/></filter>
+  </defs>
+  <rect width="1400" height="800" fill="#EEECE6"/>
+  <text x="44" y="54" fill="#252A32" font-family="Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="4">LUMEN  /  ИДЕИ ДЛЯ ИКОНКИ</text>
+  <text x="1356" y="54" text-anchor="end" fill="#777A80" font-family="Arial, sans-serif" font-size="14" letter-spacing="1">10 ВАРИАНТОВ · ТЁМНЫЕ ОСНОВЫ</text>
+  <path d="M44 76H1356" stroke="#D6D3CC"/>
+
+  <!-- 01 Портал -->
+  <g filter="url(#shadow)"><rect x="44" y="104" width="244" height="280" rx="18" fill="#fff"/><rect x="66" y="126" width="200" height="200" rx="46" fill="#11161E"/></g>
+  <g transform="translate(96 156)" stroke="url(#g1)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 76V45C14 19 31 5 50 5S86 19 86 45V76"/>
+    <path d="M34 76V48C34 37 41 29 50 29S66 37 66 48V76" opacity=".58"/>
+    <path d="M50 62V83" stroke-width="4"/><circle cx="50" cy="91" r="3" fill="#FFD59A" stroke="none"/>
+  </g>
+  <text x="66" y="356" fill="#262A31" font-family="Arial, sans-serif" font-size="15" font-weight="700">01 · ПОРТАЛ</text>
+  <text x="66" y="375" fill="#85858A" font-family="Arial, sans-serif" font-size="12">свет внутри формы</text>
+
+  <!-- 02 Вырез -->
+  <g filter="url(#shadow)"><rect x="310" y="104" width="244" height="280" rx="18" fill="#fff"/><rect x="332" y="126" width="200" height="200" rx="46" fill="#171523"/></g>
+  <g transform="translate(362 156)">
+    <path d="M20 10H80V29H40V50H68V69H40V91H20V69V50V29V10Z" fill="url(#g2)"/>
+    <path d="M57 50H80V91H57V72H70V63H57V50Z" fill="#171523"/>
+    <circle cx="81" cy="90" r="5" fill="#E5D7FF"/>
+  </g>
+  <text x="332" y="356" fill="#262A31" font-family="Arial, sans-serif" font-size="15" font-weight="700">02 · ВЫРЕЗ</text>
+  <text x="332" y="375" fill="#85858A" font-family="Arial, sans-serif" font-size="12">буква L через пустоту</text>
+
+  <!-- 03 Орбита -->
+  <g filter="url(#shadow)"><rect x="576" y="104" width="244" height="280" rx="18" fill="#fff"/><rect x="598" y="126" width="200" height="200" rx="46" fill="#101C25"/></g>
+  <g transform="translate(628 156)" stroke="url(#g3)" stroke-width="6" stroke-linecap="round">
+    <ellipse cx="50" cy="50" rx="37" ry="20" transform="rotate(-38 50 50)"/>
+    <path d="M17 67C25 79 42 87 57 81C69 77 79 65 82 53" opacity=".65"/>
+    <circle cx="50" cy="50" r="9" fill="#A6F0E3" stroke="none"/>
+    <circle cx="82" cy="52" r="5" fill="#55BDAF" stroke="none"/>
+  </g>
+  <text x="598" y="356" fill="#262A31" font-family="Arial, sans-serif" font-size="15" font-weight="700">03 · ОРБИТА</text>
+  <text x="598" y="375" fill="#85858A" font-family="Arial, sans-serif" font-size="12">идеи вокруг центра</text>
+
+  <!-- 04 Искра -->
+  <g filter="url(#shadow)"><rect x="842" y="104" width="244" height="280" rx="18" fill="#fff"/><rect x="864" y="126" width="200" height="200" rx="46" fill="#19151D"/></g>
+  <g transform="translate(894 156)" fill="url(#g4)">
+    <path d="M50 5C55 32 65 43 93 50C65 57 55 68 50 95C45 68 35 57 7 50C35 43 45 32 50 5Z"/>
+    <circle cx="83" cy="19" r="7" fill="#FFC1B9"/>
+    <circle cx="18" cy="78" r="4" fill="#E56F83"/>
+  </g>
+  <text x="864" y="356" fill="#262A31" font-family="Arial, sans-serif" font-size="15" font-weight="700">04 · ИСКРА</text>
+  <text x="864" y="375" fill="#85858A" font-family="Arial, sans-serif" font-size="12">один яркий импульс</text>
+
+  <!-- 05 Слои -->
+  <g filter="url(#shadow)"><rect x="1108" y="104" width="244" height="280" rx="18" fill="#fff"/><rect x="1130" y="126" width="200" height="200" rx="46" fill="#171A1C"/></g>
+  <g transform="translate(1160 156)" stroke="url(#g5)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M17 26L50 9L83 26L50 43L17 26Z" fill="#171A1C"/>
+    <path d="M17 43L50 60L83 43"/>
+    <path d="M17 60L50 77L83 60"/>
+    <path d="M17 77L50 94L83 77" opacity=".55"/>
+  </g>
+  <text x="1130" y="356" fill="#262A31" font-family="Arial, sans-serif" font-size="15" font-weight="700">05 · СЛОИ</text>
+  <text x="1130" y="375" fill="#85858A" font-family="Arial, sans-serif" font-size="12">глубина и порядок</text>
+
+  <!-- 06 Монограмма -->
+  <g filter="url(#shadow)"><rect x="44" y="420" width="244" height="280" rx="18" fill="#fff"/><rect x="66" y="442" width="200" height="200" rx="46" fill="#101722"/></g>
+  <g transform="translate(96 472)" fill="url(#g6)">
+    <path d="M13 9H35V66C35 75 40 80 49 80H86V99H48C26 99 13 86 13 65V9Z"/>
+    <path d="M50 43H68V80H50V43Z" opacity=".52"/>
+    <circle cx="77" cy="34" r="8"/>
+  </g>
+  <text x="66" y="674" fill="#262A31" font-family="Arial, sans-serif" font-size="15" font-weight="700">06 · МОНОГРАММА</text>
+  <text x="66" y="693" fill="#85858A" font-family="Arial, sans-serif" font-size="12">знак из буквы L</text>
+
+  <!-- 07 Линза -->
+  <g filter="url(#shadow)"><rect x="310" y="420" width="244" height="280" rx="18" fill="#fff"/><rect x="332" y="442" width="200" height="200" rx="46" fill="#1C1518"/></g>
+  <g transform="translate(362 472)" stroke="url(#g7)" stroke-width="6">
+    <path d="M50 8L86 50L50 92L14 50L50 8Z"/>
+    <path d="M50 27L69 50L50 73L31 50L50 27Z" fill="#1C1518"/>
+    <path d="M50 8V27M86 50H69M50 92V73M14 50H31" stroke-linecap="round"/>
+    <circle cx="50" cy="50" r="5" fill="#FFD0AE" stroke="none"/>
+  </g>
+  <text x="332" y="674" fill="#262A31" font-family="Arial, sans-serif" font-size="15" font-weight="700">07 · ЛИНЗА</text>
+  <text x="332" y="693" fill="#85858A" font-family="Arial, sans-serif" font-size="12">фокус и ясность</text>
+
+  <!-- 08 Переплетение -->
+  <g filter="url(#shadow)"><rect x="576" y="420" width="244" height="280" rx="18" fill="#fff"/><rect x="598" y="442" width="200" height="200" rx="46" fill="#141622"/></g>
+  <g transform="translate(628 472)" stroke="url(#g8)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 29C20 16 31 9 41 9C50 9 55 16 55 25V71C55 84 46 92 35 92C25 92 18 85 18 75"/>
+    <path d="M80 29C80 16 69 9 59 9C50 9 45 16 45 25V71C45 84 54 92 65 92C75 92 82 85 82 75"/>
+    <path d="M39 50H61" stroke-width="6"/>
+  </g>
+  <text x="598" y="674" fill="#262A31" font-family="Arial, sans-serif" font-size="15" font-weight="700">08 · СВЯЗЬ</text>
+  <text x="598" y="693" fill="#85858A" font-family="Arial, sans-serif" font-size="12">мысли соединяются</text>
+
+  <!-- 09 Созвездие -->
+  <g filter="url(#shadow)"><rect x="842" y="420" width="244" height="280" rx="18" fill="#fff"/><rect x="864" y="442" width="200" height="200" rx="46" fill="#121B1B"/></g>
+  <g transform="translate(894 472)" stroke="url(#g9)" stroke-width="4" stroke-linecap="round">
+    <path d="M18 72L35 35L68 20L82 55L58 82L18 72Z" opacity=".72"/>
+    <path d="M35 35L58 82M68 20L18 72M35 35L82 55" opacity=".48"/>
+    <circle cx="18" cy="72" r="6" fill="#E0F5A0" stroke="none"/><circle cx="35" cy="35" r="7" fill="#E0F5A0" stroke="none"/>
+    <circle cx="68" cy="20" r="5" fill="#91BB4C" stroke="none"/><circle cx="82" cy="55" r="6" fill="#E0F5A0" stroke="none"/>
+    <circle cx="58" cy="82" r="7" fill="#E0F5A0" stroke="none"/>
+  </g>
+  <text x="864" y="674" fill="#262A31" font-family="Arial, sans-serif" font-size="15" font-weight="700">09 · СОЗВЕЗДИЕ</text>
+  <text x="864" y="693" fill="#85858A" font-family="Arial, sans-serif" font-size="12">связанные точки</text>
+
+  <!-- 10 Закладка-лента -->
+  <g filter="url(#shadow)"><rect x="1108" y="420" width="244" height="280" rx="18" fill="#fff"/><rect x="1130" y="442" width="200" height="200" rx="46" fill="#1A1714"/></g>
+  <g transform="translate(1160 472)" fill="url(#g10)">
+    <path d="M22 4H78V96L50 76L22 96V4Z"/>
+    <path d="M37 19H63V67L50 58L37 67V19Z" fill="#1A1714" opacity=".82"/>
+    <path d="M50 18V49" stroke="#FFE3A1" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="50" cy="57" r="4" fill="#FFE3A1"/>
+  </g>
+  <text x="1130" y="674" fill="#262A31" font-family="Arial, sans-serif" font-size="15" font-weight="700">10 · ЗАКЛАДКА</text>
+  <text x="1130" y="693" fill="#85858A" font-family="Arial, sans-serif" font-size="12">личный знак памяти</text>
+
+  <text x="44" y="756" fill="#777A80" font-family="Arial, sans-serif" font-size="12" letter-spacing="1">КОНЦЕПТЫ ДЛЯ ВЫБОРА · НИ ОДИН ВАРИАНТ ПОКА НЕ ПОДКЛЮЧЁН К ПРИЛОЖЕНИЮ</text>
+</svg>

@@ -355,6 +355,10 @@ struct PageEditorView: View {
                         onAdd: {
                             LumenSounds.play(.addSheet)
                             model.addSheet()
+                        },
+                        onDelete: { index in
+                            LumenSounds.play(.trash)
+                            model.deleteSheet(index)
                         }
                     )
                     .padding(.leading, 16)

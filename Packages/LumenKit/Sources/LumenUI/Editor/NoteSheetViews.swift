@@ -165,39 +165,52 @@ struct SheetRail: View {
     let pinned: Int?
     var onSelect: (Int) -> Void
     var onAdd: () -> Void
+    var onDelete: (Int) -> Void
 
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 12) {
-                Text("Листы")
-                    .font(.caption2.weight(.semibold))
-                    .textCase(.uppercase)
-                    .tracking(1.2)
-                    .foregroundStyle(theme.textSecondary)
-                ForEach(0..<count, id: \.self) { index in
-                    thumb(index)
-                }
-                Button(action: onAdd) {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .strokeBorder(theme.accent.opacity(0.5), style: StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
-                        .frame(width: 46, height: 65)
-                        .overlay {
-                            Image(systemName: "plus").foregroundStyle(theme.accent)
-                        }
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Добавить лист")
-                .accessibilityLabel("Добавить лист")
+        GeometryReader { geometry in
+            // Колонка по высоте содержимого; длинная упирается в окно и прокручивается.
+            ViewThatFits(in: .vertical) {
+                column
+                ScrollView(.vertical, showsIndicators: false) { column }
             }
-            .padding(.vertical, 14)
-            .padding(.horizontal, 12)
+            .frame(width: 74)
+            .lumenCard(padding: 0)
+            // lumenCard растягивает содержимое на всю предложенную ширину.
+            .frame(width: 74)
+            .frame(maxHeight: max(140, geometry.size.height - 48), alignment: .top)
         }
-        .frame(width: 74)
-        .fixedSize(horizontal: false, vertical: true)
-        .lumenCard(padding: 0)
+        .frame(width: 74, alignment: .leading)
+    }
+
+    private var column: some View {
+        VStack(spacing: 12) {
+            Text("Листы")
+                .font(.caption2.weight(.semibold))
+                .textCase(.uppercase)
+                .tracking(1.2)
+                .foregroundStyle(theme.textSecondary)
+            ForEach(0..<count, id: \.self) { index in
+                thumb(index)
+            }
+            Button(action: onAdd) {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .strokeBorder(theme.accent.opacity(0.5), style: StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
+                    .frame(width: 46, height: 65)
+                    .overlay {
+                        Image(systemName: "plus").foregroundStyle(theme.accent)
+                    }
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Добавить лист")
+            .accessibilityLabel("Добавить лист")
+        }
+        .padding(.top, 14)
+        .padding(.bottom, 24)
+        .padding(.horizontal, 12)
     }
 
     private func thumb(_ index: Int) -> some View {
@@ -239,6 +252,12 @@ struct SheetRail: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button("Удалить лист", systemImage: "trash", role: .destructive) {
+                onDelete(index)
+            }
+            .disabled(count < 2)
+        }
         .help("Лист \(index + 1)")
         .accessibilityLabel("Лист \(index + 1)")
         .accessibilityAddTraits(isCurrent ? .isSelected : [])
