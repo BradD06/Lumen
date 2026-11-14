@@ -112,7 +112,7 @@ enum PagePDFRenderer {
             case .image:
                 guard let name = block.content.attachment,
                       let data = attachments.data(for: name),
-                      let attachment = imageAttachment(data)
+                      let attachment = imageAttachment(data, widthShare: block.content.imageWidth, aspect: block.content.imageAspect)
                 else { continue }
                 text.append(NSAttributedString(attachment: attachment))
                 let style = paragraph(indent: indent, before: 4, after: 10)
@@ -219,12 +219,53 @@ enum PagePDFRenderer {
 
     // MARK: Картинки
 
-    private static func imageAttachment(_ data: Data) -> NSTextAttachment? {
-        guard let image = PlatformImage(data: data), image.size.width > 0, image.size.height > 0 else { return nil }
+    /// Картинка с размером из редактора: доля ширины листа и форма, обрезанная по краям, как на экране.
+    private static func imageAttachment(_ data: Data, widthShare: Double? = nil, aspect: Double? = nil) -> NSTextAttachment? {
+        guard var image = PlatformImage(data: data), image.size.width > 0, image.size.height > 0 else { return nil }
+        if let aspect, let cropped = cropped(image, toAspect: aspect) {
+            image = cropped
+        }
         // Картинка помещается в ширину листа и не выше половины листа, чтобы её не резало между страницами.
-        let scale = min(1, contentSize.width / image.size.width, contentSize.height * 0.55 / image.size.height)
+        let maxHeight = contentSize.height * 0.55 / image.size.height
+        let scale: CGFloat
+        if let widthShare {
+            let share = CGFloat(min(max(widthShare, 0.05), 1))
+            scale = min(contentSize.width * share / image.size.width, maxHeight)
+        } else {
+            scale = min(1, contentSize.width / image.size.width, maxHeight)
+        }
         let size = CGSize(width: (image.size.width * scale).rounded(), height: (image.size.height * scale).rounded())
         return attachment(image, size: size)
+    }
+
+    /// Середина картинки в заданной форме (высота на ширину).
+    private static func cropped(_ image: PlatformImage, toAspect aspect: Double) -> PlatformImage? {
+        #if canImport(UIKit)
+        // Снимок с телефона бывает повёрнут: сначала он рисуется ровно, потом режется.
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = image.scale
+        let upright = UIGraphicsImageRenderer(size: image.size, format: format).image { _ in image.draw(at: .zero) }
+        guard let source = upright.cgImage else { return nil }
+        #else
+        guard let source = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        #endif
+        let width = CGFloat(source.width)
+        let height = CGFloat(source.height)
+        let target = CGFloat(ImageSizing.clampAspect(aspect))
+        var rect = CGRect(x: 0, y: 0, width: width, height: height)
+        if height / width > target {
+            rect.size.height = width * target
+            rect.origin.y = (height - rect.height) / 2
+        } else {
+            rect.size.width = height / target
+            rect.origin.x = (width - rect.width) / 2
+        }
+        guard let part = source.cropping(to: rect.integral) else { return nil }
+        #if canImport(UIKit)
+        return UIImage(cgImage: part, scale: image.scale, orientation: .up)
+        #else
+        return NSImage(cgImage: part, size: NSSize(width: part.width, height: part.height))
+        #endif
     }
 
     /// Рисунок от руки на белом листе: чернила в светлой теме. Область рисунка в заметке

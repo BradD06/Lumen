@@ -44,6 +44,8 @@ final class ReaderKeys {
         switch action {
         case .turn(let forward):
             guard !Self.responderUsesArrows(window.firstResponder) else { return false }
+            // В заметке выделены блоки: стрелки двигают выделение, а не листают книгу.
+            guard BlockSelectionOwner.current?.hasBlockSelection != true else { return false }
             model.turnPage(forward: forward)
             return true
         case .focusNotes:

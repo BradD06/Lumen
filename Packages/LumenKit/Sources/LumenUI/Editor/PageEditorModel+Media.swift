@@ -84,6 +84,17 @@ extension PageEditorModel {
         }
     }
 
+    /// Размер картинки: доля ширины страницы и форма (высота на ширину). `nil` это как у снимка.
+    func setImageSize(_ id: UUID, widthShare: Double?, aspect: Double?) {
+        guard let block = findBlock(id), block.type == .image,
+              block.content.imageWidth != widthShare || block.content.imageAspect != aspect else { return }
+        recordUndo()
+        update(id) {
+            $0.content.imageWidth = widthShare
+            $0.content.imageAspect = aspect
+        }
+    }
+
     func setCoverImage(data: Data) {
         do {
             setCover(.image(try database.attachments.save(data)))

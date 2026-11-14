@@ -105,11 +105,14 @@ extension BlockType {
 
 extension PageExport {
     /// Страница в Markdown. Картинки ссылаются на файлы по `imagePath`, по умолчанию `images/<имя>`.
-    public func markdown(imagePath: (String) -> String = { "images/\($0)" }) -> String {
+    /// `includesTitle: false` даёт только блоки: так копируются выделенные блоки.
+    public func markdown(includesTitle: Bool = true, imagePath: (String) -> String = { "images/\($0)" }) -> String {
         var parts: [(text: String, isListItem: Bool)] = []
-        // Иконка бывает эмодзи или именем системного значка: в файл попадает только эмодзи.
-        let icon = page.icon.flatMap { $0.unicodeScalars.first.map(\.isASCII) == false ? "\($0) " : nil } ?? ""
-        parts.append(("# \(icon)\(Self.escape(page.displayTitle))", false))
+        if includesTitle {
+            // Иконка бывает эмодзи или именем системного значка: в файл попадает только эмодзи.
+            let icon = page.icon.flatMap { $0.unicodeScalars.first.map(\.isASCII) == false ? "\($0) " : nil } ?? ""
+            parts.append(("# \(icon)\(Self.escape(page.displayTitle))", false))
+        }
 
         for item in items {
             let block = item.block
