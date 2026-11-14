@@ -11,6 +11,8 @@ struct SourceDashboardView: View {
     let sourceId: UUID
     var onRead: (UUID?) -> Void
     var onOpenPage: (UUID) -> Void
+    /// Вернуться туда, откуда пришли. `nil` на iPhone: там стрелка в панели навигации.
+    var onBack: (() -> Void)?
 
     @State private var snapshot = SourceDashboardSnapshot.empty
     @State private var hasLoaded = false
@@ -27,9 +29,15 @@ struct SourceDashboardView: View {
         ScrollView {
             if let source = snapshot.source, !source.isTrashed {
                 VStack(alignment: .leading, spacing: 18) {
+                    if let onBack {
+                        ScreenBackButton(action: onBack)
+                    }
                     header(source)
                     statCards(source)
-                    activityCard
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 14, alignment: .top)], spacing: 14) {
+                        calendarCard
+                        sessionsCard
+                    }
                     notesCard(source)
                     highlightsCard
                 }
@@ -156,64 +164,124 @@ struct SourceDashboardView: View {
 
     private func statCards(_ source: Source) -> some View {
         let stats = stats
-        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14)], spacing: 14) {
-            StatCard(
-                title: "Прочитано",
-                value: "\(Int((source.progress * 100).rounded()))%",
-                caption: source.lastOpenedAt.map { "открывали \(relative($0))" },
-                systemImage: "book",
-                style: .vivid(1)
-            )
-            StatCard(
-                title: "Время",
+        let forecast = ReadingForecast(progress: source.progress, sessions: snapshot.sessions)
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 14, alignment: .top)], spacing: 14) {
+            ReadingFactCard(
+                title: "Время с книгой",
                 value: ReadingStats.format(stats.totalSeconds, short: true),
-                caption: "сегодня \(ReadingStats.format(stats.todaySeconds))",
-                systemImage: "clock",
-                style: .vivid(0)
+                caption: "сегодня \(ReadingStats.format(stats.todaySeconds, short: true))"
             )
-            StatCard(
+            ReadingFactCard(
+                title: "Осталось",
+                value: Self.remainingValue(forecast),
+                caption: Self.remainingCaption(forecast),
+                isAccent: true
+            )
+            ReadingFactCard(
+                title: "Дочитаешь",
+                value: Self.finishValue(forecast),
+                caption: Self.finishCaption(forecast)
+            )
+            ReadingFactCard(
                 title: "Серия",
-                value: "\(stats.streakDays)",
-                caption: "\(Self.days(stats.streakDays)) подряд · всего \(stats.daysRead) \(Self.days(stats.daysRead))",
-                systemImage: "flame",
-                style: .vivid(2)
-            )
-            StatCard(
-                title: "Выделения",
-                value: "\(snapshot.highlights.count)",
-                caption: "выписки на \(notesPageCount) \(notesPageCount == 1 ? "странице" : "страницах")",
-                systemImage: "highlighter"
+                value: "\(stats.streakDays) \(Self.days(stats.streakDays))",
+                caption: "подряд · всего \(stats.daysRead) \(Self.days(stats.daysRead)) с книгой"
             )
         }
     }
 
-    private var notesPageCount: Int {
-        snapshot.excerptPages.count + (snapshot.notesPage == nil ? 0 : 1)
+    static func remainingValue(_ forecast: ReadingForecast) -> String {
+        guard let remaining = forecast.remainingSeconds else { return "—" }
+        if remaining == 0 { return "Дочитана" }
+        return "≈ \(ReadingStats.format(max(remaining, 60), short: true))"
     }
 
-    /// Столбики по дням за две недели: высота это минуты чтения.
-    private var activityCard: some View {
-        let days = stats.recentDays
-        let maximum = max(days.map(\.seconds).max() ?? 0, 60)
-        return VStack(alignment: .leading, spacing: 12) {
-            cardTitle("Последние две недели", systemImage: "chart.bar")
-            HStack(alignment: .bottom, spacing: 6) {
-                ForEach(days) { day in
-                    VStack(spacing: 6) {
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(day.seconds > 0 ? theme.accent : theme.textSecondary.opacity(0.18))
-                            .frame(height: max(4, 90 * day.seconds / maximum))
-                            .help("\(day.date.formatted(.dateTime.day().month())): \(ReadingStats.format(day.seconds))")
-                        Text(day.date.formatted(.dateTime.day()))
-                            .font(.caption2)
-                            .foregroundStyle(Calendar.current.isDateInToday(day.date) ? theme.textPrimary : theme.textSecondary)
+    private static func remainingCaption(_ forecast: ReadingForecast) -> String {
+        if forecast.remainingSeconds == 0 { return "книга прочитана целиком" }
+        guard let pace = forecast.pacePerHour else { return "появится после 10 минут чтения" }
+        let percent = pace * 100
+        return percent < 1 ? "при твоём темпе: меньше 1% в час" : "при твоём темпе: \(Int(percent.rounded()))% в час"
+    }
+
+    private static func finishValue(_ forecast: ReadingForecast) -> String {
+        if forecast.remainingSeconds == 0 { return "Готово" }
+        guard let date = forecast.finishDate else { return "—" }
+        return "≈ \(ReadingText.day(date))"
+    }
+
+    private static func finishCaption(_ forecast: ReadingForecast) -> String {
+        if forecast.remainingSeconds == 0 { return "можно взять следующую" }
+        if forecast.finishDate != nil {
+            return "если читать \(ReadingStats.format(forecast.dailySeconds, short: true)) в день, как сейчас"
+        }
+        if forecast.remainingSeconds == nil { return "прогноз появится, когда будет темп" }
+        return "читай хотя бы несколько минут в день, и появится дата"
+    }
+
+    /// Календарь дней с книгой за три месяца.
+    private var calendarCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ReadingCardTitle(title: "Дни с книгой · 3 месяца")
+            ReadingHeatmap(secondsByDay: stats.secondsByDay, weeks: 13, cell: 16, spacing: 4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .lumenCard(padding: 18)
+    }
+
+    /// Последние отрезки чтения: когда, сколько и насколько продвинулись.
+    private var sessionsCard: some View {
+        let recent = Array(snapshot.sessions.filter { $0.seconds >= 60 }.suffix(6).reversed())
+        let longest = max(recent.map(\.seconds).max() ?? 0, 60)
+        return VStack(alignment: .leading, spacing: 0) {
+            ReadingCardTitle(title: "Когда читал")
+                .padding(.bottom, 8)
+            if recent.isEmpty {
+                Text("Пока пусто. Время считается, пока книга открыта и ты что-то в ней делаешь.")
+                    .font(.callout)
+                    .foregroundStyle(theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(recent) { session in
+                HStack(spacing: 12) {
+                    Text(ReadingText.sessionDay(session.endedAt))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.textPrimary)
+                        .frame(width: 96, alignment: .leading)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(ReadingText.time(session.startedAt))–\(ReadingText.time(session.endedAt)) · \(ReadingStats.format(session.seconds, short: true))")
+                            .font(.caption)
+                            .foregroundStyle(theme.textSecondary)
+                            .lineLimit(1)
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(theme.textPrimary.opacity(0.1))
+                                Capsule().fill(theme.accent)
+                                    .frame(width: max(4, geometry.size.width * session.seconds / longest))
+                            }
+                        }
+                        .frame(height: 4)
                     }
-                    .frame(maxWidth: .infinity)
+                    Text(session.progressGain.map { gain in gain < 0.005 ? "<1%" : "+\(ReadingText.percent(gain))" } ?? "")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(theme.accent)
+                        .frame(width: 44, alignment: .trailing)
+                }
+                .padding(.vertical, 8)
+                .overlay(alignment: .top) {
+                    Rectangle().fill(theme.textPrimary.opacity(0.08)).frame(height: 1)
                 }
             }
-            .frame(height: 112, alignment: .bottom)
+            if recent.contains(where: { $0.progressGain != nil }) {
+                Text("Справа: сколько книги прочитано за раз.")
+                    .font(.caption2)
+                    .foregroundStyle(theme.textSecondary)
+                    .padding(.top, 6)
+            }
         }
-        .lumenCard()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .lumenCard(padding: 18)
     }
 
     // MARK: Заметки и выделения
@@ -245,7 +313,7 @@ struct SourceDashboardView: View {
     @ViewBuilder
     private var highlightsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            cardTitle("Выделения", systemImage: "highlighter")
+            cardTitle(snapshot.highlights.isEmpty ? "Выделения" : "Выделения · \(snapshot.highlights.count)", systemImage: "highlighter")
             if snapshot.highlights.isEmpty {
                 Text("Выделите текст в книге: его можно покрасить или сразу отправить в заметки.")
                     .font(.callout)
@@ -366,7 +434,7 @@ struct SourceDashboardView: View {
     }
 }
 
-/// Мягкая кнопка-пилюля в шапке книги: персиковая для «Продолжить», стеклянная для остальных.
+/// Мягкая кнопка-пилюля в шапке книги: латунная для «Продолжить», стеклянная для остальных.
 /// Подпись всегда в одну строку.
 private struct DashboardPillButtonStyle: ButtonStyle {
     var isProminent: Bool
@@ -378,17 +446,17 @@ private struct DashboardPillButtonStyle: ButtonStyle {
             .font(.system(.body, design: .rounded).weight(.semibold))
             .lineLimit(1)
             .minimumScaleFactor(0.85)
-            .foregroundStyle(isProminent ? ReaderStyle.onPeach : theme.textPrimary)
+            .foregroundStyle(isProminent ? theme.onAccent : theme.textPrimary)
             .padding(.horizontal, 18)
             .padding(.vertical, 13)
             .frame(maxWidth: fillsWidth ? .infinity : nil)
             .background {
                 if isProminent {
-                    Capsule().fill(ReaderStyle.peachGradient)
-                        .shadow(color: ReaderStyle.peachDeep.opacity(0.35), radius: 12, y: 6)
+                    Capsule().fill(theme.accent)
+                        .shadow(color: theme.accent.opacity(0.35), radius: 12, y: 6)
                 } else {
-                    Capsule().fill(.white.opacity(0.1))
-                        .overlay(Capsule().strokeBorder(.white.opacity(0.16), lineWidth: 1))
+                    Capsule().fill(theme.cardFill)
+                        .overlay(Capsule().strokeBorder(theme.cardStroke, lineWidth: 1))
                 }
             }
             .contentShape(Capsule())

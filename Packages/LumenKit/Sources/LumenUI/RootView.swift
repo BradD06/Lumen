@@ -24,6 +24,8 @@ public enum SidebarItem: Hashable, Codable, Sendable {
     case source(UUID, highlight: UUID?)
     /// Дашборд книги: прогресс, время чтения, заметки и выделения.
     case sourceInfo(UUID)
+    /// «Чтение»: время по всем книгам, цель на день, год чтения. Живёт в комнате «Полка».
+    case reading
 }
 
 extension SidebarItem {
@@ -282,6 +284,12 @@ public struct RootView: View {
             TrashView(database: database)
         case .board:
             LinkBoardView(database: database)
+        case .reading:
+            ReadingOverviewView(
+                database: database,
+                onOpenSource: { open(.sourceInfo($0)) },
+                onBack: { closeScreen(pane: pane, fallback: .library(nil)) }
+            )
         case .page(let id):
             PageScreen(
                 database: database,
@@ -307,7 +315,8 @@ public struct RootView: View {
                 database: database,
                 sourceId: id,
                 onRead: { open(.source(id, highlight: $0)) },
-                onOpenPage: { open(.page($0)) }
+                onOpenPage: { open(.page($0)) },
+                onBack: { closeScreen(pane: pane, fallback: .library(nil)) }
             )
             .id(id)
         }

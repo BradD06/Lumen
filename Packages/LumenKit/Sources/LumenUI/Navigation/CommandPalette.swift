@@ -314,6 +314,7 @@ extension PaletteCommand {
             ("Перейти: Задачи", "checklist", .tasks, ["дела", "список"]),
             ("Перейти: Библиотека", "books.vertical", .library(nil), ["папки", "книги"]),
             ("Перейти: Доска связей", "pin", .board, ["связи", "нитки", "пробка", "приколоть"]),
+            ("Перейти: Чтение", "chart.bar.xaxis", .reading, ["время", "статистика", "цель", "книги", "серия"]),
             ("Перейти: Корзина", "trash", .trash, ["удалённое"]),
         ]
         list += places.map { title, image, item, words in

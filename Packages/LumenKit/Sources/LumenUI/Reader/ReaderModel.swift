@@ -878,14 +878,24 @@ final class ReaderModel {
     /// долгого перерыва; после перерыва счёт просто продолжается с этого момента.
     func noteActivity(at now: Date = Date()) {
         guard source != nil else { return }
+        // Пока место не восстановлено, текущая доля это начало книги, а не то, где остановились.
+        let current = hasRestoredPosition ? progress : (source?.progress ?? 0)
         if var session = readingSession {
             if let lastActivity, now.timeIntervalSince(lastActivity) <= Self.idleLimit {
                 session.seconds += max(now.timeIntervalSince(lastActivity), 0)
                 session.endedAt = now
-                readingSession = session
             }
+            if hasRestoredPosition { session.endProgress = current }
+            readingSession = session
         } else {
-            readingSession = ReadingSession(sourceId: sourceId, startedAt: now, endedAt: now, seconds: 0)
+            readingSession = ReadingSession(
+                sourceId: sourceId,
+                startedAt: now,
+                endedAt: now,
+                seconds: 0,
+                startProgress: current,
+                endProgress: current
+            )
         }
         lastActivity = now
     }

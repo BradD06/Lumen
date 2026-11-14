@@ -86,6 +86,8 @@ public struct HomeReadingSnapshot: Equatable, Sendable {
     public var stats: ReadingStats
     /// Сколько книг и файлов в библиотеке.
     public var sourceCount: Int
+    /// Все отрезки чтения книги `current`: для прогноза «осталось читать».
+    public var currentSessions: [ReadingSession] = []
 
     public static let empty = HomeReadingSnapshot(current: nil, stats: .empty, sourceCount: 0)
 
@@ -105,7 +107,37 @@ public struct HomeReadingSnapshot: Equatable, Sendable {
         return HomeReadingSnapshot(
             current: current,
             stats: ReadingStats(sessions: sessions, now: now, calendar: calendar),
-            sourceCount: try alive.fetchCount(db)
+            sourceCount: try alive.fetchCount(db),
+            currentSessions: try current.map { try ReadingSession.forSource($0.id, db) } ?? []
         )
+    }
+}
+
+/// Чтение по всем книгам для экрана «Чтение»: отрезки за последний год с небольшим
+/// и живые книги, о которых есть что сказать.
+public struct ReadingOverviewSnapshot: Equatable, Sendable {
+    public var sessions: [ReadingSession]
+    /// Книги, которые читали за это время или уже дочитали.
+    public var sources: [Source]
+
+    public static let empty = ReadingOverviewSnapshot(sessions: [], sources: [])
+
+    public static func fetch(_ db: Database, now: Date = Date(), calendar: Calendar = .current) throws -> ReadingOverviewSnapshot {
+        let since = calendar.date(byAdding: .day, value: -400, to: now) ?? now
+        let sessions = try ReadingSession
+            .filter(Column("endedAt") >= since)
+            .filter(sql: "sourceId IN (SELECT id FROM source WHERE deletedAt IS NULL)")
+            .order(Column("endedAt"))
+            .fetchAll(db)
+        let read = Set(sessions.map(\.sourceId))
+        let sources = try Source
+            .filter(Column("deletedAt") == nil)
+            .filter(keys: Array(read))
+            .fetchAll(db)
+        let finished = try Source
+            .filter(Column("deletedAt") == nil && Column("progress") >= 0.995)
+            .fetchAll(db)
+            .filter { !read.contains($0.id) }
+        return ReadingOverviewSnapshot(sessions: sessions, sources: sources + finished)
     }
 }

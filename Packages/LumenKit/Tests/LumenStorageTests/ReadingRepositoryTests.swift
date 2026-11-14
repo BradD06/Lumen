@@ -66,4 +66,26 @@ struct ReadingRepositoryTests {
         try await db.emptyTrash()
         #expect(try await db.reader.read { try ReadingSession.fetchCount($0) } == 0)
     }
+
+    @Test func sessionKeepsProgressAndOverviewListsReadAndFinishedBooks() async throws {
+        let reading = try await addBook()
+        let finished = try await addBook()
+        let untouched = try await addBook()
+        try await db.saveReadingPosition(finished.id, locator: SourceLocator(section: 9), progress: 1)
+        try await db.saveReadingPosition(reading.id, locator: SourceLocator(section: 2), progress: 0.25)
+        try await db.saveReadingSession(ReadingSession(
+            sourceId: reading.id, startedAt: Date(), endedAt: Date(), seconds: 900, startProgress: 0.2, endProgress: 0.25
+        ))
+
+        let snapshot = try await db.reader.read { try ReadingOverviewSnapshot.fetch($0) }
+        let session = try #require(snapshot.sessions.first)
+        #expect(session.startProgress == 0.2)
+        #expect(session.endProgress == 0.25)
+        #expect(Set(snapshot.sources.map(\.id)) == [reading.id, finished.id])
+        #expect(!snapshot.sources.contains { $0.id == untouched.id })
+
+        let home = try await db.reader.read { try HomeReadingSnapshot.fetch($0) }
+        #expect(home.current?.id == reading.id)
+        #expect(home.currentSessions.map(\.id) == [session.id])
+    }
 }
