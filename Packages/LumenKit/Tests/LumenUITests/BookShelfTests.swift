@@ -41,6 +41,47 @@ struct BookShelfTests {
         #expect(style.slotHeight == style.width)
     }
 
+    private func style(_ pose: BookSpineStyle.Pose, height: CGFloat) -> BookSpineStyle {
+        var style = BookSpineStyle(source: book())
+        style.pose = pose
+        style.height = height
+        return style
+    }
+
+    @Test func leaningBookTouchesItsUprightNeighbour() throws {
+        let leaning = style(.leanRight, height: 150)
+        let gap = Double(leaning.slotWidth - leaning.width + ShelfLayout.spacing)
+        // Соседка выше: книга касается её бока верхним углом.
+        let tall = try #require(leaning.leanAngle(onto: 160))
+        #expect(abs(150 * sin(tall * .pi / 180) - gap) < 0.01)
+        // Соседка ниже: книга ложится боком на её верхний угол, чуть круче.
+        let short = try #require(leaning.leanAngle(onto: 128))
+        #expect(abs(128 * tan(short * .pi / 180) - gap) < 0.01)
+        #expect(short > tall)
+        #expect(leaning.leanAngle(onto: nil) == nil)
+        #expect(leaning.leanAngle(onto: 40) == nil, "о такую низкую опору книга не опирается")
+    }
+
+    @Test func bookLeansOnlyWhenThereIsSomethingToLeanOn() {
+        let lean = style(.leanRight, height: 150)
+        let upright = style(.upright, height: 150)
+        let lying = style(.lying, height: 150)
+        // Справа лежащая книга: опереться не на что, книга стоит ровно.
+        #expect(BookSpineStyle.leanAngles([lean, lying], standing: [true, true])[0] == 0)
+        // Справа ровная книга: наклон есть.
+        #expect(BookSpineStyle.leanAngles([lean, upright], standing: [true, true])[0] > 0)
+        // Соседку вынули с полки: книга выпрямляется.
+        #expect(BookSpineStyle.leanAngles([lean, upright], standing: [true, false])[0] == 0)
+        // Последняя книга в ряду, две наклонённые друг к другу.
+        #expect(BookSpineStyle.leanAngles([upright, lean], standing: [true, true]) == [0, 0])
+        #expect(BookSpineStyle.leanAngles([lean, lean, upright], standing: [true, true, true])[0] == 0)
+        // Наклон влево опирается на левую соседку, первая книга ряда стоит ровно.
+        let left = style(.leanLeft, height: 150)
+        #expect(BookSpineStyle.leanAngles([upright, left], standing: [true, true])[1] < 0)
+        #expect(BookSpineStyle.leanAngles([left, upright], standing: [true, true])[0] == 0)
+        #expect(BookSpineStyle.leanAngles([lying], standing: [true]) == [90])
+    }
+
     @Test func deskShelfShowsRecentlyReadNewestFirst() {
         let now = Date()
         var old = book(title: "Давняя", opened: true)
