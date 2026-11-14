@@ -15,7 +15,7 @@ Lumen is a native notes app for Mac, iPhone and iPad (Swift 6, SwiftUI, iOS 18+ 
   ```
   No `Co-Authored-By:` or session trailer lines, no "Generated with ..." footer or session links in PR descriptions. Never use the owner's personal email.
 - When you open a PR, assign it to `BradD06`. Don't request their review: they are the PR author, so it fails.
-- **The owner runs the app from `~/Desktop/Lumen` on their Mac** (`~/Developer/Lumen` is an old, empty location). If you can reach that Mac, put your changes there first so they see them in Xcode right away, then commit and push. Before touching it, run `git status -sb` there: the folder sometimes stays on an old feature branch. After a PR is merged, switch it back to `main` and pull.
+- **The owner runs the app from `~/Developer/Lumen` on their Mac** (moved there on 2026-11-14: `~/Desktop` syncs to iCloud, which made « 2» conflict copies of files; `~/Desktop/Lumen` is the old copy). Never put the project back into `~/Desktop` or `~/Documents`. If you can reach that Mac, put your changes there first so they see them in Xcode right away, then commit and push. Before touching it, run `git status -sb` there: the folder sometimes stays on an old feature branch. After a PR is merged, switch it back to `main` and pull.
 - Don't run the macOS UI tests on the owner's Mac: they take over the mouse. CI runs them.
 - When a PR adds something users can see, update the Features list in `README.md` (English).
 - No flashcards or spaced repetition: the owner rejected them.
@@ -27,7 +27,7 @@ Lumen is a native notes app for Mac, iPhone and iPad (Swift 6, SwiftUI, iOS 18+ 
 - Signing: `Config/Signing.xcconfig` includes the gitignored `Config/Local.xcconfig`, which holds the owner's `DEVELOPMENT_TEAM`. Bundle id is `io.github.bradd06.lumen`.
 - CI (`.github/workflows/ci.yml`, macOS 15 runners) runs on every PR: package tests, app build for iOS Simulator and macOS, and macOS UI tests (`UITests/`, target `LumenAppUITests`). The app launched with `-uiTesting` uses an in-memory database and saves no workspace state.
 - **A Linux cloud container has no Swift toolchain**, and swift.org downloads are blocked there. Then CI on the PR is the only compile and test check: push, then read the job logs.
-- On the Mac, `swift test` inside `~/Desktop` fails to codesign `GRDB_GRDB.bundle` (Desktop extended attributes). Use `swift test --package-path Packages/LumenKit --scratch-path /tmp/lumen-build`.
+- If `swift test` on the Mac fails to codesign `GRDB_GRDB.bundle` (extended attributes, seen when the project lived in `~/Desktop`), use `swift test --package-path Packages/LumenKit --scratch-path /tmp/lumen-build`.
 
 ## Layout
 

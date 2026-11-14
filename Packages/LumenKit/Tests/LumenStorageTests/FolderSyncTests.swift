@@ -158,3 +158,49 @@ struct FolderSyncTests {
         #expect(FolderSyncEngine.dataFolder(in: ready) == ready)
     }
 }
+
+extension FolderSyncTests {
+    @Test func filesNobodyNeedsLeaveTheFolderAfterTwoWeeks() async throws {
+        let file = try phone.attachments.save(Data("книга".utf8), fileExtension: "epub")
+        let book = try await phone.addSource(title: "Книга", format: .epub, file: file, originalName: "book.epub")
+        _ = try await phoneSync.sync()
+        let files = FolderSyncEngine.dataFolder(in: folder).appendingPathComponent("files", isDirectory: true)
+        let remote = files.appendingPathComponent(file)
+        #expect(FileManager.default.fileExists(atPath: remote.path))
+        // Копия-конфликт от iCloud: на неё никто не ссылается.
+        let conflict = files.appendingPathComponent("\((file as NSString).deletingPathExtension) 2.epub")
+        try FileManager.default.copyItem(at: remote, to: conflict)
+
+        // Сначала файл только замечен, удаляется он через две недели.
+        let start = Date().addingTimeInterval(2 * 86_400)
+        #expect(try await phoneSync.pruneFiles(now: start) == 0)
+        #expect(try await phoneSync.pruneFiles(now: start.addingTimeInterval(3_600)) == 0)
+        #expect(try await phoneSync.pruneFiles(now: start.addingTimeInterval(15 * 86_400)) == 1)
+        #expect(!FileManager.default.fileExists(atPath: conflict.path))
+        #expect(FileManager.default.fileExists(atPath: remote.path))
+
+        // Книгу удалили навсегда: её файл тоже уходит из папки.
+        try await phone.trashSource(book.id)
+        try await phone.emptyTrash()
+        let later = start.addingTimeInterval(17 * 86_400)
+        #expect(try await phoneSync.pruneFiles(now: later) == 0)
+        #expect(try await phoneSync.pruneFiles(now: later.addingTimeInterval(15 * 86_400)) == 1)
+        #expect(!FileManager.default.fileExists(atPath: remote.path))
+    }
+
+    @Test func fileThatIsNeededAgainIsNotRemoved() async throws {
+        let files = FolderSyncEngine.dataFolder(in: folder).appendingPathComponent("files", isDirectory: true)
+        _ = try await phoneSync.sync()
+        // Файл с другого устройства пришёл раньше своих правок.
+        let name = "\(UUID().uuidString).epub"
+        try Data("книга".utf8).write(to: files.appendingPathComponent(name))
+        let start = Date().addingTimeInterval(2 * 86_400)
+        #expect(try await phoneSync.pruneFiles(now: start) == 0)
+
+        // Правки доехали: файл нужен, отсчёт начинается заново.
+        _ = try await phone.addSource(title: "Книга", format: .epub, file: name, originalName: "book.epub")
+        #expect(try await phoneSync.pruneFiles(now: start.addingTimeInterval(2 * 86_400)) == 0)
+        #expect(try await phoneSync.pruneFiles(now: start.addingTimeInterval(20 * 86_400)) == 0)
+        #expect(FileManager.default.fileExists(atPath: files.appendingPathComponent(name).path))
+    }
+}

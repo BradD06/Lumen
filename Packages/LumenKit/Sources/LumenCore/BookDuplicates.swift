@@ -8,25 +8,35 @@ public enum BookDuplicates {
         public var keeper: UUID
     }
 
-    /// Пары «повтор → оригинал». Одна книга: тот же формат, то же имя файла и то же название.
-    /// Если размеры обоих файлов известны и разные, это разные книги (например, другое издание).
+    /// Пары «повтор → оригинал». Одна книга, если:
+    /// - тот же формат, то же имя файла и то же название (если размеры обоих файлов известны
+    ///   и разные, это разные книги, например другое издание);
+    /// - или тот же формат и файлы одинаковы байт в байт (`sameContent`), даже под другим именем:
+    ///   «Книга (1).pdf» из Telegram или «Книга 2.pdf» от iCloud.
     /// Оригинал добавлен раньше (при равенстве меньший id), поэтому все устройства выбирают одно и то же.
-    public static func pairs(_ books: [Source], size: (Source) -> Int64?) -> [Pair] {
-        let alive = books.filter { $0.deletedAt == nil }
-        let groups = Dictionary(grouping: alive, by: key)
+    public static func pairs(
+        _ books: [Source],
+        size: (Source) -> Int64?,
+        sameContent: (Source, Source) -> Bool = { _, _ in false }
+    ) -> [Pair] {
+        let alive = books.filter { $0.deletedAt == nil }.sorted(by: isEarlier)
+        var keepers: [(book: Source, key: String, size: Int64?)] = []
         var result: [Pair] = []
-        for group in groups.values where group.count > 1 {
-            var keepers: [(book: Source, size: Int64?)] = []
-            for book in group.sorted(by: isEarlier) {
-                let bookSize = size(book)
-                if let keeper = keepers.first(where: { sameFile($0.size, bookSize) }) {
-                    result.append(Pair(duplicate: book.id, keeper: keeper.book.id))
-                } else {
-                    keepers.append((book, bookSize))
-                }
+        for book in alive {
+            let bookKey = key(book)
+            let bookSize = size(book)
+            let keeper = keepers.first { keeper in
+                if keeper.key == bookKey, sameFile(keeper.size, bookSize) { return true }
+                guard keeper.book.format == book.format, let known = keeper.size, known == bookSize else { return false }
+                return sameContent(keeper.book, book)
+            }
+            if let keeper {
+                result.append(Pair(duplicate: book.id, keeper: keeper.book.id))
+            } else {
+                keepers.append((book, bookKey, bookSize))
             }
         }
-        return result.sorted { $0.duplicate.uuidString < $1.duplicate.uuidString }
+        return result
     }
 
     static func key(_ book: Source) -> String {

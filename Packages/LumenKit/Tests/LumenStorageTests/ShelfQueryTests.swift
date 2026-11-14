@@ -124,6 +124,21 @@ struct BookDuplicateMergeTests {
         #expect(try await db.mergeDuplicateBooks() == 0)
     }
 
+    @Test func sameFileUnderAnotherNameIsMergedToo() async throws {
+        let db = try AppDatabase.inMemory()
+        let fileA = try db.attachments.save(Data("Война и мир, том 1".utf8), fileExtension: "pdf")
+        let fileB = try db.attachments.save(Data("Война и мир, том 1".utf8), fileExtension: "pdf")
+        let fileC = try db.attachments.save(Data("Война и мир, том 2".utf8), fileExtension: "pdf")
+        let original = try await db.addSource(title: "Война и мир", format: .pdf, file: fileA, originalName: "war.pdf")
+        try await Task.sleep(for: .milliseconds(5))
+        _ = try await db.addSource(title: "war (1)", format: .pdf, file: fileB, originalName: "war (1).pdf")
+        let secondVolume = try await db.addSource(title: "Война и мир", format: .pdf, file: fileC, originalName: "war2.pdf")
+
+        #expect(try await db.mergeDuplicateBooks() == 1)
+        let alive = try await db.reader.read { try Source.filter(Column("deletedAt") == nil).fetchAll($0) }
+        #expect(Set(alive.map(\.id)) == [original.id, secondVolume.id])
+    }
+
     @Test func bookDroppedOnAnotherShelfMovesAndStandsInPlaceInOneStep() async throws {
         let db = try AppDatabase.inMemory()
         let shelf = try await db.createShelf(name: "Поэзия")
