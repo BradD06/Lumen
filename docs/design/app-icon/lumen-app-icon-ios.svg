@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Lumen — иконка приложения для iPhone и iPad</title>
+  <defs>
+    <linearGradient id="wall" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse"><stop stop-color="#24453A"/><stop offset="1" stop-color="#0C1A15"/></linearGradient>
+    <linearGradient id="gold" x1="310" y1="260" x2="714" y2="790" gradientUnits="userSpaceOnUse"><stop stop-color="#F2DDA4"/><stop offset=".55" stop-color="#D9B66E"/><stop offset="1" stop-color="#B08A42"/></linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#wall)"/>
+  <circle cx="512" cy="453" r="264" fill="#D9B66E" opacity=".055"/>
+  <path d="M263 720V450C263 312.481 374.481 201 512 201C649.519 201 761 312.481 761 450V720" fill="#10271F" stroke="url(#gold)" stroke-width="24" stroke-linecap="round"/>
+  <path d="M307 697V454C307 340.96 398.96 249 512 249C625.04 249 717 340.96 717 454V697" fill="none" stroke="#47705D" stroke-opacity=".78" stroke-width="10"/>
+  <path d="M310 468H714M310 581H714" stroke="#D9B66E" stroke-opacity=".78" stroke-width="13" stroke-linecap="round"/>
+  <path d="M352 363V455M386 337V455M423 320V455M461 313V455M555 316V455M594 327V455M631 345V455M671 374V455" stroke="#D9B66E" stroke-opacity=".83" stroke-width="19" stroke-linecap="round"/>
+  <path d="M355 490V568M394 490V568M433 490V568M472 490V568M552 490V568M591 490V568M630 490V568M669 490V568" stroke="#D9B66E" stroke-opacity=".65" stroke-width="17" stroke-linecap="round"/>
+  <path d="M276 691C354 645 432 650 512 702C592 650 670 645 748 691V797C670 751 592 756 512 808C432 756 354 751 276 797V691Z" fill="#0C1A15" stroke="url(#gold)" stroke-width="23" stroke-linejoin="round"/>
+  <path d="M512 703V804" stroke="#D9B66E" stroke-width="13" stroke-linecap="round"/>
+  <path d="M512 632V602" stroke="#F2DDA4" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="512" cy="575" r="15" fill="#F2DDA4"/>
+</svg>

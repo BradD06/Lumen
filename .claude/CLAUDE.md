@@ -6,6 +6,7 @@ Lumen is a native notes app for Mac, iPhone and iPad (Swift 6, SwiftUI, iOS 18+ 
 
 ## Working rules (from the owner)
 
+- `AGENTS.md` in the repo root is a symlink to this file, so Codex and other agents read the same rules. Edit only this file.
 - **Talk to the owner in Russian, simply.** They are new to git and PRs: say what changed for them in the app, not in git terms, and give exact steps when they have to do something.
 - **Nothing goes to `main` without the owner.** Work on your own branch, open a PR, let the owner merge it.
 - **Commits and PRs carry no AI attribution** (the repo is public). Commit as the owner:
@@ -36,13 +37,13 @@ Config/                  Signing.xcconfig, iCloud entitlements (used only when s
 Packages/LumenKit/       one local SwiftPM package, all app code lives here
   Sources/LumenCore/     models and pure logic, no dependencies
   Sources/LumenStorage/  SQLite via GRDB 7: AppDatabase, migrations, repositories, queries, FTS5 search, backup, sync log
-  Sources/LumenThemes/   Theme tokens and the six color schemes of «Кабинет» (`Theme.schemes`; `Theme.study` = «Изумруд» is the default), `DaylightSchedule` (opt-in scheme by time of day), LayeredWallpaper (page backgrounds), glass components (`ThemedBackground` with the blurred bookcase wall, `lumenCard`, `lumenGlass(shape)`)
+  Sources/LumenThemes/   Theme tokens and the five glass color schemes of «Кабинет» (`Theme.schemes`; `Theme.study` = «Изумрудное стекло» is the default; «Орех» was dropped, `Theme.walnut` is an alias of `study`), `DaylightSchedule` (opt-in scheme by time of day), LayeredWallpaper (page backgrounds), glass components (`ThemedBackground` with the blurred bookcase wall, `lumenCard`, `lumenGlass(shape)`)
   Sources/LumenReader/   format converters to HTML, WebReader (WKWebView + ReaderScript JS), PDFReader (PDFKit), PDF text mode (PDFTextConverter, PDFTextLayout), QuickLook
   Sources/LumenSync/     FolderSyncController (sync through a user-picked iCloud Drive folder), CloudSync over CKSyncEngine (Swift 5 language mode; CloudKit off by default)
   Sources/LumenUI/       all SwiftUI screens and their @Observable models
   Tests/                 LumenCoreTests, LumenStorageTests, LumenReaderTests, LumenUITests (model-level, not XCUITest)
 UITests/                 XCUITest on macOS (typing, keyboard, block drag, navigation, opening files)
-docs/                    ROADMAP.md, design/ (app icon SVGs, reference images)
+docs/                    ROADMAP.md, PRODUCT_SCOPE.md (what is done, future directions: AI, dataset export, Notion parity), design/ (app icon SVGs, reference images)
 ```
 
 Dependencies only go downward: `LumenUI` → `LumenReader`, `LumenSync`, `LumenStorage`, `LumenThemes` → `LumenCore`. New modules become new targets in `Packages/LumenKit/Package.swift`.
@@ -80,5 +81,5 @@ Dependencies only go downward: `LumenUI` → `LumenReader`, `LumenSync`, `LumenS
 - PDF margins and columns (Original view): `PDFLayoutAnalyzer` renders every page small in the background once (cached in Caches/LumenReader/pdf-layout) to find the content box and a column gap; `PDFLayoutPlan` turns that into crop boxes of one common width, or two pieces per two-column page. `PDFReaderController` then shows pieces, not file pages (the second column comes from a second `PDFDocument` of the same file), and maps everything back: locators, highlights, events and `pageCount` are always in file pages. With pieces it computes its own fit-width scale instead of PDFKit's `autoScales`.
 - Tests: use `AppDatabase.inMemory()`. Wait for the editor to save with `model.flush()`, not sleeps. Keep heavy PDF / Core Image rendering out of main-actor tests, it slows the timing-sensitive ones on CI.
 - Animations: take curves from `LumenMotion` (`LumenThemes/Motion.swift`: `quick` for hover / press, `standard` for panels, tabs, lists, `gentle` for big objects, `screen` for changing the screen in a pane) instead of ad-hoc `.easeOut(...)` / `.snappy`. They are springs, so an interrupted animation continues smoothly, and they turn into a short fade with Reduce Motion. A pane fades between screens by `SidebarItem.screenKey` (`RootView.pane`); UI tests (`-uiTesting`) switch screens without it.
-- Colors: never hard-code colors or `.preferredColorScheme(.dark)` in screens; read `@Environment(\.lumenTheme)`. There are six schemes and one is light («Лён»), so check both. For thin highlights use `theme.contrast.opacity(...)` instead of `.white`; text on an accent fill is `theme.onAccent`.
+- Colors: never hard-code colors or `.preferredColorScheme(.dark)` in screens; read `@Environment(\.lumenTheme)`. There are five schemes and one is light («Молочный лёд», id `linen`), so check both. For thin highlights use `theme.contrast.opacity(...)` instead of `.white`; text on an accent fill is `theme.onAccent`.
 - `UserDefaults` keys in use include `workspace.v1`, `reader.*` (appearance, `reader.sidePage.<sourceId>`, `reader.layout` / `reader.layout.<sourceId>` (notes beside or under the book), `reader.pdfZoom.<sourceId>` (locked scale), `reader.pdfZoomFactor.<sourceId>` (free zoom relative to fit width), `reader.pdfMode.<sourceId>`, `reader.pdfCrop.<sourceId>`, `reader.pdfColumns.<sourceId>`) `drawing.recentColors`, `shelf.sort`, `appearance.scheme`, `appearance.daylight` (+ `.day` / `.evening` / `.night`), `sounds.enabled`, `library.snapToGrid`, `screen.*` (`ScreenOptions`), `sync.folderBookmark`, `sync.setupCardHidden` (the Home sync card was dismissed) and `sync.deviceId` (this install's folder name in `Lumen Sync/devices`).

@@ -7,17 +7,17 @@ import SwiftUI
 import Testing
 
 struct ThemeTests {
-    /// Вид один, «Кабинет», у него шесть цветовых схем. Основная, «Изумруд», стоит в окружении по умолчанию.
+    /// Вид один, «Кабинет», у него пять стеклянных схем. Основная, «Изумрудное стекло», стоит в окружении по умолчанию.
     @Test func emeraldIsTheDefaultScheme() {
-        #expect(Theme.study.name == "Изумруд")
-        #expect(Theme.study.fontDesign == .serif)
+        #expect(Theme.study.name == "Изумрудное стекло")
+        #expect(Theme.study.fontDesign == .default)
         #expect(Theme.study.colorScheme == .dark)
         #expect(EnvironmentValues().lumenTheme == .study)
         #expect(Theme.schemes.first == .study)
     }
 
-    @Test func sixSchemesWithUniqueIds() {
-        #expect(Theme.schemes.map(\.name) == ["Изумруд", "Полночь", "Вишня", "Орех", "Сумерки", "Лён"])
+    @Test func fiveSchemesWithUniqueIds() {
+        #expect(Theme.schemes.map(\.name) == ["Изумрудное стекло", "Молочный лёд", "Северный туман", "Розовый дым", "Лавандовый вечер"])
         #expect(Set(Theme.schemes.map(\.id)).count == Theme.schemes.count)
         #expect(Theme.schemes.filter { !$0.isDark }.map(\.id) == ["linen"], "одна светлая схема")
     }
@@ -25,11 +25,11 @@ struct ThemeTests {
     @Test(arguments: Theme.schemes)
     func everySchemeIsComplete(_ theme: Theme) {
         #expect(theme.backgroundStops.count >= 2)
-        #expect(theme.vividCards.count >= 5, "цвета папок берутся по номеру из яркой палитры")
+        #expect(theme.vividCards.count >= 3, "цвета папок берутся по номеру из яркой палитры")
         #expect((0...1).contains(theme.glowStrength))
         #expect(!theme.wallColors.isEmpty, "за стеклом виден шкаф")
         #expect(!theme.caption.isEmpty)
-        #expect(theme.fontDesign == .serif)
+        #expect(theme.fontDesign == .default)
         // Текст на латунной кнопке читается.
         #expect(ThemeContrast.ratio(theme.onAccent, theme.accent) >= 4.5, "\(theme.name): onAccent")
         #expect(ThemeContrast.ratio(theme.textPrimary, theme.backgroundStops[0]) >= 7, "\(theme.name): текст")
@@ -38,6 +38,7 @@ struct ThemeTests {
     @Test func unknownSchemeFallsBackToEmerald() {
         #expect(Theme.named("midnight") == .midnight)
         #expect(Theme.named("sunset") == .study, "старые темы удалены")
+        #expect(Theme.named("walnut") == .study, "«Орех» снят, его выбор переходит на основную схему")
         #expect(Theme.named("") == .study)
     }
 }

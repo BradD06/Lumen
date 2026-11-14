@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="320" viewBox="0 0 960 320" fill="none">
+  <title>Lumen — логотип «Кабинет»</title>
+  <desc>Арочный книжный шкаф с открытой книгой и латунным лучом света, рядом надпись Lumen.</desc>
+  <defs>
+    <linearGradient id="brass" x1="72" y1="48" x2="224" y2="256" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F2DDA4"/>
+      <stop offset="1" stop-color="#B08A42"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(36 24)">
+    <path d="M40 240V112C40 54.562 86.562 8 144 8C201.438 8 248 54.562 248 112V240" stroke="#D9B66E" stroke-width="9" stroke-linecap="round"/>
+    <path d="M64 224V116C64 71.817 99.817 36 144 36C188.183 36 224 71.817 224 116V224" stroke="#24453A" stroke-width="5"/>
+    <path d="M66 146H222M66 192H222" stroke="#D9B66E" stroke-opacity=".68" stroke-width="5" stroke-linecap="round"/>
+    <path d="M82 104V139M98 89V139M115 81V139M174 82V139M191 91V139M207 105V139" stroke="#D9B66E" stroke-opacity=".72" stroke-width="7" stroke-linecap="round"/>
+    <path d="M80 154V185M99 154V185M118 154V185M170 154V185M190 154V185M208 154V185" stroke="#D9B66E" stroke-opacity=".72" stroke-width="7" stroke-linecap="round"/>
+    <path d="M72 229C96 215 119 216 144 232C169 216 192 215 216 229V257C192 243 169 244 144 260C119 244 96 243 72 257V229Z" fill="#0C1A15" stroke="url(#brass)" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M144 232V258" stroke="#D9B66E" stroke-width="4" stroke-linecap="round"/>
+    <path d="M144 214V197" stroke="#F2DDA4" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="144" cy="187" r="5" fill="#F2DDA4"/>
+  </g>
+  <text x="340" y="184" fill="#F2DDA4" font-family="Georgia, 'Times New Roman', serif" font-size="94" letter-spacing="2">Lumen</text>
+  <path d="M346 210H779" stroke="#D9B66E" stroke-opacity=".56" stroke-width="2"/>
+  <text x="348" y="248" fill="#B9C8BD" font-family="Arial, sans-serif" font-size="19" letter-spacing="5">ЛИЧНАЯ БИБЛИОТЕКА</text>
+</svg>
