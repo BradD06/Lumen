@@ -11,6 +11,8 @@ struct SourceDashboardView: View {
     let sourceId: UUID
     var onRead: (UUID?) -> Void
     var onOpenPage: (UUID) -> Void
+    /// Вернуться туда, откуда пришли. `nil` на iPhone: там стрелка в панели навигации.
+    var onBack: (() -> Void)?
 
     @State private var snapshot = SourceDashboardSnapshot.empty
     @State private var hasLoaded = false
@@ -27,6 +29,9 @@ struct SourceDashboardView: View {
         ScrollView {
             if let source = snapshot.source, !source.isTrashed {
                 VStack(alignment: .leading, spacing: 18) {
+                    if let onBack {
+                        ScreenBackButton(action: onBack)
+                    }
                     header(source)
                     statCards(source)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 14, alignment: .top)], spacing: 14) {

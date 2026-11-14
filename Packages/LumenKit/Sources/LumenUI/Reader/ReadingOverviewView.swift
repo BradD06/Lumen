@@ -10,6 +10,8 @@ struct ReadingOverviewView: View {
     let database: AppDatabase
     /// Открыть панель книги.
     var onOpenSource: (UUID) -> Void
+    /// Вернуться туда, откуда пришли. `nil` на iPhone: там стрелка в панели навигации.
+    var onBack: (() -> Void)?
 
     @State private var snapshot = ReadingOverviewSnapshot.empty
     @State private var period: ReadingOverview.Period = .week
@@ -29,6 +31,9 @@ struct ReadingOverviewView: View {
         let colors = bookColors(overview)
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                if let onBack {
+                    ScreenBackButton(action: onBack)
+                }
                 header
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 14, alignment: .top)], spacing: 14) {
                     todayCard(stats)

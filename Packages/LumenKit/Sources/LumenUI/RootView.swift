@@ -285,7 +285,11 @@ public struct RootView: View {
         case .board:
             LinkBoardView(database: database)
         case .reading:
-            ReadingOverviewView(database: database, onOpenSource: { open(.sourceInfo($0)) })
+            ReadingOverviewView(
+                database: database,
+                onOpenSource: { open(.sourceInfo($0)) },
+                onBack: { closeScreen(pane: pane, fallback: .library(nil)) }
+            )
         case .page(let id):
             PageScreen(
                 database: database,
@@ -311,7 +315,8 @@ public struct RootView: View {
                 database: database,
                 sourceId: id,
                 onRead: { open(.source(id, highlight: $0)) },
-                onOpenPage: { open(.page($0)) }
+                onOpenPage: { open(.page($0)) },
+                onBack: { closeScreen(pane: pane, fallback: .library(nil)) }
             )
             .id(id)
         }

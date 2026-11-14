@@ -312,3 +312,27 @@ struct ReadingHeatmap: View {
         }
     }
 }
+
+/// Кнопка «Назад» в шапке экрана, как у папок в библиотеке. На iPhone её нет: там своя стрелка в панели.
+struct ScreenBackButton: View {
+    var title = "Назад"
+    var action: () -> Void
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: "chevron.left")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.textPrimary)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 32)
+                .background(Capsule().fill(theme.cardFill))
+                .overlay(Capsule().strokeBorder(theme.cardStroke, lineWidth: 1))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .keyHint(title, perform: action)
+        .help("\(title) (⌘[)")
+        .accessibilityIdentifier("screen-back")
+    }
+}
