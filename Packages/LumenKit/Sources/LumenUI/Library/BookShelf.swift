@@ -147,11 +147,12 @@ struct BookShelf: View {
     /// Полка «Стола»: порядок задаёт время чтения, поэтому книги здесь не перетаскивают.
     private var recentRow: some View {
         let books = Self.recentlyRead(snapshot.books)
+        let angles = leanAngles(books)
         return VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .bottom, spacing: ShelfLayout.spacing) {
                     ForEach(books) { book in
-                        recentBook(book)
+                        recentBook(book, angle: angles[book.id] ?? 0)
                     }
                     HStack(alignment: .bottom, spacing: 0) {
                         if !books.isEmpty {
@@ -186,11 +187,11 @@ struct BookShelf: View {
         }
     }
 
-    private func recentBook(_ book: Source) -> some View {
+    private func recentBook(_ book: Source, angle: Double) -> some View {
         Button {
             show(book)
         } label: {
-            bookLabel(book)
+            bookLabel(book, angle: angle)
         }
         .buttonStyle(SpineButtonStyle())
         .keyHint(book.displayTitle) { show(book) }
@@ -207,8 +208,9 @@ struct BookShelf: View {
     }
 
     /// Книга на полке: корешок, выдвинутая обложка или пустое место, пока книга в центре окна.
+    /// `angle`: наклон книги среди соседок (`leanAngles`).
     @ViewBuilder
-    private func bookLabel(_ book: Source) -> some View {
+    private func bookLabel(_ book: Source, angle: Double) -> some View {
         let isShown = showcase?.selectedId == book.id
         let isPulled = hoveredId == book.id && !isDragging
         if isShown, showcase != nil {
@@ -216,11 +218,21 @@ struct BookShelf: View {
             let style = BookSpineStyle(source: book)
             Color.clear.frame(width: style.slotWidth, height: style.slotHeight)
         } else if let showcase {
-            ShelfBook(source: book, attachments: database.attachments, isPulled: isPulled)
+            ShelfBook(source: book, attachments: database.attachments, isPulled: isPulled, angle: angle)
                 .matchedGeometryEffect(id: book.id, in: showcase.namespace)
         } else {
-            ShelfBook(source: book, attachments: database.attachments, isPulled: isPulled)
+            ShelfBook(source: book, attachments: database.attachments, isPulled: isPulled, angle: angle)
         }
+    }
+
+    /// Наклоны книг ряда (`BookSpineStyle.leanAngles`). Книга, которую вынули или унесли в витрину,
+    /// больше не опора: соседка, что на неё опиралась, выпрямляется, а не висит в воздухе.
+    private func leanAngles(_ books: [Source]) -> [UUID: Double] {
+        let standing = books.map { book in
+            !(hoveredId == book.id && !isDragging) && showcase?.selectedId != book.id
+        }
+        let angles = BookSpineStyle.leanAngles(books.map { BookSpineStyle(source: $0) }, standing: standing)
+        return Dictionary(zip(books.map(\.id), angles), uniquingKeysWith: { first, _ in first })
     }
 
     private func hover(_ book: Source, _ hovering: Bool) {
@@ -243,6 +255,7 @@ struct BookShelf: View {
     /// Одна полка: табличка с названием, корешки и доска.
     private func shelfRow(_ group: ShelfGroup, titled: Bool) -> some View {
         let shown = shownBooks(group)
+        let angles = leanAngles(shown)
         return VStack(alignment: .leading, spacing: 4) {
             if titled {
                 shelfTitle(group)
@@ -251,7 +264,7 @@ struct BookShelf: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .bottom, spacing: ShelfLayout.spacing) {
                         ForEach(Array(shown.enumerated()), id: \.element.id) { index, book in
-                            shelfBook(book, index: index, count: shown.count, group: group)
+                            shelfBook(book, index: index, count: shown.count, group: group, angle: angles[book.id] ?? 0)
                         }
                         // Заметки из нескольких листов стоят папками после книг.
                         ForEach(group.folders) { note in
@@ -403,12 +416,12 @@ struct BookShelf: View {
     /// Нажатие выносит её крупно в центр окна, справа окно со статистикой (`BookShowcase`).
     /// Где витрины нет, нажатие сразу открывает книгу.
     @ViewBuilder
-    private func shelfBook(_ book: Source, index: Int, count: Int, group: ShelfGroup) -> some View {
+    private func shelfBook(_ book: Source, index: Int, count: Int, group: ShelfGroup, angle: Double) -> some View {
         let isDragged = draggingId == book.id && dragOrders[group.id] != nil
         Button {
             show(book)
         } label: {
-            bookLabel(book)
+            bookLabel(book, angle: angle)
         }
         .buttonStyle(SpineButtonStyle())
         .keyHint(book.displayTitle) { show(book) }
@@ -680,6 +693,8 @@ struct ShelfBook: View {
     let source: Source
     let attachments: AttachmentStore
     var isPulled: Bool
+    /// Наклон среди соседок (`BookSpineStyle.leanAngles`): 0, если опереться не на что.
+    var angle: Double
 
     var body: some View {
         let style = BookSpineStyle(source: source)
@@ -695,7 +710,7 @@ struct ShelfBook: View {
                 .shadow(color: .black.opacity(isPulled ? 0.45 : 0), radius: 10, y: 8)
         }
         .frame(width: isPulled ? coverWidth : style.width, height: style.height)
-        .rotationEffect(.degrees(pose.angle), anchor: pose.anchor)
+        .rotationEffect(.degrees(isPulled ? 0 : angle), anchor: pose.anchor)
         .frame(
             width: isPulled ? coverWidth : style.slotWidth,
             height: isPulled ? style.height : style.slotHeight,
@@ -986,8 +1001,10 @@ struct BookSpineStyle: Equatable {
         }
     }
 
-    /// Наклон книги, которая прислонилась к соседке.
+    /// Наклон книги, которая прислонилась к соседке. От него зависит место под наклон (`slotWidth`).
     static let leanAngle = 8.0
+    /// Круче книга не наклоняется: на такую низкую соседку она не опирается, а стоит ровно.
+    static let maxLeanAngle = 15.0
 
     var width: CGFloat
     var height: CGFloat
@@ -1034,6 +1051,41 @@ struct BookSpineStyle: Equatable {
         case .upright: width
         case .leanRight, .leanLeft: width + (height * CGFloat(sin(Self.leanAngle * .pi / 180))).rounded(.up)
         case .lying: height
+        }
+    }
+
+    /// Наклон, при котором книга касается ровно стоящей соседки высотой `neighbor` за местом под наклон
+    /// (и промежутком между книгами): верхним углом о её бок, а если соседка ниже, боком о её верхний угол.
+    /// `nil`: опереться не на что или пришлось бы наклониться круче `maxLeanAngle`.
+    func leanAngle(onto neighbor: CGFloat?) -> Double? {
+        guard let neighbor, neighbor > 0 else { return nil }
+        let gap = Double(slotWidth - width + ShelfLayout.spacing)
+        let length = Double(height)
+        let support = Double(neighbor)
+        let radians = support * support + gap * gap >= length * length
+            ? asin(min(gap / length, 1))
+            : atan(gap / support)
+        let degrees = radians * 180 / .pi
+        return degrees <= Self.maxLeanAngle ? degrees : nil
+    }
+
+    /// Наклоны книг, стоящих рядом в этом порядке (градусы для `rotationEffect`). Книга наклоняется,
+    /// только если в ту сторону стоит ровная книга, которая сейчас на месте (`standing`): лежащая,
+    /// наклонённая, вынутая книга или пустое место не опора, и тогда книга стоит ровно.
+    static func leanAngles(_ styles: [BookSpineStyle], standing: [Bool]) -> [Double] {
+        styles.indices.map { index -> Double in
+            let style = styles[index]
+            let neighbor: Int
+            switch style.pose {
+            case .upright, .lying: return style.pose.angle
+            case .leanRight: neighbor = index + 1
+            case .leanLeft: neighbor = index - 1
+            }
+            guard styles.indices.contains(neighbor), standing.indices.contains(neighbor), standing[neighbor],
+                  styles[neighbor].pose == .upright,
+                  let angle = style.leanAngle(onto: styles[neighbor].height)
+            else { return 0 }
+            return style.pose == .leanLeft ? -angle : angle
         }
     }
 
