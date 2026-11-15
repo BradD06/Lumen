@@ -241,6 +241,11 @@ final class PageEditorModel {
         scheduleSave()
     }
 
+    /// Блоки вернулись (вырезанный синхронный блок вставили): их удаление ещё не записано и уже не нужно.
+    func cancelDeletes(_ ids: Set<UUID>) {
+        pendingDeletes.subtract(ids)
+    }
+
     // MARK: Отмена и повтор
 
     /// Запоминает состояние перед правкой. `typing` объединяет набор текста подряд в один шаг.

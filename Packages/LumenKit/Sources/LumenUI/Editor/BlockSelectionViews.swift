@@ -27,6 +27,11 @@ struct BlockSelectionMenuItems: View {
         } label: {
             Label("Дублировать", systemImage: "plus.square.on.square")
         }
+        Button {
+            model.wrapSelectionInSynced()
+        } label: {
+            Label("Сделать синхронным", systemImage: "arrow.triangle.2.circlepath")
+        }
         Menu {
             ForEach(Self.types) { type in
                 Button {

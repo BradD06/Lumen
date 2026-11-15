@@ -172,6 +172,11 @@ enum PagePDFRenderer {
                     }
                     text.append(newline(style))
                 }
+            case .synced:
+                // Дети оригинала печатаются как обычные блоки, содержимое копии на другой странице.
+                guard block.isSyncedCopy else { continue }
+                text.append(NSAttributedString(string: "🔁 Синхронный блок", attributes: [.font: font(size: bodySize), .foregroundColor: accent]))
+                text.append(newline(paragraph(indent: indent)))
             case .columnList, .column:
                 continue
             }

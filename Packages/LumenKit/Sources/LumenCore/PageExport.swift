@@ -176,6 +176,10 @@ extension PageExport {
             case .file, .pdf, .video, .audio:
                 guard let file = block.content.file else { continue }
                 line = "📎 \(Self.escape(file.name))"
+            case .synced:
+                // Содержимое оригинала идёт следом его детьми; у копии оно на другой странице.
+                guard block.isSyncedCopy else { continue }
+                line = "_🔁 Синхронный блок_"
             case .bookmark:
                 guard let bookmark = block.content.bookmark else { continue }
                 let title = bookmark.title ?? bookmark.host

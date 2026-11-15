@@ -164,6 +164,7 @@ extension PageEditorModel {
 
     func cutSelection() {
         copySelection()
+        BlockPasteboard.cutSyncedIds = Set(selectionClipboard.blocks.filter(\.isSyncedOriginal).map(\.id))
         deleteSelection()
     }
 
@@ -189,7 +190,9 @@ extension PageEditorModel {
             anchor = insertBlock(in: nil, after: children(of: nil).last?.id, type: .paragraph)
         }
         guard let anchor else { return false }
-        let pasted = insertClipboard(clipboard, after: anchor.id)
+        // Скопированный синхронный блок вставляется его копией; вырезанный переезжает целиком.
+        let moving = movingSyncedIds(in: clipboard)
+        let pasted = insertClipboard(clipboard.referencingSynced(except: moving), after: anchor.id, keepingIds: moving)
         if anchor.type == .paragraph, anchor.text.isEmpty, children(of: anchor.id).isEmpty {
             removeBlocks([anchor.id])
         }
@@ -202,13 +205,13 @@ extension PageEditorModel {
 
     /// Вставляет копии блоков сразу после `anchorId` на его уровне. Возвращает id новых корней.
     @discardableResult
-    func insertClipboard(_ clipboard: BlockClipboard, after anchorId: UUID) -> [UUID] {
+    func insertClipboard(_ clipboard: BlockClipboard, after anchorId: UUID, keepingIds: Set<UUID> = []) -> [UUID] {
         guard let anchor = findBlock(anchorId) else { return [] }
         let siblings = children(of: anchor.parentBlockId)
         let index = siblings.firstIndex { $0.id == anchorId }
         let upper = index.flatMap { $0 + 1 < siblings.count ? siblings[$0 + 1].sortKey : nil }
         let keys = SortKey.sequence(count: clipboard.rootIds.count, after: anchor.sortKey, before: upper)
-        let copies = clipboard.copies(pageId: pageId, parentId: anchor.parentBlockId, rootKeys: keys)
+        let copies = clipboard.copies(pageId: pageId, parentId: anchor.parentBlockId, rootKeys: keys, keepingIds: keepingIds)
         appendBlocks(copies.blocks)
         reorder()
         scheduleSave()

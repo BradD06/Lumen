@@ -86,6 +86,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
     public var bookmark: WebBookmark?
     /// Комментарии к блоку по порядку. `nil` у блока без комментариев.
     public var comments: [BlockComment]?
+    /// Копия синхронного блока: чей оригинал она показывает.
+    public var syncedFrom: SyncedReference?
 
     public init(
         runs: [TextRun] = [],
@@ -109,7 +111,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
         table: TableData? = nil,
         file: FileAttachment? = nil,
         bookmark: WebBookmark? = nil,
-        comments: [BlockComment]? = nil
+        comments: [BlockComment]? = nil,
+        syncedFrom: SyncedReference? = nil
     ) {
         self.runs = runs
         self.isChecked = isChecked
@@ -133,6 +136,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         self.file = file
         self.bookmark = bookmark
         self.comments = comments
+        self.syncedFrom = syncedFrom
     }
 
     public init(text: String, isChecked: Bool = false) {
@@ -160,7 +164,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case runs, isChecked, pageId, attachment, imageWidth, imageAspect, isCollapsed, textColor, backgroundColor, columnWidth, excerpt
-        case drawingHeight, drawingWidth, sheetCount, paper, paperTone, items, sheetBackgrounds, table, file, bookmark, comments
+        case drawingHeight, drawingWidth, sheetCount, paper, paperTone, items, sheetBackgrounds, table, file, bookmark, comments, syncedFrom
     }
 
     public init(from decoder: any Decoder) throws {
@@ -191,6 +195,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         file = try? container.decodeIfPresent(FileAttachment.self, forKey: .file)
         bookmark = try? container.decodeIfPresent(WebBookmark.self, forKey: .bookmark)
         comments = try? container.decodeIfPresent([BlockComment].self, forKey: .comments)
+        syncedFrom = try? container.decodeIfPresent(SyncedReference.self, forKey: .syncedFrom)
     }
 
     /// Элемент тетради, который не ломает чтение остальных, если сам не читается.

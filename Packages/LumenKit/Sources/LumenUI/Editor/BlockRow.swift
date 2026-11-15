@@ -312,6 +312,37 @@ struct BlockRow: View {
                 Label("Выбрать другой файл", systemImage: "arrow.triangle.2.circlepath")
             }
         }
+        if block.type == .synced {
+            Button {
+                model.copySyncedBlock(block.id)
+            } label: {
+                Label("Скопировать синхронный блок", systemImage: "doc.on.doc")
+            }
+            if let reference = block.content.syncedFrom {
+                Button {
+                    model.open(reference.pageId)
+                } label: {
+                    Label("Открыть оригинал", systemImage: "arrow.up.right.square")
+                }
+                Button {
+                    Task { await model.unsyncCopy(block.id) }
+                } label: {
+                    Label("Отвязать копию", systemImage: "link.badge.plus")
+                }
+            } else {
+                Button {
+                    model.dissolveSynced(block.id)
+                } label: {
+                    Label("Убрать синхронизацию", systemImage: "rectangle.dashed")
+                }
+            }
+        } else if !block.type.isLayout, block.type != .sheetBreak {
+            Button {
+                model.wrapInSynced([block.id])
+            } label: {
+                Label("Сделать синхронным", systemImage: "arrow.triangle.2.circlepath")
+            }
+        }
         if block.type == .bookmark, let bookmark = block.content.bookmark {
             Button {
                 copyText(bookmark.url)
@@ -613,6 +644,13 @@ struct BlockRow: View {
         case .bookmark:
             BookmarkBlock(block: block, model: model)
 
+        case .synced:
+            if block.content.syncedFrom != nil {
+                SyncedCopyView(block: block, model: model)
+            } else {
+                SyncedOriginalHeader(block: block, model: model)
+            }
+
         case .columnList, .column, .sheetBreak:
             EmptyView()
 
@@ -819,7 +857,7 @@ struct BlockRow: View {
         case .code: "Код"
         case .toggle: "Сворачиваемый блок"
         case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak, .table, .database,
-             .file, .pdf, .video, .audio, .bookmark: ""
+             .file, .pdf, .video, .audio, .bookmark, .synced: ""
         }
     }
 
