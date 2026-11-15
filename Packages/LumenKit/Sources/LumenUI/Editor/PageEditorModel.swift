@@ -91,6 +91,9 @@ final class PageEditorModel {
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var lastWrite: Task<Void, Never>?
 
+    /// Когда в последний раз пробовали запомнить версию страницы (история версий).
+    @ObservationIgnored private var lastVersionAttempt: Date?
+
     @ObservationIgnored private var undoStack: [Snapshot] = []
     @ObservationIgnored private var redoStack: [Snapshot] = []
     /// Набор текста подряд в одном поле отменяется одним шагом, а не по букве.
@@ -137,6 +140,8 @@ final class PageEditorModel {
             blocks = loaded
             reorder()
             isLoaded = true
+            // Страница какой была до этой правки: к ней можно будет вернуться из истории.
+            await snapshotVersion()
         } catch {
             NoticeCenter.shared.report("Не удалось открыть страницу", error)
         }
@@ -222,6 +227,7 @@ final class PageEditorModel {
         }
         lastWrite = write
         await write.value
+        await snapshotVersion()
         if saveTask == nil, dirtyBlocks.isEmpty, pendingDeletes.isEmpty, !isTitleDirty, hasUnsavedChanges {
             hasUnsavedChanges = false
         }
@@ -292,6 +298,38 @@ final class PageEditorModel {
         if let first = changed.first ?? blocks.first?.id {
             focusRequest = first
         }
+    }
+
+    // MARK: История версий
+
+    /// Запоминает страницу в историю версий. Без `force` не чаще раза в минуту пробует,
+    /// а сама история берёт версию раз в десять минут правки (`PageVersionPolicy`).
+    /// Тетради от руки в историю не идут: их листы тяжёлые.
+    func snapshotVersion(force: Bool = false, now: Date = Date()) async {
+        guard isLoaded, page?.isNotebook != true else { return }
+        // Пустую страницу запоминать незачем.
+        guard blocks.contains(where: { $0.type != .paragraph || !$0.text.isEmpty }) || !title.isEmpty else { return }
+        if !force, let last = lastVersionAttempt, now.timeIntervalSince(last) < 60 { return }
+        lastVersionAttempt = now
+        do {
+            try await database.savePageVersion(pageId: pageId, title: title, blocks: blocks, force: force, now: now)
+        } catch {
+            lumenLog.error("Page version failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// Откат к версии из истории одним шагом, который можно отменить.
+    /// Текущая страница сначала сама уходит в историю.
+    func restoreVersion(title: String, blocks restored: [Block]) async {
+        await snapshotVersion(force: true)
+        recordUndo()
+        let blocks = restored.map { block -> Block in
+            var block = block
+            block.pageId = pageId
+            return block
+        }
+        restore(Snapshot(title: title, blocks: blocks))
+        reorder()
     }
 
     // MARK: Страница
