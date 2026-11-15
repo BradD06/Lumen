@@ -285,19 +285,25 @@ extension PageEditorModel {
     }
 
     /// ⇧Tab: вложенные выделенные блоки выходят на уровень выше, сразу за бывшим родителем.
+    /// Блоки из колонки встают под рядом колонок на всю ширину листа.
     func outdentSelection() {
-        let roots = selectionRoots.filter { id in findBlock(id).map { isNested($0) } ?? false }
+        let roots = selectionRoots.filter { outdentAnchor(of: $0) != nil }
         guard !roots.isEmpty else { return }
         recordUndo()
+        var leftColumns = false
         // С конца: каждый следующий встаёт сразу за родителем, перед уже вынесенными.
         for id in roots.reversed() {
-            guard let block = findBlock(id), let parent = findBlock(block.parentBlockId) else { continue }
-            let key = sortKey(in: parent.parentBlockId, after: parent.id)
+            guard let anchor = outdentAnchor(of: id) else { continue }
+            let key = sortKey(in: anchor.parentBlockId, after: anchor.id, excluding: id)
             update(id) {
-                $0.parentBlockId = parent.parentBlockId
+                $0.parentBlockId = anchor.parentBlockId
                 $0.sortKey = key
             }
             reorder()
+            leftColumns = leftColumns || anchor.type == .columnList
+        }
+        if leftColumns {
+            normalizeColumns()
         }
     }
 

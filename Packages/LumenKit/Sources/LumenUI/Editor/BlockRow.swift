@@ -258,7 +258,13 @@ struct BlockRow: View {
                     Label("Вложить в блок выше", systemImage: "increase.indent")
                 }
             }
-            if model.canOutdent(block.id) {
+            if model.columnRow(of: block.id) != nil {
+                Button {
+                    model.moveOutOfColumn(block.id)
+                } label: {
+                    Label("Вынести из колонки на всю ширину", systemImage: "rectangle")
+                }
+            } else if model.canOutdent(block.id) {
                 Button {
                     model.outdent(block.id)
                 } label: {

@@ -183,6 +183,60 @@ struct BlockTreeTests {
         #expect(model.children(of: row.id).map { texts(model, in: $0.id) } == [["а"], ["б"]])
     }
 
+    @Test func shiftTabMovesBlockOutOfColumn() async throws {
+        let (model, pageId, ids) = try await open("а\nб\nв\nг")
+        model.placeBeside(ids[1], ids[0])
+        model.placeBeside(ids[2], ids[1])
+        let row = try #require(model.children(of: nil).first)
+        #expect(model.columnRow(of: ids[1])?.id == row.id)
+        #expect(model.canOutdent(ids[1]), "Из колонки блок выносится, хотя он и не вложен")
+
+        // ⇧Tab: «б» встаёт под рядом колонок на всю ширину, а его пустая колонка исчезает.
+        model.outdent(ids[1])
+        #expect(model.columnRow(of: ids[1]) == nil)
+        #expect(model.children(of: nil).map(\.id) == [row.id, ids[1], ids[3]])
+        #expect(model.children(of: row.id).map { texts(model, in: $0.id) } == [["а"], ["в"]])
+
+        // Из меню: в ряду остаётся одна колонка, и ряд снова становится обычными блоками.
+        model.moveOutOfColumn(ids[2])
+        #expect(!model.blocks.contains { $0.type.isLayout })
+        #expect(texts(model, in: nil) == ["а", "в", "б", "г"])
+
+        model.undo()
+        #expect(model.columnRow(of: ids[2])?.id == row.id, "⌘Z возвращает блок в колонку")
+
+        model.redo()
+        await model.flush()
+        let saved = try await db.blocks(of: pageId)
+        #expect(!saved.contains { $0.type.isLayout })
+        #expect(saved.count == 4)
+    }
+
+    @Test func droppingNextToColumnRowLeavesColumns() async throws {
+        let (model, _, ids) = try await open("а\nб")
+        model.placeBeside(ids[1], ids[0])
+        let row = try #require(model.children(of: nil).first)
+        #expect(model.children(of: nil).count == 1, "На листе только ряд колонок")
+
+        // Бросили «а» на полосу под рядом: блок выходит на всю ширину, ряд разворачивается.
+        model.moveBlock(ids[0], nextTo: row.id, after: true)
+        #expect(texts(model, in: nil) == ["б", "а"])
+        #expect(!model.blocks.contains { $0.type.isLayout })
+    }
+
+    @Test func shiftTabOnSelectionLeavesColumn() async throws {
+        let (model, _, ids) = try await open("а\nб\nв")
+        model.placeBeside(ids[1], ids[0])
+        model.moveBlock(ids[2], nextTo: ids[1], after: true)
+        let row = try #require(model.children(of: nil).first)
+        #expect(model.children(of: row.id).map { texts(model, in: $0.id) } == [["а"], ["б", "в"]])
+
+        model.selectBlocks([ids[1], ids[2]])
+        model.outdentSelection()
+        #expect(texts(model, in: nil) == ["а", "б", "в"], "Порядок сохраняется, колонки уходят")
+        #expect(!model.blocks.contains { $0.type.isLayout })
+    }
+
     @Test func columnWidthsAreSaved() async throws {
         let (model, pageId, ids) = try await open("а\nб\nв")
         model.placeBeside(ids[1], ids[0])
