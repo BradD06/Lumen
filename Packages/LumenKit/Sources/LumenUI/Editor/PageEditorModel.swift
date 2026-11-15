@@ -60,6 +60,8 @@ final class PageEditorModel {
     var sheetScrollRequest: Int?
     /// Лист, который сейчас наверху экрана: его номер подсвечен в миниатюрах и в шапке панели у книги.
     var visibleSheet = 0
+    /// Ячейка таблицы, в которую перевести курсор. Вью сбрасывает её после применения.
+    var cellFocusRequest: TableCellFocus?
     /// Выделенные блоки (рамкой, ручкой, Esc). Пока они есть, курсора в тексте нет.
     var selectedBlockIds: Set<UUID> = []
     /// С какого блока начали выделять: от него Shift тянет диапазон.
@@ -108,6 +110,8 @@ final class PageEditorModel {
     enum TypingGroup: Equatable {
         case title
         case block(UUID)
+        /// Ячейка таблицы: блок, строка, столбец.
+        case cell(UUID, Int, Int)
     }
 
     init(database: AppDatabase, pageId: UUID) {

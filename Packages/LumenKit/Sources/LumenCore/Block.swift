@@ -78,6 +78,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
     public var items: [NotebookItem]?
     /// Страницы PDF под листами тетради, по номеру листа. `nil` у листа без PDF.
     public var sheetBackgrounds: [SheetBackground?]?
+    /// Ячейки блока «Таблица».
+    public var table: TableData?
 
     public init(
         runs: [TextRun] = [],
@@ -97,7 +99,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
         paper: PaperPattern? = nil,
         paperTone: PaperTone? = nil,
         items: [NotebookItem]? = nil,
-        sheetBackgrounds: [SheetBackground?]? = nil
+        sheetBackgrounds: [SheetBackground?]? = nil,
+        table: TableData? = nil
     ) {
         self.runs = runs
         self.isChecked = isChecked
@@ -117,6 +120,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         self.paperTone = paperTone
         self.items = items
         self.sheetBackgrounds = sheetBackgrounds
+        self.table = table
     }
 
     public init(text: String, isChecked: Bool = false) {
@@ -130,9 +134,16 @@ public struct BlockContent: Hashable, Codable, Sendable {
         set { runs = newValue.isEmpty ? [] : [TextRun(newValue)] }
     }
 
+    /// Текст для поиска: сам текст блока и ячейки таблицы.
+    public var searchText: String {
+        guard let table else { return text }
+        let cells = table.plainText
+        return text.isEmpty ? cells : text + "\n" + cells
+    }
+
     private enum CodingKeys: String, CodingKey {
         case runs, isChecked, pageId, attachment, imageWidth, imageAspect, isCollapsed, textColor, backgroundColor, columnWidth, excerpt
-        case drawingHeight, drawingWidth, sheetCount, paper, paperTone, items, sheetBackgrounds
+        case drawingHeight, drawingWidth, sheetCount, paper, paperTone, items, sheetBackgrounds, table
     }
 
     public init(from decoder: any Decoder) throws {
@@ -159,6 +170,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         // Элементы по одному: незнакомый вид из более новой версии пропускается, остальные читаются.
         items = (try? container.decodeIfPresent([LossyItem].self, forKey: .items))?.compactMap(\.item)
         sheetBackgrounds = try? container.decodeIfPresent([SheetBackground?].self, forKey: .sheetBackgrounds)
+        table = try? container.decodeIfPresent(TableData.self, forKey: .table)
     }
 
     /// Элемент тетради, который не ломает чтение остальных, если сам не читается.

@@ -531,6 +531,9 @@ struct BlockRow: View {
                 field
             }
 
+        case .table:
+            TableBlock(block: block, model: model, focus: focus)
+
         case .columnList, .column, .sheetBreak:
             EmptyView()
 
@@ -699,7 +702,7 @@ struct BlockRow: View {
         case .callout: "Выноска"
         case .code: "Код"
         case .toggle: "Сворачиваемый блок"
-        case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak: ""
+        case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak, .table: ""
         }
     }
 

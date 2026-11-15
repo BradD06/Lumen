@@ -16,6 +16,8 @@ private enum PhotoTarget {
 enum EditorFocus: Hashable {
     case title
     case block(UUID)
+    /// Ячейка таблицы: блок, строка, столбец.
+    case cell(UUID, Int, Int)
 }
 
 /// Редактор страницы. Первая простая версия по плану: каждый блок это отдельное текстовое поле
@@ -278,7 +280,12 @@ struct PageEditorView: View {
         .onChange(of: model.focusRequest) { _, request in
             guard let request else { return }
             model.focusRequest = nil
-            moveFocus(to: request)
+            moveFocus(to: .block(request))
+        }
+        .onChange(of: model.cellFocusRequest) { _, request in
+            guard let request else { return }
+            model.cellFocusRequest = nil
+            moveFocus(to: .cell(request.blockId, request.row, request.column))
         }
         .onChange(of: model.focusTitleRequest) { _, requested in
             guard requested else { return }
@@ -616,8 +623,7 @@ struct PageEditorView: View {
     /// Переводит курсор в блок. Новый блок после Return появляется в ленивом списке не сразу,
     /// а поле, в котором нажали Return, на macOS ещё успевает забрать фокус обратно.
     /// Поэтому фокус ставится сразу и повторяется в следующих кадрах, пока не закрепится.
-    private func moveFocus(to id: UUID) {
-        let target = EditorFocus.block(id)
+    private func moveFocus(to target: EditorFocus) {
         focus = target
         focusTask?.cancel()
         focusTask = Task { @MainActor in

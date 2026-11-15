@@ -346,7 +346,7 @@ extension AppDatabase {
         // Только содержимое блоков: штрихи рисунков для поиска не нужны, а весят много.
         let body = try Data
             .fetchAll(db, sql: "SELECT content FROM block WHERE pageId = ? ORDER BY sortKey", arguments: [pageId])
-            .compactMap { try? JSONDecoder().decode(BlockContent.self, from: $0).text }
+            .compactMap { try? JSONDecoder().decode(BlockContent.self, from: $0).searchText }
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
         try db.execute(

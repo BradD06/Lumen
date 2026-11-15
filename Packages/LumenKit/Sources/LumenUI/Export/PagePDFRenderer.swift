@@ -139,6 +139,25 @@ enum PagePDFRenderer {
                 // Новый лист заметки: линия, как разделитель.
                 text.append(NSAttributedString(attachment: lineAttachment()))
                 text.append(newline(paragraph(indent: indent, before: 10, after: 16)))
+            case .table:
+                guard let table = block.content.table else { continue }
+                // Строка таблицы это абзац, ячейки разведены табуляцией по равным столбцам.
+                let columnWidth = (contentSize.width - indent) / CGFloat(max(table.columnCount, 1))
+                for (rowIndex, row) in table.rows.enumerated() {
+                    for (columnIndex, cell) in row.enumerated() {
+                        if columnIndex > 0 {
+                            text.append(NSAttributedString(string: "\t", attributes: [.font: font(size: 10.5)]))
+                        }
+                        let bold = table.isHeader(row: rowIndex, column: columnIndex)
+                        let flat = cell.runs.map { TextRun($0.text.replacingOccurrences(of: "\n", with: " "), marks: $0.marks, link: $0.link) }
+                        text.append(runs(flat, size: 10.5, bold: bold))
+                    }
+                    let style = paragraph(indent: indent, after: rowIndex == table.rowCount - 1 ? 10 : 3)
+                    style.tabStops = (1..<max(table.columnCount, 1)).map {
+                        NSTextTab(textAlignment: .left, location: indent + columnWidth * CGFloat($0))
+                    }
+                    text.append(newline(style))
+                }
             case .columnList, .column:
                 continue
             }

@@ -168,6 +168,19 @@ extension PageEditorModel {
             createSubpage(from: id, title: "", open: true)
             return
         }
+        if type == .table {
+            recordUndo()
+            update(id) {
+                $0.type = .table
+                $0.text = ""
+                $0.content.table = .empty()
+            }
+            // Как в Notion: курсор сразу в первой ячейке, ниже абзац, чтобы писать дальше.
+            insertBlock(after: id, type: .paragraph)
+            focusRequest = nil
+            cellFocusRequest = TableCellFocus(blockId: id, row: 0, column: 0)
+            return
+        }
         if type == .drawing {
             recordUndo()
             update(id) {

@@ -108,6 +108,13 @@ public enum NoteSheets {
             return stackHeight(children(block.id), width: width, children: children)
         case .sheetBreak:
             return 0
+        case .table:
+            // Каждая строка таблицы не ниже одной строки текста, длинные ячейки переносятся.
+            let table = block.content.table ?? TableData.empty()
+            let columnWidth = width / Double(max(table.columnCount, 1)) - 16
+            own = table.rows.reduce(8) { total, row in
+                total + (row.map { textHeight($0.text, size: 15, width: columnWidth) }.max() ?? 20) + 16
+            }
         }
         if block.type == .toggle, block.content.isCollapsed { return own }
         let nested = children(block.id)
