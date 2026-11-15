@@ -23,6 +23,7 @@ struct BlockRow: View {
 
     @State private var isHovered = false
     @State private var size: CGSize = .zero
+    @State private var isCommentsShown = false
     @State private var isColorPickerShown = false
     /// Разметка, которую человек сейчас набирает. Держится, пока блок в фокусе, чтобы курсор
     /// не прыгал, если та же разметка собирается из фрагментов чуть иначе.
@@ -53,6 +54,15 @@ struct BlockRow: View {
                         onCreate: { model.createSubpage(from: block.id, title: $0, open: false) }
                     )
                 }
+            }
+            .popover(isPresented: $isCommentsShown, arrowEdge: .trailing) {
+                BlockCommentsPanel(blockId: block.id, model: model)
+                    .presentationCompactAdaptation(.popover)
+                    .keyHintHost()
+            }
+            if let count = commentCount {
+                BlockCommentBadge(count: count) { isCommentsShown = true }
+                    .padding(.top, 2)
             }
         }
         .padding(.vertical, verticalPadding)
@@ -169,6 +179,12 @@ struct BlockRow: View {
             } label: {
                 Label(model.textSelection?.blockId == block.id ? "Оформить выделенное" : "Оформить весь текст", systemImage: "textformat")
             }
+        }
+        Button {
+            // Комментарии открываются после того, как закроется контекстное меню.
+            DispatchQueue.main.async { isCommentsShown = true }
+        } label: {
+            Label(block.content.comments == nil ? "Комментарий…" : "Комментарии…", systemImage: "text.bubble")
         }
         if block.type.hasText {
             Button {
@@ -381,6 +397,12 @@ struct BlockRow: View {
         case nil:
             EmptyView()
         }
+    }
+
+    /// Нерешённые комментарии. `nil`: значка нет (комментариев нет или все решены, тогда они в меню).
+    private var commentCount: Int? {
+        let count = block.content.openComments.count
+        return count > 0 ? count : nil
     }
 
     private var isFocused: Bool {
@@ -633,6 +655,12 @@ struct BlockRow: View {
             return .handled
         }
         #endif
+        // ⇧⌘M: комментарий к блоку, как в Notion.
+        .onKeyPress(keys: ["m", "M"]) { press in
+            guard press.modifiers.contains(.command), press.modifiers.contains(.shift) else { return .ignored }
+            isCommentsShown = true
+            return .handled
+        }
         // ⌘D дублирует блок.
         .onKeyPress(keys: ["d"]) { press in
             guard press.modifiers.contains(.command) else { return .ignored }
