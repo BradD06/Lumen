@@ -322,6 +322,20 @@ extension AppDatabase {
             }
         }
 
+        migrator.registerMigration("v18: page history") { db in
+            // Прошлые версии страниц, чтобы откатить правки. Только на этом устройстве:
+            // в синхронизацию не входят, при удалении страницы навсегда уходят с ней.
+            try db.create(table: "pageVersion") { t in
+                t.primaryKey("id", .blob)
+                t.column("pageId", .blob).notNull().references("page", onDelete: .cascade)
+                t.column("title", .text).notNull()
+                t.column("blockCount", .integer).notNull()
+                t.column("blocks", .blob).notNull()
+                t.column("createdAt", .datetime).notNull()
+            }
+            try db.create(index: "pageVersion_on_pageId_createdAt", on: "pageVersion", columns: ["pageId", "createdAt"])
+        }
+
         return migrator
     }
 }

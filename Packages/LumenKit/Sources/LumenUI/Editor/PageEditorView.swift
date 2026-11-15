@@ -44,6 +44,7 @@ struct PageEditorView: View {
     /// Формат, в который выгружают страницу из меню «Экспорт».
     @State private var exportRequest: PageExportFormat?
     @State private var isMovingToFolder = false
+    @State private var isShowingHistory = false
     @State private var isPickingIcon = false
     @State private var focusTask: Task<Void, Never>?
     #if os(macOS)
@@ -252,6 +253,9 @@ struct PageEditorView: View {
                 }
                 pickedPhoto = nil
             }
+        }
+        .sheet(isPresented: $isShowingHistory) {
+            PageHistorySheet(model: model) { isShowingHistory = false }
         }
         .sheet(isPresented: $isMovingToFolder) {
             if let page = model.page {
@@ -506,6 +510,13 @@ struct PageEditorView: View {
                     copyLink(.page(model.pageId))
                 } label: {
                     Label("Скопировать ссылку", systemImage: "link")
+                }
+                if model.page?.isNotebook != true {
+                    Button {
+                        isShowingHistory = true
+                    } label: {
+                        Label("История версий…", systemImage: "clock.arrow.circlepath")
+                    }
                 }
                 PageExportButtons(request: $exportRequest)
                 Toggle("Звуки", isOn: $soundsEnabled)
