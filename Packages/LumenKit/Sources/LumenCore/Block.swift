@@ -53,6 +53,10 @@ public struct BlockContent: Hashable, Codable, Sendable {
     public var pageId: UUID?
     /// Имя файла во вложениях для блока «Картинка».
     public var attachment: String?
+    /// Ширина картинки: доля ширины страницы от 0 до 1. `nil` это размер по умолчанию, см. `ImageSizing`.
+    public var imageWidth: Double?
+    /// Форма картинки: высота, делённая на ширину. `nil` это пропорции самого снимка.
+    public var imageAspect: Double?
     /// Свёрнут ли сворачиваемый блок.
     public var isCollapsed: Bool
     public var textColor: BlockColor?
@@ -80,6 +84,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
         isChecked: Bool = false,
         pageId: UUID? = nil,
         attachment: String? = nil,
+        imageWidth: Double? = nil,
+        imageAspect: Double? = nil,
         isCollapsed: Bool = false,
         textColor: BlockColor? = nil,
         backgroundColor: BlockColor? = nil,
@@ -97,6 +103,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
         self.isChecked = isChecked
         self.pageId = pageId
         self.attachment = attachment
+        self.imageWidth = imageWidth
+        self.imageAspect = imageAspect
         self.isCollapsed = isCollapsed
         self.textColor = textColor
         self.backgroundColor = backgroundColor
@@ -123,7 +131,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case runs, isChecked, pageId, attachment, isCollapsed, textColor, backgroundColor, columnWidth, excerpt
+        case runs, isChecked, pageId, attachment, imageWidth, imageAspect, isCollapsed, textColor, backgroundColor, columnWidth, excerpt
         case drawingHeight, drawingWidth, sheetCount, paper, paperTone, items, sheetBackgrounds
     }
 
@@ -133,6 +141,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
         isChecked = try container.decodeIfPresent(Bool.self, forKey: .isChecked) ?? false
         pageId = try container.decodeIfPresent(UUID.self, forKey: .pageId)
         attachment = try container.decodeIfPresent(String.self, forKey: .attachment)
+        imageWidth = try container.decodeIfPresent(Double.self, forKey: .imageWidth)
+        imageAspect = try container.decodeIfPresent(Double.self, forKey: .imageAspect)
         isCollapsed = try container.decodeIfPresent(Bool.self, forKey: .isCollapsed) ?? false
         // Неизвестный цвет (например, из более новой версии) не ломает чтение блока.
         textColor = try container.decodeIfPresent(String.self, forKey: .textColor).flatMap(BlockColor.init(rawValue:))

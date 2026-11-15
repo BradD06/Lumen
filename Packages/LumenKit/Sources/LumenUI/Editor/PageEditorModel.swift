@@ -60,6 +60,16 @@ final class PageEditorModel {
     var sheetScrollRequest: Int?
     /// Лист, который сейчас наверху экрана: его номер подсвечен в миниатюрах и в шапке панели у книги.
     var visibleSheet = 0
+    /// Выделенные блоки (рамкой, ручкой, Esc). Пока они есть, курсора в тексте нет.
+    var selectedBlockIds: Set<UUID> = []
+    /// С какого блока начали выделять: от него Shift тянет диапазон.
+    @ObservationIgnored var selectionAnchor: UUID?
+    /// Подвижный конец выделения: его двигают стрелки.
+    @ObservationIgnored var selectionHead: UUID?
+    /// Где строки блоков в координатах листов (`EditorSpace.blocks`): по ним выделяет рамка.
+    @ObservationIgnored var blockFrames: [UUID: CGRect] = [:]
+    /// Строка под курсором мыши: по ней ⇧-щелчок в тексте выделяет диапазон.
+    @ObservationIgnored var hoveredBlockId: UUID?
 
     struct SourceRequest: Equatable {
         var sourceId: UUID

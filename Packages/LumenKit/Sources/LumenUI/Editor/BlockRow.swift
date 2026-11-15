@@ -77,6 +77,11 @@ struct BlockRow: View {
         .onHover { hovering in
             // Ручка и «+» слева проявляются и гаснут плавно.
             withAnimation(LumenMotion.quick) { isHovered = hovering }
+            if hovering {
+                model.hoveredBlockId = block.id
+            } else if model.hoveredBlockId == block.id {
+                model.hoveredBlockId = nil
+            }
             // Перетаскивание отменили мимо строк: обычное наведение убирает оставшуюся линию.
             // Во время самого перетаскивания линию сразу ставит заново приём блока.
             if hovering, model.dropIndicator != nil {
@@ -84,6 +89,18 @@ struct BlockRow: View {
             }
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+        // Где строка на листе: по этим рамкам выделяет рамка мышью.
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(EditorSpace.blocks)) } action: { model.blockFrames[block.id] = $0 }
+        #if os(iOS)
+        // Пока выделены блоки, нажатие на строку добавляет её в выделение или убирает.
+        .overlay {
+            if model.hasBlockSelection {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { model.clickHandle(block.id, extend: false, toggle: true) }
+            }
+        }
+        #endif
         .onDrop(
             of: [.lumenBlock],
             delegate: BlockDropDelegate(targetId: block.id, size: size, model: model)
@@ -97,6 +114,15 @@ struct BlockRow: View {
     /// потом перемещение, удаление в самом низу.
     @ViewBuilder
     private var menu: some View {
+        if model.isSelected(block.id), model.selectionRoots.count > 1 {
+            BlockSelectionMenuItems(model: model)
+        } else {
+            blockMenu
+        }
+    }
+
+    @ViewBuilder
+    private var blockMenu: some View {
         if let page = linkedPage {
             Button {
                 model.open(page.id)
@@ -176,10 +202,25 @@ struct BlockRow: View {
                 Label("Открыть в книге", systemImage: "book")
             }
         }
+        if block.type == .image, block.content.attachment != nil {
+            imageSizeMenu
+        }
         Button {
             model.duplicateBlock(block.id)
         } label: {
             Label("Дублировать", systemImage: "plus.square.on.square")
+        }
+        Button {
+            model.clickHandle(block.id, extend: false, toggle: false)
+        } label: {
+            Label("Выделить блок", systemImage: "checkmark.circle")
+        }
+        if BlockPasteboard.hasBlocks {
+            Button {
+                model.pasteBlocks(after: block.id)
+            } label: {
+                Label("Вставить скопированные блоки ниже", systemImage: "doc.on.clipboard")
+            }
         }
         Divider()
         Menu {
@@ -222,6 +263,24 @@ struct BlockRow: View {
             model.deleteBlock(block.id)
         } label: {
             Label("Удалить блок", systemImage: "trash")
+        }
+    }
+
+    /// Готовые размеры картинки. Точно размер меняют ручками на самой картинке.
+    private var imageSizeMenu: some View {
+        Menu {
+            Button("Как у снимка") { model.setImageSize(block.id, widthShare: nil, aspect: nil) }
+            Divider()
+            Button("Во всю ширину") { model.setImageSize(block.id, widthShare: 1, aspect: block.content.imageAspect) }
+            Button("Половина ширины") { model.setImageSize(block.id, widthShare: 0.5, aspect: block.content.imageAspect) }
+            Button("Треть ширины") { model.setImageSize(block.id, widthShare: 1.0 / 3, aspect: block.content.imageAspect) }
+            Divider()
+            Button("Квадрат") { model.setImageSize(block.id, widthShare: block.content.imageWidth, aspect: 1) }
+            Button("Широкая полоса") { model.setImageSize(block.id, widthShare: block.content.imageWidth, aspect: 9.0 / 16) }
+            Button("Исходные пропорции") { model.setImageSize(block.id, widthShare: block.content.imageWidth, aspect: nil) }
+                .disabled(block.content.imageAspect == nil)
+        } label: {
+            Label("Размер картинки", systemImage: "arrow.up.left.and.arrow.down.right")
         }
     }
 
@@ -300,6 +359,15 @@ struct BlockRow: View {
             .frame(width: Self.handleWidth, height: 24)
             .contentShape(Rectangle())
             .opacity(handleOpacity)
+            // Нажатие на ручку выделяет блок: с ⇧ диапазон, с ⌘ добавить или убрать.
+            .onTapGesture {
+                #if os(macOS)
+                let flags = NSEvent.modifierFlags
+                model.clickHandle(block.id, extend: flags.contains(.shift), toggle: flags.contains(.command))
+                #else
+                model.clickHandle(block.id, extend: false, toggle: model.hasBlockSelection)
+                #endif
+            }
             // Какой блок тянут, запоминаем в модели в момент начала перетаскивания: так приём
             // не зависит от того, сумеет ли система передать и расшифровать свой тип данных.
             .onDrag {
@@ -309,11 +377,11 @@ struct BlockRow: View {
                 provider.register(BlockDragItem(blockId: block.id))
                 return provider
             } preview: {
-                Label(dragTitle, systemImage: block.type.symbolName)
+                Label(dragGroupCount > 1 ? BlockSelection.blocksCaption(dragGroupCount) : dragTitle, systemImage: block.type.symbolName)
                     .padding(8)
                     .lumenCard(padding: 4)
             }
-            .help("Перетащите, чтобы переместить блок")
+            .help("Перетащите, чтобы переместить блок. Нажмите, чтобы выделить")
             .accessibilityLabel("Переместить блок")
             .accessibilityIdentifier("handle-\(block.text)")
     }
@@ -347,6 +415,11 @@ struct BlockRow: View {
         #else
         return isFocused ? 0.8 : 0.25
         #endif
+    }
+
+    /// Сколько блоков поедет, если тянуть этот: все выделенные, если он среди них.
+    private var dragGroupCount: Int {
+        model.isSelected(block.id) ? model.selectionRoots.count : 1
     }
 
     private var dragTitle: String {
@@ -492,6 +565,14 @@ struct BlockRow: View {
             }
             return .handled
         }
+        #if os(iOS)
+        // Esc на клавиатуре iPad выделяет блок, как в Notion. На Mac это ловит редактор (BlockSelectionKeys).
+        .onKeyPress(.escape) {
+            model.selectBlocks([block.id], anchor: block.id)
+            model.selectionHead = block.id
+            return .handled
+        }
+        #endif
         // ⌘D дублирует блок.
         .onKeyPress(keys: ["d"]) { press in
             guard press.modifiers.contains(.command) else { return .ignored }
@@ -704,6 +785,11 @@ struct BlockDropDelegate: DropDelegate {
 
     @MainActor
     private static func apply(_ zone: BlockDropZone, moving id: UUID, to targetId: UUID, in model: PageEditorModel) {
+        // Тянут один из выделенных блоков: едут все выделенные, вплотную и по порядку.
+        if model.isSelected(id), model.selectionRoots.count > 1 {
+            model.moveBlocks(model.selectionRoots, nextTo: targetId, after: zone != .before)
+            return
+        }
         switch zone {
         case .before: model.moveBlock(id, nextTo: targetId, after: false)
         case .after: model.moveBlock(id, nextTo: targetId, after: true)
@@ -1017,64 +1103,6 @@ private struct ExcerptPreviewCard: View {
             .frame(width: 240, alignment: .leading)
         }
         .padding(14)
-    }
-}
-
-/// Блок-картинка. Пока картинка не выбрана, показывает кнопки выбора из фото и файлов.
-private struct ImageBlock: View {
-    let block: Block
-    let model: PageEditorModel
-
-    @State private var photo: PhotosPickerItem?
-    @State private var isImportingFile = false
-    @Environment(\.lumenTheme) private var theme
-
-    var body: some View {
-        Group {
-            if let name = block.content.attachment {
-                AttachmentImage(name: name, attachments: model.database.attachments)
-                    .frame(maxWidth: .infinity, maxHeight: 460, alignment: .leading)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            } else {
-                picker
-            }
-        }
-        .onChange(of: photo) { _, item in
-            guard let item else { return }
-            Task {
-                if let data = try? await item.loadTransferable(type: Data.self) {
-                    model.setImage(block.id, data: data, fileExtension: nil)
-                }
-                photo = nil
-            }
-        }
-        .fileImporter(isPresented: $isImportingFile, allowedContentTypes: [.image]) { result in
-            guard case .success(let url) = result else { return }
-            let isScoped = url.startAccessingSecurityScopedResource()
-            defer { if isScoped { url.stopAccessingSecurityScopedResource() } }
-            if let data = try? Data(contentsOf: url) {
-                model.setImage(block.id, data: data, fileExtension: url.pathExtension)
-            }
-        }
-    }
-
-    private var picker: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "photo")
-                .font(.title2)
-                .foregroundStyle(theme.textSecondary)
-            PhotosPicker(selection: $photo, matching: .images) {
-                Label("Выбрать фото", systemImage: "photo.on.rectangle")
-            }
-            Button {
-                isImportingFile = true
-            } label: {
-                Label("Из файлов", systemImage: "folder")
-            }
-            Spacer(minLength: 0)
-        }
-        .buttonStyle(.bordered)
-        .lumenCard(padding: 14)
     }
 }
 

@@ -91,7 +91,13 @@ public enum NoteSheets {
         case .page:
             own = 30
         case .image:
-            own = 280
+            // Своя форма известна: высота по ширине. Иначе примерно, как раньше.
+            let share = min(max(block.content.imageWidth ?? 1, 0.05), 1)
+            if let aspect = block.content.imageAspect {
+                own = width * share * aspect + 8
+            } else {
+                own = 280 * (block.content.imageWidth == nil ? 1 : max(share, 0.3))
+            }
         case .excerpt:
             own = textHeight(block.text, size: 17, width: width - 40) + 56
         case .drawing:

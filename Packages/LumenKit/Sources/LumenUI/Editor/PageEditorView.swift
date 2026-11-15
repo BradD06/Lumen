@@ -46,6 +46,9 @@ struct PageEditorView: View {
     @State private var focusTask: Task<Void, Never>?
     #if os(macOS)
     @State private var keyMonitor: Any?
+    @State private var mouseMonitor: Any?
+    /// Окно редактора: клавиши выделения блоков работают только в нём.
+    @State private var windowBox = EditorWindowBox()
     #endif
     /// Насколько прокручена страница: по ней солнце на горах опускается за гряды.
     /// Отдельный объект: прокрутку читают только фон и обложка, и редактор со всеми блоками
@@ -283,6 +286,10 @@ struct PageEditorView: View {
             focus = .title
         }
         .onChange(of: focus) { _, newFocus in
+            // Курсор встал в текст (здесь или в соседней панели): выделение блоков снимается.
+            if newFocus != nil, let owner = BlockSelectionOwner.current, owner.hasBlockSelection {
+                owner.clearSelection()
+            }
             if case .block(let id) = newFocus {
                 model.focusedBlockId = id
                 // Курсор ушёл в текст: рисование в блоке «Рисунок» заканчивается.
@@ -291,9 +298,15 @@ struct PageEditorView: View {
                 model.focusedBlockId = nil
             }
         }
+        // Выделили блоки: курсор уходит из текста, иначе клавиши правили бы текст, а не блоки.
+        .onChange(of: model.hasBlockSelection) { _, selected in
+            if selected, focus != nil { focus = nil }
+        }
         #if os(macOS)
+        .background(EditorWindowReader(box: windowBox))
         .onAppear {
             installKeyMonitor()
+            installMouseMonitor()
             TextFormatMenu.install()
         }
         #else
@@ -313,7 +326,12 @@ struct PageEditorView: View {
                 NSEvent.removeMonitor(keyMonitor)
                 self.keyMonitor = nil
             }
+            if let mouseMonitor {
+                NSEvent.removeMonitor(mouseMonitor)
+                self.mouseMonitor = nil
+            }
             #endif
+            if BlockSelectionOwner.current === model { model.clearSelection() }
             if !isEmbedded { OpenPageEditors.shared.unregister(model, id: model.pageId) }
             Task { await model.flush() }
         }
@@ -332,6 +350,13 @@ struct PageEditorView: View {
                 }
             }
             .keyHintClip()
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if model.hasBlockSelection {
+                    BlockSelectionBar(model: model)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(LumenMotion.standard, value: model.hasBlockSelection)
             .onScrollTargetVisibilityChange(idType: UUID.self) { ids in
                 visibleSheetIds = ids
                 let anchors = model.sheets.map { sheetAnchor($0) }
@@ -523,9 +548,26 @@ struct PageEditorView: View {
     private func installKeyMonitor() {
         guard keyMonitor == nil else { return }
         let model = model
+        let windowBox = windowBox
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let plain = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-                .subtracting([.capsLock, .numericPad, .function]).isEmpty
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                .subtracting([.capsLock, .numericPad, .function])
+            let keyCode = event.keyCode
+            let eventWindow = event.window
+            // Выделение блоков: свои клавиши, но только в окне редактора и без листа поверх.
+            let handledSelection = MainActor.assumeIsolated { () -> Bool in
+                guard let window = windowBox.window, eventWindow === window, window.attachedSheet == nil else { return false }
+                let textView = window.firstResponder as? NSTextView
+                if model.hasBlockSelection, textView?.isEditable != true {
+                    return BlockSelectionKeys.handleSelection(model, keyCode: keyCode, flags: flags)
+                }
+                if let textView, textView.isEditable {
+                    return BlockSelectionKeys.handleText(model, textView: textView, keyCode: keyCode, flags: flags)
+                }
+                return false
+            }
+            if handledSelection { return nil }
+            let plain = flags.isEmpty
             let isBackspace = plain && event.keyCode == 51
             let isReturn = plain && (event.keyCode == 36 || event.keyCode == 76)
             guard isBackspace || isReturn else { return event }
@@ -540,6 +582,30 @@ struct PageEditorView: View {
                       let textView = NSApp.keyWindow?.firstResponder as? NSTextView,
                       !textView.hasMarkedText() else { return false }
                 textView.insertNewlineIgnoringFieldEditor(nil)
+                return true
+            }
+            return handled ? nil : event
+        }
+    }
+
+    /// ⇧-щелчок по другому блоку, когда курсор в тексте или блоки уже выделены: выделяется
+    /// диапазон блоков, как в Notion. Поле ввода сам щелчок не увидит.
+    private func installMouseMonitor() {
+        guard mouseMonitor == nil else { return }
+        let model = model
+        let windowBox = windowBox
+        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                .subtracting([.capsLock, .numericPad, .function])
+            guard flags == .shift else { return event }
+            let eventWindow = event.window
+            let handled = MainActor.assumeIsolated { () -> Bool in
+                guard let window = windowBox.window, eventWindow === window, window.attachedSheet == nil,
+                      let hovered = model.hoveredBlockId, model.findBlock(hovered) != nil else { return false }
+                guard model.hasBlockSelection || (model.focusedBlockId != nil && model.focusedBlockId != hovered) else {
+                    return false
+                }
+                model.clickHandle(hovered, extend: true, toggle: false)
                 return true
             }
             return handled ? nil : event
@@ -643,6 +709,11 @@ struct PageEditorView: View {
         .padding(.vertical, isCompact ? 12 : 24)
         .frame(maxWidth: CGFloat(NoteSheets.width) + (isCompact ? 16 : 48), alignment: .leading)
         .frame(maxWidth: .infinity)
+        #if os(macOS)
+        .modifier(BlockMarqueeSelection(model: model) { focus = nil })
+        #else
+        .coordinateSpace(.named(EditorSpace.blocks))
+        #endif
     }
 
     /// Один лист: шапка на первом, блоки, просьба разложить лишнее, если текст не поместился.

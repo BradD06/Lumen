@@ -8,13 +8,16 @@ struct BlockTree: View {
     let depth: Int
     let model: PageEditorModel
     var focus: FocusState<EditorFocus?>.Binding
+    /// Выделен один из предков: подсветка уже нарисована вокруг него.
+    var insideSelection = false
 
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
         if block.type == .columnList {
-            ColumnsView(row: block, depth: depth, model: model, focus: focus)
+            ColumnsView(row: block, depth: depth, model: model, focus: focus, insideSelection: insideSelection)
         } else {
+            let isSelected = model.isSelected(block.id)
             VStack(alignment: .leading, spacing: 6) {
                 BlockRow(
                     block: block,
@@ -31,11 +34,22 @@ struct BlockTree: View {
                                 emptyTogglePlaceholder
                             }
                             ForEach(children) { child in
-                                BlockTree(block: child, depth: depth + 1, model: model, focus: focus)
+                                BlockTree(
+                                    block: child,
+                                    depth: depth + 1,
+                                    model: model,
+                                    focus: focus,
+                                    insideSelection: insideSelection || isSelected
+                                )
                             }
                         }
                         .padding(.leading, 26)
                     }
+                }
+            }
+            .background {
+                if isSelected, !insideSelection {
+                    BlockSelectionHighlight()
                 }
             }
         }
@@ -66,6 +80,7 @@ struct ColumnsView: View {
     let depth: Int
     let model: PageEditorModel
     var focus: FocusState<EditorFocus?>.Binding
+    var insideSelection = false
 
     @State private var totalWidth: CGFloat = 0
     /// Ширины во время перетаскивания разделителя. В модель пишутся, когда разделитель отпустили.
@@ -122,7 +137,7 @@ struct ColumnsView: View {
     private func columnContent(_ column: Block) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(model.children(of: column.id)) { child in
-                BlockTree(block: child, depth: depth, model: model, focus: focus)
+                BlockTree(block: child, depth: depth, model: model, focus: focus, insideSelection: insideSelection)
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
