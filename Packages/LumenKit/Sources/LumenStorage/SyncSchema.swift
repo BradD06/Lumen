@@ -16,6 +16,8 @@ public enum SyncTable: String, CaseIterable, Codable, Sendable {
     case readingSession
     /// Что приколото к доске связей. Ни на что не ссылается внешним ключом.
     case boardPin
+    /// Свои шаблоны страниц. Ни на что не ссылаются.
+    case pageTemplate
 
     /// Тип записи в CloudKit.
     public var recordType: String {
@@ -28,6 +30,7 @@ public enum SyncTable: String, CaseIterable, Codable, Sendable {
         case .highlight: "Highlight"
         case .readingSession: "ReadingSession"
         case .boardPin: "BoardPin"
+        case .pageTemplate: "PageTemplate"
         }
     }
 

@@ -518,6 +518,13 @@ struct PageEditorView: View {
                         Label("История версий…", systemImage: "clock.arrow.circlepath")
                     }
                 }
+                if model.page?.isNotebook != true {
+                    Button {
+                        Task { await model.saveAsTemplate() }
+                    } label: {
+                        Label("Сохранить как шаблон", systemImage: "square.on.square.dashed")
+                    }
+                }
                 PageExportButtons(request: $exportRequest)
                 Toggle("Звуки", isOn: $soundsEnabled)
                 Divider()
@@ -752,6 +759,9 @@ struct PageEditorView: View {
                 ForEach(sheet.blocks) { block in
                     BlockTree(block: block, depth: 0, model: model, focus: $focus)
                         .id(block.id)
+                }
+                if sheet.isFirst, model.isBlankPage {
+                    TemplateSuggestions(model: model)
                 }
                 if sheet.blocks.isEmpty {
                     Button {

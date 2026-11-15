@@ -336,6 +336,20 @@ extension AppDatabase {
             try db.create(index: "pageVersion_on_pageId_createdAt", on: "pageVersion", columns: ["pageId", "createdAt"])
         }
 
+        migrator.registerMigration("v19: page templates") { db in
+            // Свои шаблоны страниц. Блоки шаблона лежат в JSON, ни на что не ссылаются.
+            try db.create(table: "pageTemplate") { t in
+                t.primaryKey("id", .blob)
+                t.column("title", .text).notNull()
+                t.column("icon", .text)
+                t.column("blocks", .text).notNull()
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try Self.createSyncTriggers(db, table: SyncTable.pageTemplate.rawValue)
+            try Self.createSyncClockTriggers(db, table: SyncTable.pageTemplate.rawValue)
+        }
+
         return migrator
     }
 }
@@ -372,6 +386,10 @@ extension ReadingSession: FetchableRecord, PersistableRecord {
 
 extension BoardPin: FetchableRecord, PersistableRecord {
     public static let databaseTableName = "boardPin"
+}
+
+extension PageTemplate: FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "pageTemplate"
 }
 
 // MARK: - Заметки к книгам рядом с книгами
