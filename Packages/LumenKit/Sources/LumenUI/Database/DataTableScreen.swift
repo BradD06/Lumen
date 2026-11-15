@@ -10,16 +10,9 @@ struct DataTableScreen: View {
     @State private var model: DataTableModel
     var onOpenPage: (UUID) -> Void
 
-    @State private var isEditingFilters = false
-    @State private var isEditingSorts = false
-    @State private var renamingView: DataView?
-    @State private var newName = ""
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
-    @Environment(\.lumenTheme) private var theme
-
-    @State private var isPickingIcon = false
 
     init(database: AppDatabase, pageId: UUID, initialViewId: UUID? = nil, onOpenPage: @escaping (UUID) -> Void) {
         _model = State(initialValue: DataTableModel(database: database, pageId: pageId, initialViewId: initialViewId))
@@ -28,33 +21,16 @@ struct DataTableScreen: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                if model.table != nil {
-                    viewTabs
-                    controls
-                    content
-                }
-            }
-            .padding(.horizontal, isCompact ? 16 : 28)
-            .padding(.vertical, isCompact ? 16 : 24)
-            .frame(maxWidth: model.view?.layout == .list ? 820 : .infinity, alignment: .leading)
-            .frame(maxWidth: .infinity)
+            DataTableBody(model: model, isCompact: isCompact, onOpenPage: onOpenPage)
+                .padding(.horizontal, isCompact ? 16 : 28)
+                .padding(.vertical, isCompact ? 16 : 24)
+                .frame(maxWidth: model.view?.layout == .list ? 820 : .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity)
         }
         .keyHintClip()
         .background(ThemedBackground())
         .navigationTitle(model.page?.displayTitle ?? "")
         .task { await model.observe() }
-        .alert("Название представления", isPresented: Binding(get: { renamingView != nil }, set: { if !$0 { renamingView = nil } })) {
-            TextField("Название", text: $newName)
-            Button("Готово") {
-                if let view = renamingView {
-                    model.renameView(view.id, newName)
-                }
-                renamingView = nil
-            }
-            Button("Отмена", role: .cancel) { renamingView = nil }
-        }
         .overlay {
             if model.isLoaded, model.table == nil {
                 ContentUnavailableView("Базы данных здесь нет", systemImage: "tablecells")
@@ -69,6 +45,45 @@ struct DataTableScreen: View {
         false
         #endif
     }
+}
+
+/// Содержимое базы: шапка, представления, фильтры и сами записи. Его показывает экран базы
+/// и блок «База данных» прямо на странице (`isEmbedded`: шапка меньше, с кнопкой «Открыть»).
+struct DataTableBody: View {
+    let model: DataTableModel
+    var isCompact: Bool
+    var isEmbedded = false
+    var onOpenPage: (UUID) -> Void
+    /// Открыть базу целиком (у встроенной базы).
+    var onOpenFull: (() -> Void)?
+
+    @State private var isEditingFilters = false
+    @State private var isEditingSorts = false
+    @State private var renamingView: DataView?
+    @State private var newName = ""
+    @State private var isPickingIcon = false
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: isEmbedded ? 10 : 16) {
+            header
+            if model.table != nil {
+                viewTabs
+                controls
+                content
+            }
+        }
+        .alert("Название представления", isPresented: Binding(get: { renamingView != nil }, set: { if !$0 { renamingView = nil } })) {
+            TextField("Название", text: $newName)
+            Button("Готово") {
+                if let view = renamingView {
+                    model.renameView(view.id, newName)
+                }
+                renamingView = nil
+            }
+            Button("Отмена", role: .cancel) { renamingView = nil }
+        }
+    }
 
     // MARK: Шапка
 
@@ -77,7 +92,7 @@ struct DataTableScreen: View {
             Button {
                 isPickingIcon = true
             } label: {
-                Text(model.page?.icon ?? "📋").font(.system(size: 36))
+                Text(model.page?.icon ?? "📋").font(.system(size: isEmbedded ? 24 : 36))
             }
             .buttonStyle(.plain)
             .fixedSize()
@@ -91,10 +106,27 @@ struct DataTableScreen: View {
                 .presentationCompactAdaptation(.popover)
             }
 
-            CommitTextField(placeholder: "Без названия", text: model.page?.title ?? "", font: .system(size: 32, weight: .bold)) {
+            CommitTextField(
+                placeholder: "Без названия",
+                text: model.page?.title ?? "",
+                font: .system(size: isEmbedded ? 22 : 32, weight: .bold)
+            ) {
                 model.rename($0)
             }
             .foregroundStyle(theme.textPrimary)
+            if let onOpenFull {
+                Spacer(minLength: 8)
+                Button {
+                    LumenSounds.play(.navigate)
+                    onOpenFull()
+                } label: {
+                    Label("Открыть", systemImage: "arrow.up.left.and.arrow.down.right")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .help("Открыть базу на весь экран")
+            }
         }
     }
 

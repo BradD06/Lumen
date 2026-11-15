@@ -103,8 +103,8 @@ enum PagePDFRenderer {
             case .divider:
                 text.append(NSAttributedString(attachment: lineAttachment()))
                 text.append(newline(paragraph(indent: indent, before: 4, after: 10)))
-            case .page:
-                text.append(NSAttributedString(string: "📄 " + export.linkedTitle(block), attributes: [
+            case .page, .database:
+                text.append(NSAttributedString(string: (block.type == .page ? "📄 " : "🗂️ ") + export.linkedTitle(block), attributes: [
                     .font: font(size: bodySize, bold: true),
                     .foregroundColor: accent,
                 ]))

@@ -32,6 +32,8 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     case sheetBreak
     /// Простая таблица: ячейки с текстом (`content.table`).
     case table
+    /// База данных прямо на странице: показывает базу со страницы `content.pageId`.
+    case database
 
     public var id: String { rawValue }
 
@@ -57,6 +59,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .drawing: "Рисунок"
         case .sheetBreak: "Новый лист"
         case .table: "Таблица"
+        case .database: "База данных"
         }
     }
 
@@ -81,6 +84,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .drawing: "pencil.and.scribble"
         case .sheetBreak: "doc.badge.plus"
         case .table: "tablecells"
+        case .database: "square.grid.3x3.topleft.filled"
         }
     }
 
@@ -106,13 +110,14 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .drawing: ["draw", "drawing", "sketch", "pencil", "handwriting", "рисунок", "рисовать", "от руки", "почерк", "карандаш"]
         case .sheetBreak: ["sheet", "page break", "лист", "новый лист"]
         case .table: ["table", "grid", "таблица", "сетка", "ячейки"]
+        case .database: ["database", "board", "kanban", "calendar", "tasks", "база", "доска", "календарь", "задачи", "трекер"]
         }
     }
 
     /// Есть ли у блока редактируемый текст.
     public var hasText: Bool {
         switch self {
-        case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak, .table: false
+        case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak, .table, .database: false
         default: true
         }
     }

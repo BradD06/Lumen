@@ -152,6 +152,8 @@ extension PageExport {
                 line = "---"
             case .page:
                 line = "📄 \(Self.escape(linkedTitle(block)))"
+            case .database:
+                line = "🗂️ \(Self.escape(linkedTitle(block)))"
             case .image:
                 guard let name = block.content.attachment else { continue }
                 line = "![](\(imagePath(name).replacingOccurrences(of: " ", with: "%20")))"
