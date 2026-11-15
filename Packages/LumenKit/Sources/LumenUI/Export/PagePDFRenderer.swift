@@ -109,6 +109,20 @@ enum PagePDFRenderer {
                     .foregroundColor: accent,
                 ]))
                 text.append(newline(paragraph(indent: indent)))
+            case .file, .pdf, .video, .audio, .bookmark:
+                // Файлы в PDF не встроить: остаётся строка с именем файла или ссылка на сайт.
+                let label: String
+                var attributes: [NSAttributedString.Key: Any] = [.font: font(size: bodySize), .foregroundColor: accent]
+                if let bookmark = block.content.bookmark {
+                    label = "🔗 " + (bookmark.title ?? bookmark.host)
+                    if let url = URL(string: bookmark.url) { attributes[.link] = url }
+                } else if let file = block.content.file {
+                    label = "📎 " + file.name + (file.sizeText.map { " · \($0)" } ?? "")
+                } else {
+                    continue
+                }
+                text.append(NSAttributedString(string: label, attributes: attributes))
+                text.append(newline(paragraph(indent: indent)))
             case .image:
                 guard let name = block.content.attachment,
                       let data = attachments.data(for: name),

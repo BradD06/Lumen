@@ -173,6 +173,13 @@ extension PageExport {
             case .table:
                 guard let table = block.content.table else { continue }
                 line = Self.table(table).joined(separator: "\n" + indent)
+            case .file, .pdf, .video, .audio:
+                guard let file = block.content.file else { continue }
+                line = "📎 \(Self.escape(file.name))"
+            case .bookmark:
+                guard let bookmark = block.content.bookmark else { continue }
+                let title = bookmark.title ?? bookmark.host
+                line = "🔗 [\(Self.escape(title))](\(bookmark.url.replacingOccurrences(of: " ", with: "%20")))"
             case .columnList, .column:
                 continue
             }

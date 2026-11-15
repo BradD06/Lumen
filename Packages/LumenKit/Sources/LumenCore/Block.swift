@@ -80,6 +80,10 @@ public struct BlockContent: Hashable, Codable, Sendable {
     public var sheetBackgrounds: [SheetBackground?]?
     /// Ячейки блока «Таблица».
     public var table: TableData?
+    /// Имя и размер файла в блоках «Файл», «PDF», «Видео», «Аудио».
+    public var file: FileAttachment?
+    /// Адрес и превью блока «Закладка».
+    public var bookmark: WebBookmark?
 
     public init(
         runs: [TextRun] = [],
@@ -100,7 +104,9 @@ public struct BlockContent: Hashable, Codable, Sendable {
         paperTone: PaperTone? = nil,
         items: [NotebookItem]? = nil,
         sheetBackgrounds: [SheetBackground?]? = nil,
-        table: TableData? = nil
+        table: TableData? = nil,
+        file: FileAttachment? = nil,
+        bookmark: WebBookmark? = nil
     ) {
         self.runs = runs
         self.isChecked = isChecked
@@ -121,6 +127,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
         self.items = items
         self.sheetBackgrounds = sheetBackgrounds
         self.table = table
+        self.file = file
+        self.bookmark = bookmark
     }
 
     public init(text: String, isChecked: Bool = false) {
@@ -134,16 +142,20 @@ public struct BlockContent: Hashable, Codable, Sendable {
         set { runs = newValue.isEmpty ? [] : [TextRun(newValue)] }
     }
 
-    /// Текст для поиска: сам текст блока и ячейки таблицы.
+    /// Текст для поиска: сам текст блока, ячейки таблицы, имя файла, название и адрес закладки.
     public var searchText: String {
-        guard let table else { return text }
-        let cells = table.plainText
-        return text.isEmpty ? cells : text + "\n" + cells
+        var parts = [text]
+        if let table { parts.append(table.plainText) }
+        if let file { parts.append(file.name) }
+        if let bookmark {
+            parts += [bookmark.title, bookmark.summary, bookmark.url].compactMap { $0 }
+        }
+        return parts.filter { !$0.isEmpty }.joined(separator: "\n")
     }
 
     private enum CodingKeys: String, CodingKey {
         case runs, isChecked, pageId, attachment, imageWidth, imageAspect, isCollapsed, textColor, backgroundColor, columnWidth, excerpt
-        case drawingHeight, drawingWidth, sheetCount, paper, paperTone, items, sheetBackgrounds, table
+        case drawingHeight, drawingWidth, sheetCount, paper, paperTone, items, sheetBackgrounds, table, file, bookmark
     }
 
     public init(from decoder: any Decoder) throws {
@@ -171,6 +183,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
         items = (try? container.decodeIfPresent([LossyItem].self, forKey: .items))?.compactMap(\.item)
         sheetBackgrounds = try? container.decodeIfPresent([SheetBackground?].self, forKey: .sheetBackgrounds)
         table = try? container.decodeIfPresent(TableData.self, forKey: .table)
+        file = try? container.decodeIfPresent(FileAttachment.self, forKey: .file)
+        bookmark = try? container.decodeIfPresent(WebBookmark.self, forKey: .bookmark)
     }
 
     /// Элемент тетради, который не ломает чтение остальных, если сам не читается.
