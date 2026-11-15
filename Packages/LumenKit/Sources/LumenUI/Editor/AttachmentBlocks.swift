@@ -42,7 +42,10 @@ struct FileBlock: View {
         switch block.type {
         case .pdf:
             VStack(alignment: .leading, spacing: 8) {
-                FileCard(file: file, subtitle: file.sizeText, isCompact: true) { previewURL = url }
+                HStack(spacing: 8) {
+                    FileCard(file: file, subtitle: file.sizeText, isCompact: true) { previewURL = url }
+                    readerButton
+                }
                 PDFEmbed(url: url)
                     .frame(height: 460)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -52,8 +55,25 @@ struct FileBlock: View {
         case .audio:
             AudioBlockPlayer(url: url, title: file.name)
         default:
-            FileCard(file: file, subtitle: file.sizeText) { previewURL = url }
+            HStack(spacing: 8) {
+                FileCard(file: file, subtitle: file.sizeText) { previewURL = url }
+                if FileAttachment.opensInReader((file.name as NSString).pathExtension) {
+                    readerButton
+                }
+            }
         }
+    }
+
+    /// Читать с выделениями и выписками: тот же файл открывается в читалке, а не второй читалкой здесь.
+    private var readerButton: some View {
+        Button {
+            Task { await model.openInReader(block.id) }
+        } label: {
+            Label("В читалке", systemImage: "book")
+        }
+        .buttonStyle(.bordered)
+        .help("Открыть в читалке Lumen: выделения, выписки и место чтения сохраняются")
+        .keyHint("Открыть в читалке") { Task { await model.openInReader(block.id) } }
     }
 
     private var picker: some View {

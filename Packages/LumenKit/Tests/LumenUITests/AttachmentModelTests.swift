@@ -41,6 +41,21 @@ struct AttachmentModelTests {
         #expect(model.findBlock(id)?.content.file?.name == source.lastPathComponent)
     }
 
+    @Test func pictureInFileBlockBecomesImageBlock() async throws {
+        let (model, id) = try await openBlock(.file)
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("Фото \(UUID().uuidString).png")
+        try Data([0x89, 0x50, 0x4E, 0x47]).write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+
+        await model.attachFile(id, from: source)
+        let block = try #require(model.findBlock(id))
+        #expect(block.type == .image)
+        #expect(block.content.attachment != nil)
+        #expect(block.content.file == nil)
+        model.undo()
+        #expect(model.findBlock(id)?.type == .file)
+    }
+
     @Test func bookmarkNeedsAnAddress() async throws {
         let (model, id) = try await openBlock(.bookmark)
         #expect(model.findBlock(id)?.type == .bookmark)

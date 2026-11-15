@@ -58,6 +58,14 @@ struct FileAttachmentTests {
         #expect(FileAttachment(name: "Лекция.PDF").symbolName == "doc.richtext")
         #expect(FileAttachment(name: "запись.m4a").symbolName == "waveform")
         #expect(FileAttachment(name: "без расширения").symbolName == "doc")
+        // Книги и документы с тем же значком, что в библиотеке.
+        #expect(FileAttachment(name: "Роман.epub").symbolName == SourceFormat.epub.symbolName)
+        #expect(FileAttachment(name: "План.xlsx").symbolName == "tablecells")
+        #expect(FileAttachment.opensInReader("pdf"))
+        #expect(FileAttachment.opensInReader("EPUB"))
+        #expect(!FileAttachment.opensInReader("zip"))
+        #expect(!FileAttachment.opensInReader("png"), "Картинке свой блок")
+        #expect(FileAttachment.isImage("HEIC"))
         #expect(FileAttachment(name: "a", size: 2_400_000).sizeText != nil)
     }
 

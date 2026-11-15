@@ -23,19 +23,29 @@ public struct FileAttachment: Hashable, Codable, Sendable {
         Self.symbolName(forExtension: (name as NSString).pathExtension)
     }
 
+    /// Документы и книги берут значок из `SourceFormat`, как в библиотеке; свои значки только
+    /// у того, чего библиотека не знает: таблицы, архивы, звук и видео.
     public static func symbolName(forExtension fileExtension: String) -> String {
         switch fileExtension.lowercased() {
-        case "pdf": "doc.richtext"
-        case "doc", "docx", "rtf", "pages", "txt", "md", "odt": "doc.text"
         case "xls", "xlsx", "csv", "numbers", "ods": "tablecells"
-        case "ppt", "pptx", "key", "odp": "rectangle.on.rectangle"
         case "zip", "rar", "7z", "gz", "tar": "archivebox"
         case "mp3", "m4a", "wav", "aac", "flac", "ogg", "aiff", "caf": "waveform"
         case "mp4", "mov", "m4v", "avi", "mkv", "webm": "film"
-        case "jpg", "jpeg", "png", "gif", "heic", "webp", "tiff": "photo"
-        case "epub", "fb2", "mobi", "djvu": "book.closed"
-        default: "doc"
+        case "ppt", "key", "odp": "rectangle.on.rectangle"
+        case "pages": "doc.text"
+        default: SourceFormat(fileExtension: fileExtension).symbolName
         }
+    }
+
+    /// Файл можно открыть в читалке Lumen (с выделениями и выписками), а не только посмотреть.
+    public static func opensInReader(_ fileExtension: String) -> Bool {
+        let format = SourceFormat(fileExtension: fileExtension)
+        return format != .other && format != .image
+    }
+
+    /// Картинка: для неё есть свой блок «Картинка».
+    public static func isImage(_ fileExtension: String) -> Bool {
+        SourceFormat(fileExtension: fileExtension) == .image
     }
 }
 

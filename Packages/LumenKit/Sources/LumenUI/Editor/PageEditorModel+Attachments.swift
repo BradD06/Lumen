@@ -16,9 +16,32 @@ extension PageEditorModel {
     }
 
     /// Копирует файл во вложения и показывает его в блоке. Большое видео копируется не в главном потоке.
+    /// Картинка, выбранная в блоке «Файл», становится обычным блоком «Картинка».
     func attachFile(_ id: UUID, from url: URL) async {
-        guard findBlock(id) != nil else { return }
+        guard let block = findBlock(id) else { return }
         let attachments = database.attachments
+        if block.type == .file, FileAttachment.isImage(url.pathExtension) {
+            do {
+                let name = try await Task.detached {
+                    let isScoped = url.startAccessingSecurityScopedResource()
+                    defer { if isScoped { url.stopAccessingSecurityScopedResource() } }
+                    return try attachments.importFile(at: url)
+                }.value
+                guard findBlock(id) != nil else {
+                    attachments.remove(name)
+                    return
+                }
+                recordUndo()
+                update(id) {
+                    $0.type = .image
+                    $0.content.attachment = name
+                    $0.content.file = nil
+                }
+            } catch {
+                NoticeCenter.shared.report("Не удалось добавить картинку", error)
+            }
+            return
+        }
         do {
             let name = try await Task.detached {
                 let isScoped = url.startAccessingSecurityScopedResource()
@@ -37,6 +60,26 @@ extension PageEditorModel {
             }
         } catch {
             NoticeCenter.shared.report("Не удалось добавить файл", error)
+        }
+    }
+
+    /// Книга или документ из блока открывается в читалке: файл добавляется в библиотеку
+    /// (если его там ещё нет, иначе открывается прежняя книга со всеми выписками).
+    func openInReader(_ id: UUID) async {
+        guard let block = findBlock(id), let url = attachmentURL(of: block), let file = block.content.file else { return }
+        // Во вложениях у файла служебное имя: в библиотеку он идёт под своим.
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let named = folder.appendingPathComponent(file.name)
+            try FileManager.default.copyItem(at: url, to: named)
+            let sources = await SourceImporter.importFiles([named], into: database, folderId: page?.folderId, positions: [])
+            if let source = sources.first {
+                openSource(source.id)
+            }
+        } catch {
+            NoticeCenter.shared.report("Не удалось открыть в читалке", error)
         }
     }
 
