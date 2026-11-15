@@ -250,16 +250,22 @@ struct VideoBlockPlayer: View {
             .frame(maxWidth: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .task(id: url) {
-                let asset = AVURLAsset(url: url)
-                if let track = try? await asset.loadTracks(withMediaType: .video).first,
-                   let loaded = try? await track.load(.naturalSize, .preferredTransform) {
-                    let shown = loaded.0.applying(loaded.1)
-                    let width = abs(shown.width)
-                    let height = abs(shown.height)
-                    if width > 0, height > 0 { aspect = min(max(height / width, 0.3), 2) }
-                }
+                if let loaded = await Self.aspect(of: url) { aspect = loaded }
             }
             .onDisappear { player.pause() }
+    }
+
+    /// Форма кадра (высота на ширину) с учётом поворота. Дорожки читаются вне главного потока:
+    /// наружу уходит только число.
+    nonisolated static func aspect(of url: URL) async -> Double? {
+        let asset = AVURLAsset(url: url)
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+              let loaded = try? await track.load(.naturalSize, .preferredTransform) else { return nil }
+        let shown = loaded.0.applying(loaded.1)
+        let width = abs(shown.width)
+        let height = abs(shown.height)
+        guard width > 0, height > 0 else { return nil }
+        return min(max(Double(height / width), 0.3), 2)
     }
 }
 
