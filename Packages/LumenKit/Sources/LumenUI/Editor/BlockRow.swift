@@ -205,6 +205,7 @@ struct BlockRow: View {
         if block.type == .image, block.content.attachment != nil {
             imageSizeMenu
         }
+        attachmentMenu
         Button {
             model.duplicateBlock(block.id)
         } label: {
@@ -267,6 +268,53 @@ struct BlockRow: View {
     }
 
     /// Готовые размеры картинки. Точно размер меняют ручками на самой картинке.
+    /// Пункты для файла и закладки: открыть, заменить, обновить превью.
+    @ViewBuilder
+    private var attachmentMenu: some View {
+        if [.file, .pdf, .video, .audio].contains(block.type), block.content.attachment != nil {
+            if let url = model.attachmentURL(of: block) {
+                #if os(macOS)
+                Button {
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    Label("Открыть в другой программе", systemImage: "arrow.up.forward.app")
+                }
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                } label: {
+                    Label("Показать в Finder", systemImage: "folder")
+                }
+                #else
+                ShareLink(item: url) {
+                    Label("Поделиться файлом", systemImage: "square.and.arrow.up")
+                }
+                #endif
+            }
+            Button {
+                model.removeAttachment(block.id)
+            } label: {
+                Label("Выбрать другой файл", systemImage: "arrow.triangle.2.circlepath")
+            }
+        }
+        if block.type == .bookmark, let bookmark = block.content.bookmark {
+            Button {
+                copyText(bookmark.url)
+            } label: {
+                Label("Скопировать ссылку", systemImage: "link")
+            }
+            Button {
+                Task { await model.loadBookmarkPreview(block.id) }
+            } label: {
+                Label("Обновить превью", systemImage: "arrow.clockwise")
+            }
+            Button {
+                model.removeAttachment(block.id)
+            } label: {
+                Label("Другая ссылка", systemImage: "pencil")
+            }
+        }
+    }
+
     private var imageSizeMenu: some View {
         Menu {
             Button("Как у снимка") { model.setImageSize(block.id, widthShare: nil, aspect: nil) }
@@ -537,6 +585,12 @@ struct BlockRow: View {
         case .database:
             DatabaseBlock(block: block, model: model)
 
+        case .file, .pdf, .video, .audio:
+            FileBlock(block: block, model: model)
+
+        case .bookmark:
+            BookmarkBlock(block: block, model: model)
+
         case .columnList, .column, .sheetBreak:
             EmptyView()
 
@@ -736,7 +790,8 @@ struct BlockRow: View {
         case .callout: "Выноска"
         case .code: "Код"
         case .toggle: "Сворачиваемый блок"
-        case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak, .table, .database: ""
+        case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak, .table, .database,
+             .file, .pdf, .video, .audio, .bookmark: ""
         }
     }
 

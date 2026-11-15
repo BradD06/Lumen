@@ -34,6 +34,16 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     case table
     /// База данных прямо на странице: показывает базу со страницы `content.pageId`.
     case database
+    /// Любой файл из вложений (`content.attachment`, имя и размер в `content.file`).
+    case file
+    /// PDF прямо на странице, листается в блоке.
+    case pdf
+    /// Видео со своим проигрывателем.
+    case video
+    /// Аудио: кнопка, полоса и время.
+    case audio
+    /// Закладка на сайт с превью (`content.bookmark`).
+    case bookmark
 
     public var id: String { rawValue }
 
@@ -60,6 +70,11 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .sheetBreak: "Новый лист"
         case .table: "Таблица"
         case .database: "База данных"
+        case .file: "Файл"
+        case .pdf: "PDF"
+        case .video: "Видео"
+        case .audio: "Аудио"
+        case .bookmark: "Закладка"
         }
     }
 
@@ -85,6 +100,11 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .sheetBreak: "doc.badge.plus"
         case .table: "tablecells"
         case .database: "square.grid.3x3.topleft.filled"
+        case .file: "paperclip"
+        case .pdf: "doc.richtext"
+        case .video: "play.rectangle"
+        case .audio: "waveform"
+        case .bookmark: "link"
         }
     }
 
@@ -111,13 +131,19 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .sheetBreak: ["sheet", "page break", "лист", "новый лист"]
         case .table: ["table", "grid", "таблица", "сетка", "ячейки"]
         case .database: ["database", "board", "kanban", "calendar", "tasks", "база", "доска", "календарь", "задачи", "трекер"]
+        case .file: ["file", "attachment", "upload", "файл", "вложение", "документ"]
+        case .pdf: ["pdf", "document", "документ", "пдф"]
+        case .video: ["video", "movie", "видео", "ролик", "фильм"]
+        case .audio: ["audio", "sound", "music", "voice", "аудио", "звук", "музыка", "запись", "голос"]
+        case .bookmark: ["bookmark", "link", "web", "url", "embed", "закладка", "ссылка", "сайт"]
         }
     }
 
     /// Есть ли у блока редактируемый текст.
     public var hasText: Bool {
         switch self {
-        case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak, .table, .database: false
+        case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak, .table, .database,
+             .file, .pdf, .video, .audio, .bookmark: false
         default: true
         }
     }

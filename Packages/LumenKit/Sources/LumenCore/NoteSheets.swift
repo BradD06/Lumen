@@ -92,6 +92,16 @@ public enum NoteSheets {
             own = 30
         case .database:
             own = 320
+        case .file:
+            own = 56
+        case .pdf:
+            own = 500
+        case .video:
+            own = width * 9 / 16 + 8
+        case .audio:
+            own = 72
+        case .bookmark:
+            own = 112
         case .image:
             // Своя форма известна: высота по ширине. Иначе примерно, как раньше.
             let share = min(max(block.content.imageWidth ?? 1, 0.05), 1)

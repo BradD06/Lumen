@@ -173,6 +173,17 @@ extension PageEditorModel {
             createSubpage(from: id, title: "", open: true)
             return
         }
+        if type == .bookmark {
+            // Курсор сразу в поле адреса (BookmarkBlock), ниже абзац, чтобы писать дальше.
+            recordUndo()
+            update(id) {
+                $0.type = .bookmark
+                $0.text = ""
+            }
+            insertBlock(after: id, type: .paragraph)
+            focusRequest = nil
+            return
+        }
         if type == .database {
             // Сначала выбор: новая база или уже существующая (см. DatabaseBlock).
             recordUndo()
