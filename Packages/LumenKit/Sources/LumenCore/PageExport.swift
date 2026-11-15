@@ -168,6 +168,9 @@ extension PageExport {
             case .sheetBreak:
                 // Новый лист заметки: в Markdown это линия между листами.
                 line = "---"
+            case .table:
+                guard let table = block.content.table else { continue }
+                line = Self.table(table).joined(separator: "\n" + indent)
             case .columnList, .column:
                 continue
             }
@@ -206,6 +209,21 @@ extension PageExport {
         .joined()
         // Перенос строки внутри блока остаётся переносом, а не склеивается в одну строку.
         return text.replacingOccurrences(of: "\n", with: "  \n" + continuation)
+    }
+
+    /// Таблица в Markdown (GFM). Первая строка всегда шапка: без неё таблицу не узнают.
+    static func table(_ table: TableData) -> [String] {
+        func row(_ cells: [TableCell]) -> String {
+            let texts = cells.map { cell in
+                inline(cell.runs, continuation: "")
+                    .replacingOccurrences(of: "  \n", with: "<br>")
+                    .replacingOccurrences(of: "|", with: "\\|")
+            }
+            return "| " + texts.joined(separator: " | ") + " |"
+        }
+        guard let header = table.rows.first else { return [] }
+        let separator = "|" + Array(repeating: " --- |", count: header.count).joined()
+        return [row(header), separator] + table.rows.dropFirst().map(row)
     }
 
     static func escape(_ text: String) -> String {

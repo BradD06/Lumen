@@ -30,6 +30,8 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     /// Граница листа: блоки после неё лежат на следующем листе заметки (A4, см. `NoteSheets`).
     /// Бывает только на верхнем уровне страницы, сама на листе не видна.
     case sheetBreak
+    /// Простая таблица: ячейки с текстом (`content.table`).
+    case table
 
     public var id: String { rawValue }
 
@@ -54,6 +56,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .excerpt: "Выписка"
         case .drawing: "Рисунок"
         case .sheetBreak: "Новый лист"
+        case .table: "Таблица"
         }
     }
 
@@ -77,6 +80,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .excerpt: "quote.opening"
         case .drawing: "pencil.and.scribble"
         case .sheetBreak: "doc.badge.plus"
+        case .table: "tablecells"
         }
     }
 
@@ -101,13 +105,14 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .excerpt: ["excerpt", "quote", "выписка", "цитата"]
         case .drawing: ["draw", "drawing", "sketch", "pencil", "handwriting", "рисунок", "рисовать", "от руки", "почерк", "карандаш"]
         case .sheetBreak: ["sheet", "page break", "лист", "новый лист"]
+        case .table: ["table", "grid", "таблица", "сетка", "ячейки"]
         }
     }
 
     /// Есть ли у блока редактируемый текст.
     public var hasText: Bool {
         switch self {
-        case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak: false
+        case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak, .table: false
         default: true
         }
     }
