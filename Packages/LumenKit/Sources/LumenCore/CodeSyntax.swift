@@ -399,3 +399,20 @@ public enum CodeHighlighter {
         }
     }
 }
+
+extension CodeHighlighter {
+    /// Цветные куски кода как места в UTF-16 (как у `NSString`), без простого текста.
+    /// Ими красит текст поле ввода, пока код набирают.
+    public static func coloredRanges(in code: String, language: CodeLanguage) -> [(range: Range<Int>, kind: CodeToken.Kind)] {
+        var result: [(range: Range<Int>, kind: CodeToken.Kind)] = []
+        var offset = 0
+        for token in tokens(in: code, language: language) {
+            let length = token.text.utf16.count
+            if token.kind != .plain, length > 0 {
+                result.append((offset..<offset + length, token.kind))
+            }
+            offset += length
+        }
+        return result
+    }
+}

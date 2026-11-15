@@ -613,6 +613,20 @@ struct BlockRow: View {
             }
         }
         #if os(macOS)
+        // Код подсвечивается прямо при наборе.
+        .onReceive(NotificationCenter.default.publisher(for: NSText.didChangeNotification)) { notification in
+            guard isFocused, block.type == .code, let textView = notification.object as? NSTextView,
+                  textView === NSApp.keyWindow?.firstResponder else { return }
+            LiveCodeHighlighter.apply(to: textView, theme: theme)
+        }
+        .onChange(of: isFocused) { _, focused in
+            guard focused, block.type == .code else { return }
+            highlightCodeField()
+        }
+        .onChange(of: block.type) { old, new in
+            guard isFocused, old == .code || new == .code else { return }
+            highlightCodeField()
+        }
         // Выделение на Mac: над ним всплывает панель оформления.
         .onReceive(NotificationCenter.default.publisher(for: NSTextView.didChangeSelectionNotification)) { notification in
             guard isFocused, isRichText, let textView = notification.object as? NSTextView,
@@ -686,9 +700,26 @@ struct BlockRow: View {
         return info
     }
 
+    #if os(macOS)
+    /// Поле получило фокус или стало кодом: цвета ставятся, когда SwiftUI уже настроил редактор поля.
+    /// Блок, переставший быть кодом, получает обычный цвет обратно.
+    private func highlightCodeField() {
+        DispatchQueue.main.async {
+            guard isFocused, let textView = NSApp.keyWindow?.firstResponder as? NSTextView else { return }
+            if block.type == .code {
+                LiveCodeHighlighter.apply(to: textView, theme: theme)
+            } else if let storage = textView.textStorage {
+                let color = NSColor(block.content.textColor.map(\.textColor) ?? theme.textPrimary)
+                storage.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: storage.length))
+            }
+        }
+    }
+    #endif
+
     /// Код вне редактирования рисует подсвеченная копия поверх поля, само поле тогда прозрачное.
+    /// На iPhone и iPad копия лежит поверх и при наборе (`CodePalette.overlaysWhileEditing`).
     private var fieldColor: Color {
-        if block.type == .code, !isFocused, !block.text.isEmpty { return .clear }
+        if block.type == .code, !block.text.isEmpty, !isFocused || CodePalette.overlaysWhileEditing { return .clear }
         if showsRenderedText { return .clear }
         return block.content.textColor.map(\.textColor) ?? theme.textPrimary
     }

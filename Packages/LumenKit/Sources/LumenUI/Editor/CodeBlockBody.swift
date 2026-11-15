@@ -1,10 +1,14 @@
 import LumenCore
 import LumenThemes
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// Блок кода: тёмная подложка, язык в углу и подсветка синтаксиса как в Xcode.
-/// Поле ввода цветной текст не показывает, поэтому вне редактирования поверх него
-/// лежит подсвеченная копия того же текста тем же шрифтом. Нажатие проходит к полю.
+/// Вне редактирования поверх поля лежит подсвеченная копия того же текста тем же шрифтом.
+/// Пока код набирают, на Mac цвета ставятся прямо в поле (`LiveCodeHighlighter`),
+/// а на iPhone и iPad копия остаётся поверх прозрачного поля. Нажатие проходит к полю.
 struct CodeBlockBody<Field: View>: View {
     let code: String
     let isEditing: Bool
@@ -26,7 +30,7 @@ struct CodeBlockBody<Field: View>: View {
             }
             field()
                 .overlay(alignment: .topLeading) {
-                    if !isEditing {
+                    if !isEditing || CodePalette.overlaysWhileEditing {
                         Text(highlighted)
                             .font(font)
                             .fixedSize(horizontal: false, vertical: true)
@@ -50,6 +54,21 @@ struct CodeBlockBody<Field: View>: View {
     }
 
     private func color(_ kind: CodeToken.Kind) -> Color {
+        CodePalette.color(kind, theme: theme)
+    }
+}
+
+/// Цвета подсветки кода, как в Xcode.
+enum CodePalette {
+    /// На iPhone и iPad поле цветной текст не показывает, поэтому подсвеченная копия
+    /// лежит поверх него и при наборе. Курсор и выделение рисует само поле.
+    #if os(iOS)
+    static let overlaysWhileEditing = true
+    #else
+    static let overlaysWhileEditing = false
+    #endif
+
+    static func color(_ kind: CodeToken.Kind, theme: Theme) -> Color {
         switch kind {
         case .plain: theme.textPrimary
         case .keyword: Color(red: 0.99, green: 0.37, blue: 0.64)
@@ -63,3 +82,34 @@ struct CodeBlockBody<Field: View>: View {
         }
     }
 }
+
+#if os(macOS)
+/// Подсветка кода прямо в поле, пока его набирают (Mac). Поле SwiftUI правит текст в общем
+/// редакторе окна (`NSTextView`); цвета ставятся в его текст как атрибуты и в сам блок не попадают.
+@MainActor
+enum LiveCodeHighlighter {
+    /// Дальше подсветка при наборе выключается, чтобы не тормозить на огромных вставках.
+    static let maxLength = 20_000
+
+    static func apply(to textView: NSTextView, theme: Theme) {
+        guard let storage = textView.textStorage else { return }
+        let code = storage.string
+        let full = NSRange(location: 0, length: (code as NSString).length)
+        let base = NSColor(theme.textPrimary)
+        storage.beginEditing()
+        storage.addAttribute(.foregroundColor, value: base, range: full)
+        if full.length <= maxLength {
+            let language = CodeLanguage.detect(code)
+            for (range, kind) in CodeHighlighter.coloredRanges(in: code, language: language) {
+                let nsRange = NSRange(location: range.lowerBound, length: range.count)
+                guard NSMaxRange(nsRange) <= full.length else { break }
+                storage.addAttribute(.foregroundColor, value: NSColor(CodePalette.color(kind, theme: theme)), range: nsRange)
+            }
+        }
+        storage.endEditing()
+        // Новые буквы набираются обычным цветом, их тут же перекрасит следующий проход.
+        textView.typingAttributes[.foregroundColor] = base
+        textView.insertionPointColor = base
+    }
+}
+#endif

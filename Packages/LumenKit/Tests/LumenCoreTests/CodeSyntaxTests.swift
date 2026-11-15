@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import LumenCore
 
@@ -72,5 +73,17 @@ struct CodeSyntaxTests {
     func tokensCoverWholeText(language: CodeLanguage) {
         let code = "fn x(a: Int) -> \"s\\\"\" /* c */ # $v 0x1F @x 'q' `t` <b>\n-- d"
         #expect(CodeHighlighter.tokens(in: code, language: language).map(\.text).joined() == code)
+    }
+
+    @Test func coloredRangesUseUTF16Offsets() {
+        // Эмодзи занимает два места UTF-16: цвета после него не должны съезжать.
+        let code = "let 🙂 = \"да\" // привет"
+        let ranges = CodeHighlighter.coloredRanges(in: code, language: .swift)
+        let text = code as NSString
+        let colored = ranges.map { (text.substring(with: NSRange(location: $0.range.lowerBound, length: $0.range.count)), $0.kind) }
+        #expect(colored.contains { $0.0 == "let" && $0.1 == .keyword })
+        #expect(colored.contains { $0.0 == "\"да\"" && $0.1 == .string })
+        #expect(colored.contains { $0.0 == "// привет" && $0.1 == .comment })
+        #expect(!ranges.contains { $0.kind == .plain })
     }
 }
