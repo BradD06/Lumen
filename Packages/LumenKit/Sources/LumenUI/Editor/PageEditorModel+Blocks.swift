@@ -168,6 +168,18 @@ extension PageEditorModel {
             createSubpage(from: id, title: "", open: true)
             return
         }
+        if type == .database {
+            // Сначала выбор: новая база или уже существующая (см. DatabaseBlock).
+            recordUndo()
+            update(id) {
+                $0.type = .database
+                $0.text = ""
+                $0.content.pageId = nil
+            }
+            insertBlock(after: id, type: .paragraph)
+            focusRequest = nil
+            return
+        }
         if type == .table {
             recordUndo()
             update(id) {

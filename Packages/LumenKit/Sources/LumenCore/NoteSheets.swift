@@ -90,6 +90,8 @@ public enum NoteSheets {
             own = 22
         case .page:
             own = 30
+        case .database:
+            own = 320
         case .image:
             // Своя форма известна: высота по ширине. Иначе примерно, как раньше.
             let share = min(max(block.content.imageWidth ?? 1, 0.05), 1)

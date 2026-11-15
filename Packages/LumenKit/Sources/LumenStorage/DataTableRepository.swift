@@ -84,15 +84,24 @@ extension AppDatabase {
         title: String,
         kind: DataTableKind = .blank,
         icon: String? = nil,
-        folderId: UUID? = nil
+        folderId: UUID? = nil,
+        parentId: UUID? = nil
     ) async throws -> DataTable {
         try await writer.write { db in
-            try Self.insertDataTable(db, title: title, kind: kind, icon: icon, folderId: folderId)
+            try Self.insertDataTable(db, title: title, kind: kind, icon: icon, folderId: folderId, parentId: parentId)
         }
     }
 
-    static func insertDataTable(_ db: Database, title: String, kind: DataTableKind, icon: String?, folderId: UUID?) throws -> DataTable {
-        var page = try insertPage(db, title: title, parentId: nil, inInbox: false, folderId: folderId, bodyLines: [])
+    /// `parentId`: база живёт подстраницей другой страницы (встроенная база в блоке «База данных»).
+    static func insertDataTable(
+        _ db: Database,
+        title: String,
+        kind: DataTableKind,
+        icon: String?,
+        folderId: UUID?,
+        parentId: UUID? = nil
+    ) throws -> DataTable {
+        var page = try insertPage(db, title: title, parentId: parentId, inInbox: false, folderId: folderId, bodyLines: [])
         page.icon = icon
         try page.update(db)
         let table: DataTable
