@@ -44,6 +44,9 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     case audio
     /// Закладка на сайт с превью (`content.bookmark`).
     case bookmark
+    /// Синхронный блок: оригинал хранит общее содержимое в детях, копии показывают его
+    /// на других страницах (`content.syncedFrom`), см. `SyncedReference`.
+    case synced
 
     public var id: String { rawValue }
 
@@ -75,6 +78,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .video: "Видео"
         case .audio: "Аудио"
         case .bookmark: "Закладка"
+        case .synced: "Синхронный блок"
         }
     }
 
@@ -105,6 +109,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .video: "play.rectangle"
         case .audio: "waveform"
         case .bookmark: "link"
+        case .synced: "arrow.triangle.2.circlepath"
         }
     }
 
@@ -136,6 +141,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .video: ["video", "movie", "видео", "ролик", "фильм"]
         case .audio: ["audio", "sound", "music", "voice", "аудио", "звук", "музыка", "запись", "голос"]
         case .bookmark: ["bookmark", "link", "web", "url", "embed", "закладка", "ссылка", "сайт"]
+        case .synced: ["synced", "sync", "mirror", "reuse", "синхронный", "синхрон", "общий", "повтор"]
         }
     }
 
@@ -143,7 +149,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     public var hasText: Bool {
         switch self {
         case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak, .table, .database,
-             .file, .pdf, .video, .audio, .bookmark: false
+             .file, .pdf, .video, .audio, .bookmark, .synced: false
         default: true
         }
     }

@@ -87,10 +87,11 @@ public struct BlockClipboard: Codable, Sendable, Equatable {
 
     /// Копии для вставки на страницу `pageId` в родителя `parentId`. Корни получают ключи
     /// `rootKeys` по порядку, потомки остаются у своих (новых) родителей.
-    public func copies(pageId: UUID, parentId: UUID?, rootKeys: [String], now: Date = Date()) -> (blocks: [Block], roots: [UUID]) {
+    /// `keepingIds`: блоки, которые переезжают и сохраняют свой id (вырезанный синхронный блок).
+    public func copies(pageId: UUID, parentId: UUID?, rootKeys: [String], keepingIds: Set<UUID> = [], now: Date = Date()) -> (blocks: [Block], roots: [UUID]) {
         var newIds: [UUID: UUID] = [:]
         for block in blocks {
-            newIds[block.id] = UUID()
+            newIds[block.id] = keepingIds.contains(block.id) ? block.id : UUID()
         }
         let roots = rootIds
         var keys: [UUID: String] = [:]

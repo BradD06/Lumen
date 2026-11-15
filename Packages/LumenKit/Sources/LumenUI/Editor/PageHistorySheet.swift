@@ -240,6 +240,9 @@ struct VersionPreview: View {
             placeholder(block.type, detail: block.content.file?.name)
         case .bookmark:
             placeholder(block.type, detail: block.content.bookmark.map { $0.title ?? $0.url })
+        case .synced:
+            // Содержимое оригинала стоит в истории его детьми, копия показывает чужую страницу.
+            placeholder(block.type, detail: block.content.syncedFrom == nil ? nil : "копия")
         case .page, .database, .image, .drawing, .columnList, .column:
             placeholder(block.type, detail: nil)
         }

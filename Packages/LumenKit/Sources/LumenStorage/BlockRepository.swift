@@ -13,6 +13,13 @@ extension AppDatabase {
         }
     }
 
+    /// Один блок по id, на какой бы странице он ни был (синхронный блок ищет свой оригинал).
+    public func block(_ id: UUID) async throws -> Block? {
+        try await reader.read { db in
+            try Block.fetchOne(db, key: id)
+        }
+    }
+
     /// Вставляет или обновляет блок. Ключ порядка редактор считает сам через `SortKey`.
     public func saveBlock(_ block: Block) async throws {
         try await writer.write { db in

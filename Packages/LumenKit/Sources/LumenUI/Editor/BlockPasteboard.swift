@@ -12,9 +12,13 @@ import AppKit
 @MainActor
 enum BlockPasteboard {
     static let type = "app.lumen.blocks"
+    /// Синхронные блоки, которые вырезали (а не скопировали): при вставке они переезжают
+    /// оригиналом, а не становятся копией удалённого блока.
+    static var cutSyncedIds: Set<UUID> = []
 
     static func write(_ clipboard: BlockClipboard, text: String) {
         guard let data = try? JSONEncoder().encode(clipboard) else { return }
+        cutSyncedIds = []
         #if canImport(UIKit)
         UIPasteboard.general.setItems([[type: data, UTType.utf8PlainText.identifier: text]])
         #else

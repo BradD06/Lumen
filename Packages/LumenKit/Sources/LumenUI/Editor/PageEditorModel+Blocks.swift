@@ -173,6 +173,10 @@ extension PageEditorModel {
             createSubpage(from: id, title: "", open: true)
             return
         }
+        if type == .synced {
+            makeSynced(id)
+            return
+        }
         if type == .bookmark {
             // Курсор сразу в поле адреса (BookmarkBlock), ниже абзац, чтобы писать дальше.
             recordUndo()

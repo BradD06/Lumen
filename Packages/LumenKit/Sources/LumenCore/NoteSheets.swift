@@ -102,6 +102,9 @@ public enum NoteSheets {
             own = 72
         case .bookmark:
             own = 112
+        case .synced:
+            // У оригинала только подпись, его дети считаются ниже. Копия примерно как пара абзацев.
+            own = block.content.syncedFrom == nil ? 24 : 120
         case .image:
             // Своя форма известна: высота по ширине. Иначе примерно, как раньше.
             let share = min(max(block.content.imageWidth ?? 1, 0.05), 1)

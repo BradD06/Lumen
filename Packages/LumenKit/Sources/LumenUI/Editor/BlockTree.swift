@@ -12,6 +12,7 @@ struct BlockTree: View {
     var insideSelection = false
 
     @Environment(\.lumenTheme) private var theme
+    @Environment(\.syncedChain) private var syncedChain
 
     var body: some View {
         if block.type == .columnList {
@@ -28,7 +29,7 @@ struct BlockTree: View {
                 )
                 if showsChildren {
                     let children = model.children(of: block.id)
-                    if !children.isEmpty || block.type == .toggle {
+                    if !children.isEmpty || block.type == .toggle || block.isSyncedOriginal {
                         VStack(alignment: .leading, spacing: 6) {
                             if children.isEmpty {
                                 emptyTogglePlaceholder
@@ -44,12 +45,19 @@ struct BlockTree: View {
                             }
                         }
                         .padding(.leading, 26)
+                        .environment(\.syncedChain, block.isSyncedOriginal ? syncedChain.union([block.id]) : syncedChain)
                     }
                 }
             }
             .background {
                 if isSelected, !insideSelection {
                     BlockSelectionHighlight()
+                }
+            }
+            .overlay {
+                // Оригинал синхронного блока в рамке: всё внутри видно и в его копиях.
+                if block.isSyncedOriginal {
+                    SyncedFrame()
                 }
             }
         }
