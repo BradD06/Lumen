@@ -78,7 +78,9 @@ struct MarkdownPasteTests {
     @Test func differenceFindsInsertedText() {
         let change = MarkdownPaste.difference(old: "начало конец", new: "начало # A\n- b конец")
         #expect(change.prefix == "начало ")
-        #expect(change.inserted == "# A\n- b")
-        #expect(change.suffix == " конец")
+        // Пробел перед «конец» мог быть и в вставке, и после неё: вставка отдаёт его тексту за курсором.
+        #expect(change.inserted.trimmingCharacters(in: .whitespaces) == "# A\n- b")
+        #expect(change.suffix.hasSuffix("конец"))
+        #expect(change.prefix + change.inserted + change.suffix == "начало # A\n- b конец")
     }
 }
