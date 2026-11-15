@@ -64,6 +64,8 @@ public enum PropertyType: String, Codable, Sendable, CaseIterable, Identifiable 
     case checkbox
     /// Ссылка на другую страницу Lumen.
     case page
+    /// Считается из других колонок строки (`PropertyDefinition.formula`, см. `Formula`).
+    case formula
 
     public var id: String { rawValue }
 
@@ -77,6 +79,7 @@ public enum PropertyType: String, Codable, Sendable, CaseIterable, Identifiable 
         case .date: "Дата"
         case .checkbox: "Флажок"
         case .page: "Ссылка на страницу"
+        case .formula: "Формула"
         }
     }
 
@@ -91,6 +94,7 @@ public enum PropertyType: String, Codable, Sendable, CaseIterable, Identifiable 
         case .date: "calendar"
         case .checkbox: "checkmark.square"
         case .page: "arrow.up.right.square"
+        case .formula: "function"
         }
     }
 
@@ -123,12 +127,15 @@ public struct PropertyDefinition: Identifiable, Hashable, Codable, Sendable {
     public var name: String
     public var type: PropertyType
     public var options: [SelectOption]
+    /// Текст формулы для колонки «Формула», например `{Цена} * {Количество}`.
+    public var formula: String?
 
-    public init(id: UUID = UUID(), name: String, type: PropertyType, options: [SelectOption] = []) {
+    public init(id: UUID = UUID(), name: String, type: PropertyType, options: [SelectOption] = [], formula: String? = nil) {
         self.id = id
         self.name = name
         self.type = type
         self.options = options
+        self.formula = formula
     }
 
     public func option(_ id: UUID?) -> SelectOption? {
@@ -341,6 +348,7 @@ public struct DataFilter: Identifiable, Hashable, Codable, Sendable {
             case .status: [.equals, .notEquals, .isDone, .isNotDone, .isEmpty, .isNotEmpty]
             case .checkbox: [.equals]
             case .page: [.equals, .notEquals, .isEmpty, .isNotEmpty]
+            case .formula: [.equals, .notEquals, .contains, .notContains, .less, .lessOrEqual, .greater, .greaterOrEqual, .isEmpty, .isNotEmpty]
             }
         }
     }
@@ -458,6 +466,8 @@ public struct DataGroup: Identifiable, Hashable, Sendable {
 public enum DataQuery {
     /// Строки представления: отфильтрованные и отсортированные.
     public static func rows(_ rows: [DataRow], in table: DataTable, view: DataView, today: DayDate = .today()) -> [DataRow] {
+        // Сначала формулы: по ним тоже фильтруют и сортируют.
+        let rows = Formula.computed(rows, in: table, today: today)
         let filtered = rows.filter { row in
             view.filters.allSatisfy { matches(row, $0, in: table, today: today) }
         }
@@ -476,6 +486,19 @@ public enum DataQuery {
         var target = filter.value
         if let days = filter.relativeDays {
             target = .date(today.adding(days: days))
+        }
+        // У формулы значение вводят текстом: «10» сравнивается с числом, «да» с флажком.
+        if property?.type == .formula, let text = target?.text {
+            switch value {
+            case .number?:
+                if let number = Double(text.replacingOccurrences(of: ",", with: ".")) { target = .number(number) }
+            case .checkbox?:
+                target = .checkbox(["да", "true", "1", "✓"].contains(text.lowercased()))
+            case .date?:
+                if let day = DayDate(string: text) { target = .date(day) }
+            default:
+                break
+            }
         }
 
         switch filter.op {
@@ -640,7 +663,8 @@ public enum DataQuery {
     public static func presetValues(for view: DataView, in table: DataTable, group: DataGroup? = nil, day: DayDate? = nil, today: DayDate = .today()) -> PropertyValues {
         var values = PropertyValues()
         for filter in view.filters {
-            guard let property = table.property(filter.propertyId) else { continue }
+            // Формулу считает сама база, задавать ей значение незачем.
+            guard let property = table.property(filter.propertyId), property.type != .formula else { continue }
             switch filter.op {
             case .equals:
                 if let value = filter.value { values[property.id] = value }
