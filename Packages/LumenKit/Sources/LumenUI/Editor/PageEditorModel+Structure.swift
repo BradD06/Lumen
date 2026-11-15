@@ -20,8 +20,25 @@ extension PageEditorModel {
     }
 
     func canOutdent(_ id: UUID) -> Bool {
-        guard let block = findBlock(id) else { return false }
-        return isNested(block)
+        outdentAnchor(of: id) != nil
+    }
+
+    /// Ряд колонок, в колонке которого блок лежит прямо. `nil`, если блок не в колонке.
+    func columnRow(of id: UUID) -> Block? {
+        guard let block = findBlock(id), let column = findBlock(block.parentBlockId), column.type == .column else {
+            return nil
+        }
+        return findBlock(column.parentBlockId)
+    }
+
+    /// За чем блок встанет после ⇧Tab: за бывшим родителем, а из колонки за всем рядом колонок
+    /// (так блок выходит из колонки на всю ширину листа, как в Notion).
+    func outdentAnchor(of id: UUID) -> Block? {
+        guard let block = findBlock(id) else { return nil }
+        if isNested(block) {
+            return findBlock(block.parentBlockId)
+        }
+        return columnRow(of: id)
     }
 
     /// Tab: блок становится последним ребёнком предыдущего соседа.
@@ -49,17 +66,27 @@ extension PageEditorModel {
     }
 
     func outdent(_ id: UUID, recording: Bool) {
-        guard let block = findBlock(id), isNested(block), let parent = self.findBlock(block.parentBlockId) else { return }
+        guard let anchor = outdentAnchor(of: id) else { return }
         if recording {
             recordUndo()
         }
-        let key = sortKey(in: parent.parentBlockId, after: parent.id)
+        let key = sortKey(in: anchor.parentBlockId, after: anchor.id, excluding: id)
         update(id) {
-            $0.parentBlockId = parent.parentBlockId
+            $0.parentBlockId = anchor.parentBlockId
             $0.sortKey = key
         }
         reorder()
+        // Опустевшая колонка исчезает, ряд из одной колонки снова становится обычными блоками.
+        if anchor.type == .columnList {
+            normalizeColumns()
+        }
         focusRequest = id
+    }
+
+    /// Пункт меню «Вынести из колонки»: блок встаёт под рядом колонок на всю ширину листа.
+    func moveOutOfColumn(_ id: UUID) {
+        guard columnRow(of: id) != nil else { return }
+        outdent(id)
     }
 
     // MARK: Перемещение

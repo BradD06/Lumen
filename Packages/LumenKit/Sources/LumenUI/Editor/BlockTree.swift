@@ -1,6 +1,7 @@
 import LumenCore
 import LumenThemes
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Блок вместе с вложенными блоками. Ряд колонок рисуется отдельно, колонки стоят рядом.
 struct BlockTree: View {
@@ -115,6 +116,26 @@ struct ColumnsView: View {
     }
 
     var body: some View {
+        columnsBody
+            // Полосы над и под рядом: брошенный туда блок выходит из колонок на всю ширину листа.
+            .overlay(alignment: .top) {
+                RowEdgeDropZone(row: row, zone: .before, model: model)
+                    .frame(height: Self.blockSpacing)
+                    .offset(y: -Self.blockSpacing)
+            }
+            .overlay(alignment: .bottom) {
+                RowEdgeDropZone(row: row, zone: .after, model: model)
+                    .frame(height: Self.bottomDropHeight)
+                    .offset(y: Self.bottomDropHeight)
+            }
+    }
+
+    /// Высота полосы под рядом: следующий блок лежит поверх неё, так что она ловит
+    /// только промежуток и пустое место в конце листа.
+    static let bottomDropHeight: CGFloat = 28
+
+    @ViewBuilder
+    private var columnsBody: some View {
         let columns = model.children(of: row.id)
         if isCompact {
             VStack(alignment: .leading, spacing: 6) {
@@ -198,6 +219,82 @@ struct ColumnsView: View {
                         dragStart = nil
                     }
             )
+    }
+}
+
+/// Невидимая полоса у края ряда колонок, куда можно бросить блок: он встанет над рядом
+/// или под ним на всю ширину листа. Пока над ней блок, видна линия, как у обычных строк.
+private struct RowEdgeDropZone: View {
+    let row: Block
+    let zone: BlockDropZone
+    let model: PageEditorModel
+
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .overlay(alignment: zone == .before ? .center : .top) {
+                if model.dropIndicator == DropIndicator(blockId: row.id, zone: zone) {
+                    Capsule().fill(theme.accent).frame(height: 3)
+                }
+            }
+            .onDrop(of: [.lumenBlock], delegate: RowEdgeDropDelegate(rowId: row.id, zone: zone, model: model))
+            .accessibilityHidden(true)
+    }
+}
+
+/// Приём блока на полосе у ряда колонок.
+private struct RowEdgeDropDelegate: DropDelegate {
+    let rowId: UUID
+    let zone: BlockDropZone
+    let model: PageEditorModel
+
+    func validateDrop(info: DropInfo) -> Bool {
+        model.draggingBlockId != nil || info.hasItemsConforming(to: [.lumenBlock])
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        let indicator = DropIndicator(blockId: rowId, zone: zone)
+        if model.dropIndicator != indicator {
+            model.dropIndicator = indicator
+        }
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        if model.dropIndicator?.blockId == rowId {
+            model.dropIndicator = nil
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        model.dropIndicator = nil
+        let after = zone != .before
+        if let dragged = model.draggingBlockId {
+            model.draggingBlockId = nil
+            Self.apply(dragged, rowId: rowId, after: after, in: model)
+            return true
+        }
+        guard let provider = info.itemProviders(for: [.lumenBlock]).first else { return false }
+        let rowId = rowId
+        let model = model
+        _ = provider.loadTransferable(type: BlockDragItem.self) { result in
+            guard case .success(let item) = result else { return }
+            Task { @MainActor in
+                Self.apply(item.blockId, rowId: rowId, after: after, in: model)
+            }
+        }
+        return true
+    }
+
+    @MainActor
+    private static func apply(_ id: UUID, rowId: UUID, after: Bool, in model: PageEditorModel) {
+        if model.isSelected(id), model.selectionRoots.count > 1 {
+            model.moveBlocks(model.selectionRoots, nextTo: rowId, after: after)
+        } else {
+            model.moveBlock(id, nextTo: rowId, after: after)
+        }
     }
 }
 

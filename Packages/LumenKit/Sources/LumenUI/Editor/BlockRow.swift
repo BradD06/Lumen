@@ -66,7 +66,6 @@ struct BlockRow: View {
             }
         }
         .padding(.vertical, verticalPadding)
-        .overlay(alignment: .topLeading) { addButton }
         #if os(macOS)
         // Панель оформления рисует сам редактор поверх всех строк (PageEditorView): внутри строки
         // она висела бы за её границей, и клики уходили бы в блок выше.
@@ -258,7 +257,13 @@ struct BlockRow: View {
                     Label("Вложить в блок выше", systemImage: "increase.indent")
                 }
             }
-            if model.canOutdent(block.id) {
+            if model.columnRow(of: block.id) != nil {
+                Button {
+                    model.moveOutOfColumn(block.id)
+                } label: {
+                    Label("Вынести из колонки на всю ширину", systemImage: "rectangle")
+                }
+            } else if model.canOutdent(block.id) {
                 Button {
                     model.outdent(block.id)
                 } label: {
@@ -485,29 +490,6 @@ struct BlockRow: View {
             .help("Перетащите, чтобы переместить блок. Нажмите, чтобы выделить")
             .accessibilityLabel("Переместить блок")
             .accessibilityIdentifier("handle-\(block.text)")
-    }
-
-    /// «+» слева от ручки на Mac: новый пустой блок сразу под этим.
-    @ViewBuilder
-    private var addButton: some View {
-        #if os(macOS)
-        if isHovered, model.draggingBlockId == nil {
-            Button {
-                model.addBlock(below: block.id)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(theme.textSecondary)
-                    .frame(width: 20, height: 22)
-                    .background(theme.textPrimary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .offset(x: -24, y: 1)
-            .help("Добавить блок ниже. Или нажмите «/» в пустой строке")
-            .accessibilityLabel("Добавить блок ниже")
-        }
-        #endif
     }
 
     private var handleOpacity: Double {

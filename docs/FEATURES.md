@@ -49,7 +49,7 @@
 | Markdown-сокращения при наборе (`#`, `-`, `1.`, `[]`, `>`, ```` ``` ````, `---`) | все | `LumenCore/MarkdownShortcut.swift` |
 | Оформление текста: жирный, курсив, подчёркнутый, зачёркнутый, код, ссылка; плавающая панель; ⌘B ⌘I ⌘U ⇧⌘X ⌘E; «Формат» в меню правой кнопки | все (на iPhone/iPad панель над клавиатурой) | `LumenCore/InlineMarkup.swift`, `Editor/FormatBar.swift`, `PageEditorModel+Format.swift` |
 | Цвет текста и фона блока | все | `Editor/BlockColors.swift` |
-| Вложенность Tab / ⇧Tab, перетаскивание блоков, колонки (бросить блок рядом) | все | `Editor/BlockTree.swift`, `PageEditorModel+Structure.swift` |
+| Вложенность Tab / ⇧Tab, перетаскивание блоков, колонки (бросить блок рядом); вынести блок из колонки на всю ширину: перетащить над или под ряд колонок, ⇧Tab или меню блока | все | `Editor/BlockTree.swift`, `PageEditorModel+Structure.swift` |
 | Отмена и повтор (⌘Z / ⇧⌘Z), дублировать (⌘D), сохранение пачками | все | `Editor/PageEditorModel.swift` |
 | Выделение нескольких блоков: рамка мышью (Mac), ручки с ⇧/⌘, Esc, ⌘A дважды; удалить, копировать, вырезать, вставить, дублировать, переместить (⌥⌘↑↓), вложить, превратить, цвет | все (рамка только Mac) | `LumenCore/BlockSelection.swift`, `Editor/BlockSelectionViews.swift`, `PageEditorModel+Selection.swift`, `BlockPasteboard.swift` |
 | Меню блока (правая кнопка / два пальца): добавить ниже, превратить, цвет, скопировать текст, «в Задачи на сегодня», переместить, удалить | все | `Editor/BlockRow.swift` (`menu`) |
