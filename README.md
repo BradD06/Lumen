@@ -22,7 +22,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 ## Features
 
 ### ✍️ Block notes
-- A block editor with paragraphs, headings, lists, to-dos, quotes, callouts, code blocks with syntax highlighting, dividers, images and toggles.
+- A block editor with paragraphs, headings, lists, to-dos, quotes, callouts, code blocks with syntax highlighting (colors appear while you type), dividers, images and toggles.
 - Notes are written on A4 sheets, not on an endless page. When a sheet is full, "Add sheet" under it starts the next one; a note that has outgrown its sheet (for example, from an older version) is laid out on sheets with one button. Each sheet has a menu to move it up or down, join it with the sheet above, delete it or pin it to the shelf. On a wide screen, sheet thumbnails on the left jump to any sheet; in the notes beside a book, sheet numbers and a + sit in the panel header.
 - Markdown shortcuts (`#`, `-`, `1.`, `[]`, `>`, ```` ``` ````, `---`) and a `/` command menu.
 - Nested blocks with Tab / ⇧Tab, drag-and-drop reordering, and columns: drop a block next to another one to place them side by side.
