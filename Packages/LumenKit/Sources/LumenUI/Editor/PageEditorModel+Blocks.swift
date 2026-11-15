@@ -39,6 +39,7 @@ extension PageEditorModel {
         guard let block = findBlock(id) else { return }
 
         if newText.contains("\n"), block.type != .code {
+            if pasteMarkdown(id, old: block.text, new: newText) { return }
             recordUndo()
             split(id, text: newText)
             return
@@ -75,6 +76,10 @@ extension PageEditorModel {
     /// сохраняется при наборе. Текст без оформления идёт обычным путём с Markdown-сокращениями.
     func updateMarkup(_ id: UUID, to source: String) {
         guard let block = findBlock(id) else { return }
+        if source.contains("\n"), block.type != .code,
+           pasteMarkdown(id, old: InlineMarkup.source(block.content.runs), new: source) {
+            return
+        }
         let runs = InlineMarkup.runs(from: source)
         guard block.type != .code, InlineMarkup.hasFormatting(runs) || InlineMarkup.hasFormatting(block.content.runs) else {
             updateText(id, to: InlineMarkup.parse(source).plainText)
