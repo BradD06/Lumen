@@ -38,7 +38,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Page templates: an empty page offers ready starts (lecture notes, book notes, week plan, journal, meeting) and your own templates; «Ещё» → «Сохранить как шаблон» turns any page into one. Your templates sync between devices.
 - Synced blocks (`/synced` or «/синхронный», or «Сделать синхронным» on selected blocks): copy one and paste it on other pages, and an edit in any copy shows up everywhere. A copy can be unlinked into ordinary blocks, and cutting the original moves it without breaking its copies.
 - Resize images with handles: the right edge changes the width, the bottom edge the height (the photo fills the frame and crops neatly), the corner both. Ready sizes (full width, half, a third, square, wide strip) are in the image's right-click menu, and PDF export keeps them.
-- A tidy right-click (two-finger tap) menu on every block: add a block below, turn into, color, copy text, send to today's tasks, move, delete. A `+` next to the drag handle adds a block on the Mac.
+- A tidy right-click (two-finger tap) menu on every block: add a block below, turn into, color, copy text, send to today's tasks, move, delete.
 - Breadcrumbs above the title, a "Saved" indicator, a word count (each can be turned off), and a focus mode (⇧⌘F) that hides everything except the paragraph you are writing, with a 25-minute study timer that reminds you to take a break.
 - Hover over an excerpt to preview the book and the place it came from. Hover over a link to a page (or long-press it on iPhone) to see how that page starts, then open it here or beside the current one.
 - On iPhone, a keyboard bar (new block, indent, move, hide keyboard) and block-type chips above it.
