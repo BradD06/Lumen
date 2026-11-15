@@ -7,6 +7,7 @@ Lumen is a native notes app for Mac, iPhone and iPad (Swift 6, SwiftUI, iOS 18+ 
 ## Working rules (from the owner)
 
 - `AGENTS.md` in the repo root is a symlink to this file, so Codex and other agents read the same rules. Edit only this file.
+- **Before planning any feature, read `docs/FEATURES.md`**: the list of what already exists in the app, checked against the code, with platform and file for each. Don't rebuild what is there; when your PR adds a user-visible feature, add its line there too.
 - **Talk to the owner in Russian, simply.** They are new to git and PRs: say what changed for them in the app, not in git terms, and give exact steps when they have to do something.
 - **Nothing goes to `main` without the owner.** Work on your own branch, open a PR, let the owner merge it.
 - **Commits and PRs carry no AI attribution** (the repo is public). Commit as the owner:
