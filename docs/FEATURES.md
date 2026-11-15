@@ -14,7 +14,6 @@
 
 | Часть | Что | Статус |
 |---|---|---|
-| 8б | Шаблоны страниц | готовится |
 | 8в | Синхронные блоки (один блок в нескольких местах) | готовится |
 | 8г | Формулы в базах данных | готовится |
 
@@ -67,6 +66,7 @@
 | Вложения: «Файл» (Quick Look), PDF прямо на странице, видео, аудио, закладка сайта; картинка из «Файла» становится «Картинкой»; PDF и книги открываются «В читалке» (в библиотеку один раз) | все | `Editor/AttachmentBlocks.swift`, `PageEditorModel+Attachments.swift`, `LumenCore/Attachment.swift` |
 | Комментарии к любому блоку (меню блока → «Комментарий» или ⇧⌘M): значок с числом открытых, изменить, решить, удалить; текст комментариев ищется | все | `Editor/BlockComments.swift`, `PageEditorModel+Comments.swift`, `LumenCore/BlockComment.swift` |
 | История версий страницы («Ещё» → «История версий…»): снимок раз в десять минут правки, хранится только на этом устройстве (таблица `pageVersion`), просмотр версии и возврат в один клик, ⌘Z отменяет возврат | все | `Editor/PageHistorySheet.swift`, `LumenStorage/PageVersionRepository.swift`, `LumenCore/PageVersionPolicy.swift` |
+| Шаблоны страниц: пустая страница предлагает встроенные (конспект лекции, конспект книги, план недели, дневник, встреча) и свои; «Ещё» → «Сохранить как шаблон»; свои шаблоны синхронизируются (таблица `pageTemplate`) | все | `Editor/TemplateSuggestions.swift`, `PageEditorModel+Templates.swift`, `LumenCore/PageTemplate.swift`, `LumenStorage/PageTemplateRepository.swift` |
 | Таблица на странице: Tab / Return, ширина столбцов, строка и столбец заголовков, меню ячейки | все | `Editor/TableBlock.swift`, `PageEditorModel+Table.swift`, `LumenCore/TableData.swift` |
 | База данных на странице: новая, «Задачи» или существующая, все виды; «Открыть» на весь экран | все | `Editor/DatabaseBlock.swift` |
 | Вставка Markdown раскладывается по блокам (заголовки, списки, задачи, цитаты, код, разделители, таблицы) | все | `LumenCore/MarkdownPaste.swift`, `PageEditorModel+Paste.swift` |
