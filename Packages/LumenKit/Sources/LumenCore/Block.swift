@@ -84,6 +84,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
     public var file: FileAttachment?
     /// Адрес и превью блока «Закладка».
     public var bookmark: WebBookmark?
+    /// Комментарии к блоку по порядку. `nil` у блока без комментариев.
+    public var comments: [BlockComment]?
 
     public init(
         runs: [TextRun] = [],
@@ -106,7 +108,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
         sheetBackgrounds: [SheetBackground?]? = nil,
         table: TableData? = nil,
         file: FileAttachment? = nil,
-        bookmark: WebBookmark? = nil
+        bookmark: WebBookmark? = nil,
+        comments: [BlockComment]? = nil
     ) {
         self.runs = runs
         self.isChecked = isChecked
@@ -129,6 +132,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         self.table = table
         self.file = file
         self.bookmark = bookmark
+        self.comments = comments
     }
 
     public init(text: String, isChecked: Bool = false) {
@@ -142,7 +146,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         set { runs = newValue.isEmpty ? [] : [TextRun(newValue)] }
     }
 
-    /// Текст для поиска: сам текст блока, ячейки таблицы, имя файла, название и адрес закладки.
+    /// Текст для поиска: сам текст блока, ячейки таблицы, имя файла, название и адрес закладки, комментарии.
     public var searchText: String {
         var parts = [text]
         if let table { parts.append(table.plainText) }
@@ -150,12 +154,13 @@ public struct BlockContent: Hashable, Codable, Sendable {
         if let bookmark {
             parts += [bookmark.title, bookmark.summary, bookmark.url].compactMap { $0 }
         }
+        if let comments { parts += comments.map(\.text) }
         return parts.filter { !$0.isEmpty }.joined(separator: "\n")
     }
 
     private enum CodingKeys: String, CodingKey {
         case runs, isChecked, pageId, attachment, imageWidth, imageAspect, isCollapsed, textColor, backgroundColor, columnWidth, excerpt
-        case drawingHeight, drawingWidth, sheetCount, paper, paperTone, items, sheetBackgrounds, table, file, bookmark
+        case drawingHeight, drawingWidth, sheetCount, paper, paperTone, items, sheetBackgrounds, table, file, bookmark, comments
     }
 
     public init(from decoder: any Decoder) throws {
@@ -185,6 +190,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         table = try? container.decodeIfPresent(TableData.self, forKey: .table)
         file = try? container.decodeIfPresent(FileAttachment.self, forKey: .file)
         bookmark = try? container.decodeIfPresent(WebBookmark.self, forKey: .bookmark)
+        comments = try? container.decodeIfPresent([BlockComment].self, forKey: .comments)
     }
 
     /// Элемент тетради, который не ломает чтение остальных, если сам не читается.
