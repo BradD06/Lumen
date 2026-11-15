@@ -214,6 +214,8 @@ struct PropertyValueEditor: View {
             .buttonStyle(.plain)
         case .page:
             pageMenu
+        case .formula:
+            FormulaValueView(value: value)
         }
     }
 

@@ -77,6 +77,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 
 ### ✅ Tasks and databases
 - Notion-like databases with table, board, calendar and list views.
+- Formula columns: compute a value from the other columns of the row, like `{Price} * {Count}`, `if({Done}, "✓", "")` or the days left until a deadline. Formulas understand Russian words too («если», «и», «сегодня»), show a live check on the first row while you write them, and can be filtered and sorted like any column.
 - Typed properties, filters and sorting.
 - A ready-made task tracker with Today, Board, All tasks and Calendar views.
 

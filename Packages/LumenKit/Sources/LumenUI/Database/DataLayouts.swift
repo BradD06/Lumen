@@ -446,7 +446,7 @@ private struct GroupByHint: View {
             Text("Доске нужно свойство, по которому раскладывать карточки: выбор, статус или флажок.")
                 .foregroundStyle(theme.textSecondary)
             if candidates.isEmpty {
-                Button("Добавить свойство «Статус»") { model.addProperty(.status) }
+                Button("Добавить свойство «Статус»") { _ = model.addProperty(.status) }
                     .buttonStyle(.borderedProminent)
             } else {
                 Menu("Группировать по…") {
@@ -628,7 +628,7 @@ struct DataCalendarView: View {
             Text("Календарю нужно свойство-дата, по которому ставить записи в дни.")
                 .foregroundStyle(theme.textSecondary)
             if candidates.isEmpty {
-                Button("Добавить свойство «Дата»") { model.addProperty(.date) }
+                Button("Добавить свойство «Дата»") { _ = model.addProperty(.date) }
                     .buttonStyle(.borderedProminent)
             } else {
                 Menu("Показывать по дате…") {

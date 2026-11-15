@@ -195,10 +195,12 @@ final class DataTableModel {
         }
     }
 
-    func addProperty(_ type: PropertyType) {
-        guard let table else { return }
+    @discardableResult
+    func addProperty(_ type: PropertyType) -> PropertyDefinition? {
+        guard let table else { return nil }
         let property = PropertyDefinition(name: Self.uniqueName(type.title, among: table.properties.map(\.name)), type: type)
         updateTable { $0.properties.append(property) }
+        return property
     }
 
     func updateProperty(_ propertyId: UUID, _ change: @escaping @Sendable (inout PropertyDefinition) -> Void) {

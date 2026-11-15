@@ -296,6 +296,7 @@ struct PropertyHeaderMenu<Label: View>: View {
 
     @State private var isRenaming = false
     @State private var isAddingOption = false
+    @State private var isEditingFormula = false
     @State private var name = ""
 
     var body: some View {
@@ -306,9 +307,19 @@ struct PropertyHeaderMenu<Label: View>: View {
             } label: {
                 SwiftUI.Label("Переименовать", systemImage: "pencil")
             }
+            if property.type == .formula {
+                Button {
+                    isEditingFormula = true
+                } label: {
+                    SwiftUI.Label("Изменить формулу…", systemImage: "function")
+                }
+            }
             Picker(selection: Binding(
                 get: { property.type },
-                set: { type in model.updateProperty(property.id) { $0.type = type } }
+                set: { type in
+                    model.updateProperty(property.id) { $0.type = type }
+                    if type == .formula, property.formula == nil { isEditingFormula = true }
+                }
             )) {
                 ForEach(PropertyType.allCases) { type in
                     SwiftUI.Label(type.title, systemImage: type.symbolName).tag(type)
@@ -381,6 +392,11 @@ struct PropertyHeaderMenu<Label: View>: View {
             }
             Button("Отмена", role: .cancel) { name = "" }
         }
+        .sheet(isPresented: $isEditingFormula) {
+            FormulaEditorSheet(model: model, property: model.table?.property(property.id) ?? property) {
+                isEditingFormula = false
+            }
+        }
     }
 }
 
@@ -428,11 +444,15 @@ struct AddPropertyMenu<Label: View>: View {
     let model: DataTableModel
     @ViewBuilder var label: () -> Label
 
+    /// Новая колонка-формула: сразу окно, где её пишут.
+    @State private var newFormula: PropertyDefinition?
+
     var body: some View {
         Menu {
             ForEach(PropertyType.allCases) { type in
                 Button {
-                    model.addProperty(type)
+                    let property = model.addProperty(type)
+                    if type == .formula { newFormula = property }
                 } label: {
                     SwiftUI.Label(type.title, systemImage: type.symbolName)
                 }
@@ -445,6 +465,11 @@ struct AddPropertyMenu<Label: View>: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help("Новое свойство")
+        .sheet(item: $newFormula) { property in
+            FormulaEditorSheet(model: model, property: property) {
+                newFormula = nil
+            }
+        }
     }
 }
 
@@ -606,7 +631,7 @@ private struct FilterRow: View {
     @ViewBuilder
     private func valueControl(_ property: PropertyDefinition?) -> some View {
         switch property?.type {
-        case nil, .text, .number:
+        case nil, .text, .number, .formula:
             CommitTextField(placeholder: "Значение", text: filterText) { text in
                 let value: PropertyValue? = if property?.type == .number {
                     NumberText.parse(text).map(PropertyValue.number)
@@ -769,7 +794,9 @@ struct RowPropertiesPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let table = snapshot.table, let row = snapshot.row {
+            if let table = snapshot.table, let stored = snapshot.row {
+                // Формулы считаются на лету, как и в таблице.
+                let row = Formula.computed([stored], in: table).first ?? stored
                 ForEach(table.properties) { property in
                     HStack(alignment: .center, spacing: 12) {
                         Label(property.name, systemImage: property.type.symbolName)
