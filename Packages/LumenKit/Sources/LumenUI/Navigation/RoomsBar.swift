@@ -4,7 +4,7 @@ import LumenThemes
 import SwiftUI
 
 /// Комнаты сверху: стеклянная капсула с комнатами вместо боковой панели, открытая комната
-/// залита латунью. Стол, полка, доска, записки, дела, архив. Справа поиск «Найти в кабинете…» и настройки.
+/// залита латунью. Стол, полка, записки, дела, архив. Справа поиск «Найти в кабинете…» и настройки.
 struct RoomsBar: View {
     let database: AppDatabase
     let selection: SidebarItem?
@@ -155,7 +155,7 @@ struct RoomsBar: View {
 
 /// Комнаты «Кабинета». Книги и страницы открыты поверх, ни одна табличка тогда не горит.
 enum StudyRoom: String, CaseIterable, Identifiable {
-    case desk, shelf, board, notes, tasks, archive
+    case desk, shelf, notes, tasks, archive
 
     var id: String { rawValue }
 
@@ -163,7 +163,6 @@ enum StudyRoom: String, CaseIterable, Identifiable {
         switch self {
         case .desk: "Стол"
         case .shelf: "Полка"
-        case .board: "Доска"
         case .notes: "Записки"
         case .tasks: "Дела"
         case .archive: "Архив"
@@ -174,7 +173,6 @@ enum StudyRoom: String, CaseIterable, Identifiable {
         switch self {
         case .desk: "Стол: что читаю, дела на сегодня, записки"
         case .shelf: "Полка: книги, тетради, страницы и папки"
-        case .board: "Доска: книги, папки и листы, связанные красной ниткой"
         case .notes: "Записки: быстрые заметки, которые ещё не разобраны"
         case .tasks: "Дела: задачи, доска и календарь"
         case .archive: "Архив: удалённое, хранится 30 дней"
@@ -185,7 +183,6 @@ enum StudyRoom: String, CaseIterable, Identifiable {
         switch self {
         case .desk: .home
         case .shelf: .library(nil)
-        case .board: .board
         case .notes: .inbox
         case .tasks: .tasks
         case .archive: .trash
@@ -195,7 +192,7 @@ enum StudyRoom: String, CaseIterable, Identifiable {
     /// Горит ли табличка, когда открыто `selection`.
     func contains(_ selection: SidebarItem?) -> Bool {
         switch (self, selection) {
-        case (.desk, .home), (.desk, nil), (.shelf, .library), (.shelf, .reading), (.board, .board), (.notes, .inbox), (.tasks, .tasks), (.archive, .trash): true
+        case (.desk, .home), (.desk, nil), (.shelf, .library), (.shelf, .reading), (.notes, .inbox), (.tasks, .tasks), (.archive, .trash): true
         default: false
         }
     }
@@ -205,7 +202,7 @@ enum StudyRoom: String, CaseIterable, Identifiable {
         switch self {
         case .notes: snapshot.inboxCount
         case .archive: snapshot.trashCount
-        case .desk, .shelf, .board, .tasks: 0
+        case .desk, .shelf, .tasks: 0
         }
     }
 }

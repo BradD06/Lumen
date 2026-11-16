@@ -16,8 +16,6 @@ enum PhoneRoute: Hashable {
     case folder(UUID)
     case inbox
     case trash
-    /// Доска связей, открывается с полки.
-    case board
     /// «Чтение»: время по всем книгам, открывается с полки и со стола.
     case reading
 }
@@ -82,7 +80,6 @@ struct PhoneRootView: View {
                     library(folderId: nil)
                         .toolbar {
                             readingButton
-                            boardButton
                         }
                 }
             }
@@ -152,18 +149,7 @@ struct PhoneRootView: View {
             .padding(.bottom, 16)
     }
 
-    /// Доска связей на iPhone живёт на полке: отдельной вкладке внизу нет места.
-    private var boardButton: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                push(.board)
-            } label: {
-                Label("Доска связей", systemImage: "pin")
-            }
-        }
-    }
-
-    /// «Чтение» на iPhone тоже на полке, рядом с доской.
+    /// «Чтение» на iPhone живёт на полке: отдельной вкладке внизу нет места.
     private var readingButton: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             Button {
@@ -238,8 +224,6 @@ struct PhoneRootView: View {
             InboxView(database: database, onOpen: { push(.page($0)) }, onNewNote: newQuickNote)
         case .trash:
             TrashView(database: database)
-        case .board:
-            LinkBoardView(database: database)
         case .reading:
             ReadingOverviewView(database: database, onOpenSource: { push(.sourceInfo($0)) })
         }
@@ -314,9 +298,6 @@ struct PhoneRootView: View {
             tab = .tasks
             return
         case .trash: route = .trash
-        case .board:
-            tab = .library
-            route = .board
         case .reading:
             route = .reading
         }

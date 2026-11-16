@@ -96,7 +96,14 @@ final class ReaderModel {
     /// Короткое сообщение внизу экрана, например «Выписка добавлена в заметки».
     var toast: String?
     /// Оглавление: из файла, из закладок PDF или из заголовков открытого документа.
-    private(set) var toc: [TocEntry] = []
+    private(set) var toc: [TocEntry] = [] {
+        didSet { chapters = TocEntry.chapters(in: toc) }
+    }
+    /// Главы для полосы внизу: верхний уровень оглавления, а не файлы книги.
+    /// В EPUB файлов больше, чем глав: обложка, титул, глава, разрезанная на куски.
+    private(set) var chapters: [TocEntry] = []
+    /// Сколько текста в каждом файле книги: по нему считается, сколько прочитано.
+    private(set) var readingScale: ReadingScale?
     /// Последний пройденный якорь оглавления в открытой главе.
     private(set) var currentAnchor: String?
 
@@ -321,6 +328,7 @@ final class ReaderModel {
         }
         loadedSection = nil
         toc = []
+        readingScale = nil
         currentAnchor = nil
         if hasOriginalMode, documentMode == .original, source.format != .pdf {
             content = .quickLook(url)
@@ -376,6 +384,12 @@ final class ReaderModel {
                 content = .web(prepared)
                 section = min(section, max(prepared.document.sections.count - 1, 0))
                 restorePosition()
+                // Книга открывается сразу, а вес глав досчитывается следом (до него главы считаются равными).
+                Task { [weak self] in
+                    let scale = await Self.measure(prepared)
+                    guard let self, case .web(let current) = self.content, current == prepared else { return }
+                    self.readingScale = scale
+                }
             } catch {
                 // То, что не удалось перевести в текст, хотя бы покажет системный просмотр.
                 content = .quickLook(url)
@@ -422,6 +436,14 @@ final class ReaderModel {
 
     // MARK: Навигация
 
+    /// Вес файлов книги считается в фоне: это чтение всех глав с диска.
+    private static func measure(_ prepared: PreparedDocument) async -> ReadingScale? {
+        guard prepared.document.sections.count > 1 else { return nil }
+        return await Task.detached(priority: .userInitiated) {
+            ReadingScale(weights: ReadingScale.weights(of: prepared))
+        }.value
+    }
+
     /// Оглавление книги. Если своего нет, а глав несколько, пунктами становятся главы.
     private static func toc(for document: ReadableDocument) -> [TocEntry] {
         if !document.toc.isEmpty { return document.toc }
@@ -431,18 +453,88 @@ final class ReaderModel {
 
     /// Пункт оглавления, в котором сейчас читатель: последний, до которого уже дочитали.
     var currentTocEntry: TocEntry? {
+        lastPassed(in: toc).map { toc[$0] }
+    }
+
+    /// Номер главы, в которой сейчас читатель, в `chapters`. `nil`, пока первая глава не началась
+    /// (например, на обложке).
+    var currentChapterIndex: Int? {
+        lastPassed(in: chapters)
+    }
+
+    /// Последний пункт из `entries`, до которого уже дочитали.
+    private func lastPassed(in entries: [TocEntry]) -> Int? {
         if case .pdf = content {
-            return toc.last { $0.section <= section }
+            return entries.lastIndex { $0.section <= section }
         }
-        let passedAnchors: Set<String> = {
-            let anchors = sectionAnchors
-            guard let currentAnchor, let index = anchors.firstIndex(of: currentAnchor) else { return [] }
-            return Set(anchors[...index])
-        }()
-        return toc.last { entry in
+        let passed = passedAnchors
+        return entries.lastIndex { entry in
             entry.section < section
-                || (entry.section == section && (entry.anchor == nil || passedAnchors.contains(entry.anchor!)))
+                || (entry.section == section && (entry.anchor == nil || passed.contains(entry.anchor!)))
         }
+    }
+
+    /// Якоря открытой главы, мимо которых уже прокрутили.
+    private var passedAnchors: Set<String> {
+        let anchors = sectionAnchors
+        guard let currentAnchor, let index = anchors.firstIndex(of: currentAnchor) else { return [] }
+        return Set(anchors[...index])
+    }
+
+    /// К началу предыдущей главы. Если до первой главы ещё не дошли, назад некуда.
+    func openPreviousChapter() {
+        guard !chapters.isEmpty else {
+            openSection(section - 1)
+            return
+        }
+        guard let current = currentChapterIndex, current > 0 else { return }
+        open(chapters[current - 1])
+    }
+
+    /// К началу следующей главы.
+    func openNextChapter() {
+        guard !chapters.isEmpty else {
+            openSection(section + 1)
+            return
+        }
+        let next = (currentChapterIndex ?? -1) + 1
+        guard chapters.indices.contains(next) else { return }
+        open(chapters[next])
+    }
+
+    var canOpenPreviousChapter: Bool {
+        chapters.isEmpty ? section > 0 : (currentChapterIndex ?? 0) > 0
+    }
+
+    var canOpenNextChapter: Bool {
+        chapters.isEmpty ? section < sections.count - 1 : (currentChapterIndex ?? -1) < chapters.count - 1
+    }
+
+    /// Где на полосе прогресса начинается каждая глава, от 0 до 1. Пусто, если глав много или одна.
+    var chapterMarks: [Double] {
+        guard chapters.count > 1, chapters.count <= 30 else { return [] }
+        return chapters.map(startProgress(of:)).filter { $0 > 0.001 && $0 < 0.999 }
+    }
+
+    /// Доля книги в начале пункта оглавления.
+    private func startProgress(of entry: TocEntry) -> Double {
+        switch content {
+        case .web(let prepared):
+            if let index = pdfText {
+                let page = index.page(at: index.global(section: entry.section, offset: 0))
+                return index.pageCount > 1 ? Double(page) / Double(index.pageCount - 1) : 0
+            }
+            return scale(for: prepared).progress(section: entry.section, progression: 0)
+        case .pdf:
+            return pageCount > 1 ? Double(entry.section) / Double(pageCount - 1) : 0
+        default:
+            return 0
+        }
+    }
+
+    private func scale(for prepared: PreparedDocument) -> ReadingScale {
+        if let readingScale, readingScale.weights.count == prepared.document.sections.count { return readingScale }
+        return .even(prepared.document.sections.count)
     }
 
     /// Якоря оглавления в открытой главе, по порядку.
@@ -641,8 +733,7 @@ final class ReaderModel {
                 let page = index.page(at: pdfTextPosition(index))
                 return index.pageCount > 1 ? Double(page) / Double(index.pageCount - 1) : 1
             }
-            let count = max(prepared.document.sections.count, 1)
-            return min((Double(section) + sectionProgression) / Double(count), 1)
+            return scale(for: prepared).progress(section: section, progression: sectionProgression)
         case .pdf:
             return pageCount > 1 ? Double(section) / Double(pageCount - 1) : 1
         default:
@@ -650,16 +741,19 @@ final class ReaderModel {
         }
     }
 
-    /// Подпись текущего места: «Стр. 12 из 300», «Глава 3 из 20 · 45%».
+    /// Подпись текущего места: «Стр. 12 из 300», «Раздел 3 из 20 · 45%».
+    /// Разделы считаются по оглавлению книги, а не по файлам внутри EPUB. «Раздел», а не «Глава»:
+    /// в оглавлении стоят и предисловие, и эпилог, и номер не совпал бы с «Главой 1» в самой книге.
     var positionLabel: String {
         switch content {
         case .web(let prepared):
             if let index = pdfText {
                 return "Стр. \(index.page(at: pdfTextPosition(index)) + 1) из \(index.pageCount)"
             }
-            let count = prepared.document.sections.count
-            let percent = Int((progress * 100).rounded())
-            return count > 1 ? "Глава \(section + 1) из \(count) · \(percent)%" : "\(percent)%"
+            let percent = "\(Int((progress * 100).rounded()))%"
+            guard prepared.document.sections.count > 1, chapters.count > 1,
+                  let current = currentChapterIndex else { return percent }
+            return "Раздел \(current + 1) из \(chapters.count) · \(percent)"
         case .pdf:
             return pageCount > 0 ? "Стр. \(section + 1) из \(pageCount)" : ""
         default:

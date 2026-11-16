@@ -17,6 +17,36 @@ struct NavigationHistory: Hashable, Codable, Sendable {
         current = item
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case back, current, forward
+    }
+
+    // Шаги к экранам, которых больше нет (например, доски связей), пропускаются:
+    // иначе одна такая вкладка сбросила бы все сохранённые вкладки.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        var back = try container.decodeIfPresent([KnownItem].self, forKey: .back)?.compactMap(\.item) ?? []
+        var forward = try container.decodeIfPresent([KnownItem].self, forKey: .forward)?.compactMap(\.item) ?? []
+        let saved = try container.decodeIfPresent(KnownItem.self, forKey: .current)?.item
+        let current = saved ?? back.popLast() ?? forward.popLast() ?? .home
+        back = Self.collapsed(back)
+        while back.last == current { back.removeLast() }
+        forward = Self.collapsed(forward)
+        while forward.last == current { forward.removeLast() }
+        self.back = back
+        self.current = current
+        self.forward = forward
+    }
+
+    /// Шаг истории, который мог сохранить старый выпуск: неизвестный экран читается как `nil`.
+    private struct KnownItem: Decodable {
+        let item: SidebarItem?
+
+        init(from decoder: Decoder) throws {
+            item = try? SidebarItem(from: decoder)
+        }
+    }
+
     var canGoBack: Bool { !back.isEmpty }
     var canGoForward: Bool { !forward.isEmpty }
 

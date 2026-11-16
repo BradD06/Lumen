@@ -18,7 +18,6 @@ struct ItemTitle: Hashable, Sendable {
         if item == .trash { return ItemTitle(title: "Корзина", systemImage: "trash") }
         if item == .tasks { return ItemTitle(title: "Задачи", systemImage: "checklist") }
         if item == .library(nil) { return ItemTitle(title: "Библиотека", systemImage: "books.vertical") }
-        if item == .board { return ItemTitle(title: "Доска связей", systemImage: "pin") }
         if item == .reading { return ItemTitle(title: "Чтение", systemImage: "chart.bar.xaxis") }
         return nil
     }
