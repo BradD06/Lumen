@@ -12,7 +12,7 @@
 
 | Функция | Где | Код |
 |---|---|---|
-| Комнаты вместо боковой панели: Стол, Полка, Записки, Дела, Архив (стеклянная капсула сверху) | Mac/iPad | `LumenUI/Navigation/RoomsBar.swift`, `RootView.swift` |
+| Узкая колонка слева со значками: Стол, Записки (с числом неразобранных), Дела, Полка, Поиск; внизу круглая «+» (щелчок: заметка, удержание: меню «Создать»), Архив, Настройки | Mac/iPad | `LumenUI/Navigation/SideRail.swift`, `RootView.swift` |
 | Вкладки внизу экрана: Стол, Записки, Дела, Полка, Поиск; круглая кнопка «+» | iPhone | `LumenUI/Phone/PhoneRootView.swift` |
 | Вкладки (⌘T, ⌘W, ⌘1…9, ⌃Tab), дублировать / закрыть другие | Mac/iPad | `Navigation/Workspace.swift`, `WorkspaceViews.swift` |
 | «Назад / Вперёд» как в браузере (⌘[ ⌘]) у каждой вкладки | Mac/iPad | `Navigation/Workspace.swift` |
@@ -20,7 +20,7 @@
 | Ссылка из заметки открывается в соседней панели | Mac/iPad | `RootView.openLink(_:from:)` |
 | Палитра команд ⌘K: поиск страниц, книг, цитат, недавнее, действия; ⌘↵ открывает рядом | все (на iPhone вкладка «Поиск») | `Navigation/CommandPalette.swift`, `RootView.paletteExtras` |
 | Управление без мыши: ⌘J ставит букву на всё, что нажимается; ⇧+буква открывает меню; работает в русской раскладке | Mac (iPad с клавиатурой) | `Navigation/KeyHints.swift` |
-| Режим фокуса (⇧⌘F): прячет комнаты и вкладки, таймер учёбы 25 минут | Mac/iPad | `Navigation/FocusMode.swift`, `Editor/PageChrome.swift` |
+| Режим фокуса (⇧⌘F): прячет колонку разделов и вкладки, таймер учёбы 25 минут | Mac/iPad | `Navigation/FocusMode.swift`, `Editor/PageChrome.swift` |
 | Лампа на полке «Стола»: затемняет края окна и включает таймер | все | `Library/StudyLamp.swift` |
 | «Что показывать на экране»: полоса вкладок, кнопки назад/вперёд, «Сохранено», счётчик слов, путь, сетка библиотеки, карточки «Стола», полоса прогресса книги | все | `Navigation/ScreenOptions.swift` |
 | Единая кнопка «Создать»: заметка (⌘N), задача (⇧⌘N), тетрадь, книга или файл (⌘O), база, папка | все | `Navigation/AppActions.swift` (`CreateKind`, `Creator`) |
