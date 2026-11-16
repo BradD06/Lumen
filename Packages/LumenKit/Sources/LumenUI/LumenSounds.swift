@@ -376,7 +376,7 @@ private final class SoundEngine: @unchecked Sendable {
 
 /// Переключатель «Звуки» для меню приложения.
 public struct SoundCommands: Commands {
-    @AppStorage(LumenSounds.enabledKey) private var isEnabled = true
+    @Setting(LumenSounds.enabledKey) private var isEnabled = true
 
     public init() {}
 

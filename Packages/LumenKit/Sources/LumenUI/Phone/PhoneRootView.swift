@@ -124,6 +124,7 @@ struct PhoneRootView: View {
 
     private var appActions: AppActions {
         AppActions(
+            owner: "phone",
             open: openIncoming,
             create: { kind in
                 if kind == .book {

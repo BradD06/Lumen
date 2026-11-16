@@ -116,7 +116,7 @@ private struct CrumbButtonStyle: ButtonStyle {
 struct SaveStatusLabel: View {
     let hasUnsavedChanges: Bool
     @Environment(\.lumenTheme) private var theme
-    @AppStorage(ScreenOptions.saveStatusKey) private var mode = SaveStatusMode.briefly
+    @Setting(ScreenOptions.saveStatusKey) private var mode = SaveStatusMode.briefly
     /// Правку только что записали: «Сохранено» ещё видно.
     @State private var justSaved = false
 
@@ -168,7 +168,7 @@ struct WordCountCapsule: View {
     var onStopTimer: () -> Void = {}
 
     @Environment(\.lumenTheme) private var theme
-    @AppStorage(ScreenOptions.wordCountKey) private var showsCount = false
+    @Setting(ScreenOptions.wordCountKey) private var showsCount = false
 
     var body: some View {
         HStack(spacing: 6) {

@@ -24,10 +24,10 @@ struct ReaderView: View {
     var onShowInfo: () -> Void
     var onClose: () -> Void
 
-    @AppStorage("reader.palette") var paletteRaw = ReaderAppearance.Palette.night.rawValue
-    @AppStorage("reader.fontSize") var fontSize = 18
-    @AppStorage("reader.typeface") var typefaceRaw = ReaderAppearance.Typeface.serif.rawValue
-    @AppStorage(ReaderView.notesOpenKey) var showsNotes = true
+    @Setting("reader.palette") var paletteRaw = ReaderAppearance.Palette.night.rawValue
+    @Setting("reader.fontSize") var fontSize = 18
+    @Setting("reader.typeface") var typefaceRaw = ReaderAppearance.Typeface.serif.rawValue
+    @Setting(ReaderView.notesOpenKey) var showsNotes = true
     /// Где заметки: рядом с книгой или под ней и с какой стороны. Своё у каждой книги.
     @State var arrangement: PaneArrangement
     /// Читалка выше, чем шире (iPad стоя): заметки тогда сами встают под книгу.
@@ -37,9 +37,9 @@ struct ReaderView: View {
     @State private var isNotesSheetPresented = false
     @State var showsHighlights = false
     @State var isAppearancePresented = false
-    @AppStorage("reader.tocOpen") var showsToc = false
+    @Setting("reader.tocOpen") var showsToc = false
     /// Полоса прогресса под книгой: всегда или только под мышью (настройки, «Что показывать на экране»).
-    @AppStorage(ScreenOptions.readerProgressKey) var progressMode = ReaderProgressMode.defaultMode
+    @Setting(ScreenOptions.readerProgressKey) var progressMode = ReaderProgressMode.defaultMode
     @State var isFooterHovered = false
     @State private var isTocSheetPresented = false
     @Environment(\.isActivePane) private var isActivePane

@@ -58,11 +58,11 @@ struct PageEditorView: View {
     /// не пересчитывается на каждом кадре прокрутки.
     @State private var scroll = PageScrollOffset()
     /// Открыта ли панель подстраниц справа. Запоминается между страницами и запусками,
-    /// а анимируется копия в `showsSubpages`: изменение `@AppStorage` анимацию не несёт.
-    @AppStorage("editor.subpagesPanel") private var remembersSubpages = false
+    /// а анимируется копия в `showsSubpages`: изменение `@Setting` анимацию не несёт.
+    @Setting("editor.subpagesPanel") private var remembersSubpages = false
     @State private var showsSubpages = false
-    @AppStorage(LumenSounds.enabledKey) private var soundsEnabled = true
-    @AppStorage(ScreenOptions.breadcrumbsKey) private var showsBreadcrumbs = false
+    @Setting(LumenSounds.enabledKey) private var soundsEnabled = true
+    @Setting(ScreenOptions.breadcrumbsKey) private var showsBreadcrumbs = false
     /// Листы, видные на экране (по якорю листа): по ним подсвечивается заголовок на карте и номер листа.
     /// Отдельный объект: его читают только карта и миниатюры, и редактор со всеми листами
     /// не пересчитывается, когда при листании на экран выходит следующий лист.
@@ -78,7 +78,7 @@ struct PageEditorView: View {
     /// открыта, вид стопки не меняется (новый лист не перестраивает все строки заново).
     @State private var isLazyStack: Bool?
     /// Окно в цвет обложки, см. `CoverTint`.
-    @AppStorage(CoverTint.enabledKey) private var followsCover = true
+    @Setting(CoverTint.enabledKey) private var followsCover = true
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
