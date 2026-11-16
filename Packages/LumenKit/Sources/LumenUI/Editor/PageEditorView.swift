@@ -74,6 +74,9 @@ struct PageEditorView: View {
     @State private var isExcerptTargeted = false
     /// Выбирают ракурс обложки: картинку можно тянуть, лист отъехал вниз.
     @State private var isAdjustingCover = false
+    /// Листы в ленивой стопке (`SheetStack`). Запоминается, когда заметка загрузилась: пока она
+    /// открыта, вид стопки не меняется (новый лист не перестраивает все строки заново).
+    @State private var isLazyStack: Bool?
     /// Окно в цвет обложки, см. `CoverTint`.
     @AppStorage(CoverTint.enabledKey) private var followsCover = true
     #if os(iOS)
@@ -400,6 +403,14 @@ struct PageEditorView: View {
                 }
             }
             .animation(LumenMotion.standard, value: model.hasBlockSelection)
+            // Пока страница едет, строки не загораются от курсора (см. `PageEditorModel.isScrolling`).
+            .onScrollPhaseChange { _, phase in
+                model.isScrolling = phase.isScrolling
+            }
+            .onChange(of: model.isLoaded, initial: true) { _, isLoaded in
+                guard isLoaded, isLazyStack == nil else { return }
+                isLazyStack = model.sheets.count > Self.eagerSheetLimit
+            }
             .onScrollTargetVisibilityChange(idType: UUID.self) { ids in
                 visibility.ids = ids
                 let anchors = model.sheets.map { sheetAnchor($0) }
@@ -727,7 +738,7 @@ struct PageEditorView: View {
     private var content: some View {
         let sheets = model.sheets
         let lastFull = sheets.last.map { model.fillShare(of: $0) >= NoteSheets.fullShare } ?? false
-        return LazyVStack(alignment: .leading, spacing: isCompact ? 16 : 28) {
+        return SheetStack(isLazy: isLazyStack ?? (sheets.count > Self.eagerSheetLimit), spacing: isCompact ? 16 : 28) {
             ForEach(sheets, id: \.index) { sheet in
                 sheetView(sheet, count: sheets.count)
                     .id(sheetAnchor(sheet))
@@ -1001,6 +1012,10 @@ struct PageEditorView: View {
         CoverTint.shared.show(color, for: model.pageId)
     }
 
+    /// До скольких листов заметка лежит в обычной стопке: листается плавно, а открывается
+    /// почти так же быстро, как ленивая (3 листа: +0,1 с, 6 листов: +0,27 с в Debug; 14 листов уже +0,9 с).
+    static let eagerSheetLimit = 6
+
     /// Насколько первый лист заходит на обложку: вместе с отступом над листами.
     private var coverOverlap: CGFloat { isCompact ? 60 : 110 }
 
@@ -1269,3 +1284,20 @@ private struct ScrolledPageBackground: View {
     }
 }
 
+/// Стопка листов. Обычный `VStack` при прокрутке только сдвигается, а `LazyVStack` на каждом кадре
+/// заново отдаёт весь документ, и мелкие надписи в строках (маркеры, значки) перерисовываются:
+/// быстрое листание теряло до трети кадров. Зато ленивая стопка открывает длинную заметку
+/// в разы быстрее, поэтому она остаётся для заметок длиннее `PageEditorView.eagerSheetLimit` листов.
+private struct SheetStack<Content: View>: View {
+    let isLazy: Bool
+    let spacing: CGFloat
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        if isLazy {
+            LazyVStack(alignment: .leading, spacing: spacing, content: content)
+        } else {
+            VStack(alignment: .leading, spacing: spacing, content: content)
+        }
+    }
+}
