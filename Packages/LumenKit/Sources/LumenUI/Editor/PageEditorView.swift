@@ -847,7 +847,7 @@ struct PageEditorView: View {
     }
 
     /// С какой ширины редактора рядом с листом помещаются миниатюры.
-    private static let railMinWidth = CGFloat(NoteSheets.width) + 48 + 2 * 110
+    private nonisolated static let railMinWidth = CGFloat(NoteSheets.width) + 48 + 2 * 110
 
     private var displayTitle: String {
         let trimmed = model.title.trimmingCharacters(in: .whitespacesAndNewlines)
