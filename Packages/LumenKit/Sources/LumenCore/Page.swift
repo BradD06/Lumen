@@ -9,6 +9,8 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
     public var icon: String?
     /// Обложка страницы, см. `PageCover`.
     public var cover: String?
+    /// Ракурс и высота обложки, см. `CoverCrop`. `nil`: картинка по центру, средняя высота.
+    public var coverCrop: String?
     /// Фон страницы, см. `PageBackground`. `nil` это фон темы.
     public var background: String?
     /// Источник (книга, файл), к которому привязана заметка. Появится на этапе 3.
@@ -116,6 +118,117 @@ public struct Page: Identifiable, Hashable, Codable, Sendable {
         get { background.flatMap(PageBackground.init(rawValue:)) }
         set { background = newValue?.rawValue }
     }
+
+    /// Ракурс обложки. Без сохранённого ракурса картинка стоит по центру.
+    public var pageCoverCrop: CoverCrop {
+        get { coverCrop.flatMap(CoverCrop.init(rawValue:)) ?? CoverCrop() }
+        set { coverCrop = newValue == CoverCrop() ? nil : newValue.rawValue }
+    }
+}
+
+/// Какая часть картинки видна в полосе обложки и какой полоса высоты.
+/// Картинка закрывает полосу целиком; лишнее по краям скрыто, его и выбирает ракурс.
+/// В базе хранится строкой: `0.5,0.3,1.4,medium` (x, y, увеличение, высота).
+public struct CoverCrop: Hashable, Sendable {
+    /// Высота полосы обложки над листом.
+    public enum Height: String, CaseIterable, Sendable {
+        case low, medium, high
+
+        public var points: Double {
+            switch self {
+            case .low: 170
+            case .medium: 240
+            case .high: 330
+            }
+        }
+
+        public var title: String {
+            switch self {
+            case .low: "Низкая"
+            case .medium: "Средняя"
+            case .high: "Высокая"
+            }
+        }
+    }
+
+    public static let minZoom = 1.0
+    public static let maxZoom = 3.0
+
+    /// Сколько скрытого по ширине лежит слева от видимого: 0 левый край, 0,5 середина, 1 правый край.
+    public var focusX: Double
+    /// То же по высоте: 0 видно верх картинки, 1 низ.
+    public var focusY: Double
+    /// Во сколько раз картинка крупнее, чем нужно, чтобы закрыть полосу.
+    public var zoom: Double
+    public var height: Height
+
+    public init(focusX: Double = 0.5, focusY: Double = 0.5, zoom: Double = 1, height: Height = .medium) {
+        self.focusX = Self.unit(focusX)
+        self.focusY = Self.unit(focusY)
+        self.zoom = min(max(zoom, Self.minZoom), Self.maxZoom)
+        self.height = height
+    }
+
+    public init?(rawValue: String) {
+        let parts = rawValue.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        guard parts.count == 4,
+              let x = Double(parts[0]), let y = Double(parts[1]), let zoom = Double(parts[2]),
+              x.isFinite, y.isFinite, zoom.isFinite else { return nil }
+        self.init(focusX: x, focusY: y, zoom: zoom, height: Height(rawValue: parts[3]) ?? .medium)
+    }
+
+    public var rawValue: String {
+        func number(_ value: Double) -> String { String(format: "%.3f", value) }
+        return "\(number(focusX)),\(number(focusY)),\(number(zoom)),\(height.rawValue)"
+    }
+
+    /// Сдвиг ракурса, когда картинку тянут на `dx`, `dy` точек. `spanX`, `spanY`: сколько точек
+    /// картинки скрыто по ширине и высоте. Тянут вниз: показывается то, что было выше.
+    public func dragged(dx: Double, dy: Double, spanX: Double, spanY: Double) -> CoverCrop {
+        var crop = self
+        if spanX > 0 { crop.focusX = Self.unit(focusX - dx / spanX) }
+        if spanY > 0 { crop.focusY = Self.unit(focusY - dy / spanY) }
+        return crop
+    }
+
+    /// Как положить картинку `imageWidth × imageHeight` в полосу `boxWidth × boxHeight`:
+    /// картинка закрывает полосу целиком (как «заполнить»), потом увеличивается на `zoom`.
+    /// Размер картинки ещё неизвестен (`nil`): считаем, что она как раз по полосе.
+    public func layout(boxWidth: Double, boxHeight: Double, imageWidth: Double?, imageHeight: Double?) -> CoverLayout {
+        let box = (width: max(boxWidth, 1), height: max(boxHeight, 1))
+        var image = (width: box.width, height: box.height)
+        if let imageWidth, let imageHeight, imageWidth > 0, imageHeight > 0 {
+            image = (imageWidth, imageHeight)
+        }
+        let scale = max(box.width / image.width, box.height / image.height) * zoom
+        let width = image.width * scale
+        let height = image.height * scale
+        let spanX = max(width - box.width, 0)
+        let spanY = max(height - box.height, 0)
+        return CoverLayout(
+            width: width, height: height,
+            spanX: spanX, spanY: spanY,
+            offsetX: -spanX * focusX, offsetY: -spanY * focusY
+        )
+    }
+
+    private static func unit(_ value: Double) -> Double {
+        value.isFinite ? min(max(value, 0), 1) : 0.5
+    }
+}
+
+/// Картинка обложки на экране: её размер, сколько скрыто по краям и где её левый верхний угол
+/// относительно полосы (сдвиги отрицательные или ноль).
+public struct CoverLayout: Hashable, Sendable {
+    public var width: Double
+    public var height: Double
+    public var spanX: Double
+    public var spanY: Double
+    public var offsetX: Double
+    public var offsetY: Double
+
+    /// Есть ли что двигать: картинка больше полосы хотя бы в одну сторону.
+    public var canMove: Bool { spanX > 0.5 || spanY > 0.5 }
 }
 
 /// Обложка страницы: градиент из палитры темы, горы как у обоев или картинка из вложений.

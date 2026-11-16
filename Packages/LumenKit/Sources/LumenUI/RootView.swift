@@ -35,9 +35,9 @@ extension SidebarItem {
     }
 }
 
-/// Корневой экран «Кабинета»: сверху стеклянное табло с комнатами (стол, полка,
-/// записки, дела, архив), под ним вкладки, у каждой своя история «Назад / Вперёд», вкладку можно
-/// разделить на две панели. На iPhone (узкий экран) вместо табло вкладки внизу, см. `PhoneRootView`.
+/// Корневой экран: слева узкая колонка с разделами (стол, записки, дела, полка, поиск,
+/// внизу «+», архив, настройки), справа вкладки, у каждой своя история «Назад / Вперёд», вкладку можно
+/// разделить на две панели. На iPhone (узкий экран) вместо колонки вкладки внизу, см. `PhoneRootView`.
 public struct RootView: View {
     private let database: AppDatabase
     /// Вкладки и история переходов. UI-тесты начинают с чистого листа и ничего не сохраняют.
@@ -155,7 +155,7 @@ public struct RootView: View {
         NavigationStack {
             workspaceDetail
                 .themedToolbar()
-                .safeAreaInset(edge: .top, spacing: 0) { topBar }
+                .safeAreaInset(edge: .leading, spacing: 0) { sideRail }
                 .overlay { LampLight() }
                 .toolbar {
                     // Сочетания ⌘[ ⌘] ⌘\ живут в `tabShortcuts`: кнопки можно спрятать в настройках.
@@ -505,18 +505,20 @@ public struct RootView: View {
         } catch {}
     }
 
-    /// Комнаты «Кабинета» сверху. В режиме фокуса табло уходит.
+    /// Разделы в узкой колонке слева. В режиме фокуса колонка уходит.
     @ViewBuilder
-    private var topBar: some View {
+    private var sideRail: some View {
         if !focusMode.isOn {
-            RoomsBar(
+            SideRail(
                 database: database,
                 selection: selection,
                 onSelect: { selection = $0 },
                 onSearch: { isSearchPresented = true },
-                onSettings: { isSettingsPresented = true }
+                onSettings: { isSettingsPresented = true },
+                onCreate: { create($0) },
+                onQuickNote: { newQuickNote() }
             )
-            .transition(.move(edge: .top).combined(with: .opacity))
+            .transition(.move(edge: .leading).combined(with: .opacity))
         }
     }
 

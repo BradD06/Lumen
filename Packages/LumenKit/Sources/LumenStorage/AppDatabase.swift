@@ -350,6 +350,13 @@ extension AppDatabase {
             try Self.createSyncClockTriggers(db, table: SyncTable.pageTemplate.rawValue)
         }
 
+        migrator.registerMigration("v20: cover crop") { db in
+            // Ракурс и высота обложки заметки. Таблица уже синхронизируется, триггеры видят новый столбец сами.
+            try db.alter(table: "page") { t in
+                t.add(column: "coverCrop", .text)
+            }
+        }
+
         return migrator
     }
 }

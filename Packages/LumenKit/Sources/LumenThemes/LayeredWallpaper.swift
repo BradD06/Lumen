@@ -28,6 +28,9 @@ public struct WallpaperPalette: Sendable, Identifiable {
 
     /// Цвет неба у горизонта: им можно подкрашивать превью.
     public var horizon: Color { Color(hex: sky.last ?? sun) }
+
+    /// Главный цвет гор: середина неба. В него окрашивается окно, когда горы стоят обложкой.
+    public var mainColor: Color { Color(hex: sky.count > 1 ? sky[1] : sky.first ?? sun) }
 }
 
 /// Объёмные обои: гряды гор одна за другой, дальние светлее и прозрачнее,

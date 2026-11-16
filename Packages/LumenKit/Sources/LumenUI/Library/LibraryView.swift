@@ -89,9 +89,13 @@ struct LibraryView: View {
         folderId == nil && !snapshot.isMissing
     }
 
+    /// «Читаю сейчас» и полки под ним.
     var bookShelf: some View {
-        BookShelf(database: database, onOpen: { onOpenSource($0) }) {
-            isImporting = true
+        VStack(alignment: .leading, spacing: 22) {
+            ShelfReadingNow(database: database, onOpenSource: { onOpenSource($0) })
+            BookShelf(database: database, onOpen: { onOpenSource($0) }) {
+                isImporting = true
+            }
         }
     }
 

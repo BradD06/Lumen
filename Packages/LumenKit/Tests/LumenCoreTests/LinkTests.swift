@@ -35,6 +35,78 @@ struct PageCoverTests {
     }
 }
 
+struct CoverCropTests {
+    @Test func roundTrip() throws {
+        let crop = CoverCrop(focusX: 0.25, focusY: 0.8, zoom: 1.6, height: .high)
+        let parsed = try #require(CoverCrop(rawValue: crop.rawValue))
+        #expect(abs(parsed.focusX - 0.25) < 0.001)
+        #expect(abs(parsed.focusY - 0.8) < 0.001)
+        #expect(abs(parsed.zoom - 1.6) < 0.001)
+        #expect(parsed.height == .high)
+    }
+
+    @Test(arguments: ["", "0.5,0.5", "x,0.5,1,medium", "nan,0.5,1,medium"])
+    func invalid(raw: String) {
+        #expect(CoverCrop(rawValue: raw) == nil)
+    }
+
+    @Test func valuesAreClamped() {
+        let crop = CoverCrop(focusX: -2, focusY: 5, zoom: 10)
+        #expect(crop.focusX == 0)
+        #expect(crop.focusY == 1)
+        #expect(crop.zoom == CoverCrop.maxZoom)
+        // Неизвестная высота из более новой версии: средняя.
+        #expect(CoverCrop(rawValue: "0.5,0.5,1,huge")?.height == .medium)
+    }
+
+    @Test func pageWithoutCropIsCentered() {
+        var page = Page(sortKey: "a")
+        #expect(page.pageCoverCrop == CoverCrop())
+        page.pageCoverCrop = CoverCrop(focusY: 0.2)
+        #expect(page.coverCrop != nil)
+        // Ракурс по умолчанию в базе не хранится.
+        page.pageCoverCrop = CoverCrop()
+        #expect(page.coverCrop == nil)
+    }
+
+    @Test func wideImageHidesItsSides() {
+        // Панорама 3000×500 в полосе 1000×240: закрывает высоту, по ширине лишнее скрыто.
+        let layout = CoverCrop().layout(boxWidth: 1000, boxHeight: 240, imageWidth: 3000, imageHeight: 500)
+        #expect(abs(layout.height - 240) < 0.001)
+        #expect(abs(layout.width - 1440) < 0.001)
+        #expect(layout.spanY == 0)
+        #expect(abs(layout.spanX - 440) < 0.001)
+        #expect(layout.canMove)
+        #expect(abs(layout.offsetX + 220) < 0.001)
+    }
+
+    @Test func tallImageMovesVertically() {
+        // Фото 1000×1500 в полосе 1000×240: видна полоса, остальное по высоте скрыто.
+        let top = CoverCrop(focusY: 0).layout(boxWidth: 1000, boxHeight: 240, imageWidth: 1000, imageHeight: 1500)
+        #expect(top.spanX == 0)
+        #expect(abs(top.spanY - 1260) < 0.001)
+        #expect(top.offsetY == 0)
+        let bottom = CoverCrop(focusY: 1).layout(boxWidth: 1000, boxHeight: 240, imageWidth: 1000, imageHeight: 1500)
+        #expect(abs(bottom.offsetY + 1260) < 0.001)
+    }
+
+    @Test func zoomLetsAnyImageMove() {
+        let plain = CoverCrop().layout(boxWidth: 1000, boxHeight: 240, imageWidth: nil, imageHeight: nil)
+        #expect(!plain.canMove)
+        let zoomed = CoverCrop(zoom: 2).layout(boxWidth: 1000, boxHeight: 240, imageWidth: nil, imageHeight: nil)
+        #expect(abs(zoomed.spanX - 1000) < 0.001)
+        #expect(abs(zoomed.spanY - 240) < 0.001)
+    }
+
+    @Test func draggingDownShowsWhatWasAbove() {
+        let crop = CoverCrop(focusY: 0.5)
+        let moved = crop.dragged(dx: 0, dy: 100, spanX: 0, spanY: 1000)
+        #expect(abs(moved.focusY - 0.4) < 0.001)
+        #expect(moved.focusX == crop.focusX)
+        #expect(crop.dragged(dx: 0, dy: 5000, spanX: 0, spanY: 1000).focusY == 0)
+    }
+}
+
 struct PageBackgroundTests {
     @Test func roundTrip() {
         let backgrounds: [PageBackground] = [

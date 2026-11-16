@@ -399,10 +399,25 @@ final class PageEditorModel {
     }
 
     func setCover(_ cover: PageCover?) {
+        if let current = page?.pageCover, current != cover {
+            page?.pageCoverCrop = CoverCrop(height: page?.pageCoverCrop.height ?? .medium)
+        }
         page?.pageCover = cover
         Task {
             await NoticeCenter.shared.attempt("Не удалось сохранить оформление страницы") {
                 try await database.setCover(pageId, cover: cover)
+            }
+        }
+    }
+
+    /// Ракурс обложки: пока картинку тянут, меняется только экран (`save: false`),
+    /// в базу ракурс пишется, когда палец или мышь отпустили.
+    func setCoverCrop(_ crop: CoverCrop, save: Bool = true) {
+        page?.pageCoverCrop = crop
+        guard save else { return }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось сохранить обложку") {
+                try await database.setCoverCrop(pageId, crop: crop)
             }
         }
     }

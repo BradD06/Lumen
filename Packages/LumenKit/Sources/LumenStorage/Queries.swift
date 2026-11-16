@@ -441,8 +441,23 @@ public enum ShelfQuery {
                 .filter(Column("isShelf") == true && Column("deletedAt") == nil)
                 .order(Column("createdAt"), Column("name"))
                 .fetchAll(db),
-            notes: try notes(db)
+            notes: try notes(db),
+            highlightCounts: try highlightCounts(db)
         )
+    }
+
+    /// Сколько живых выделений в каждой книге.
+    public static func highlightCounts(_ db: Database) throws -> [UUID: Int] {
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT sourceId, COUNT(*) AS count FROM highlight WHERE deletedAt IS NULL GROUP BY sourceId
+            """)
+        var counts: [UUID: Int] = [:]
+        for row in rows {
+            let id: UUID = row["sourceId"]
+            let count: Int = row["count"]
+            counts[id] = count
+        }
+        return counts
     }
 
     /// Заметки, которые стоят на полках рядом с книгами: разобранные (не во «Входящих»),
@@ -501,13 +516,16 @@ public struct ShelfSnapshot: Equatable, Sendable {
     public var books: [Source]
     public var shelves: [Folder]
     public var notes: [ShelfNote]
+    /// Сколько выделений в каждой книге: число на корешке.
+    public var highlightCounts: [UUID: Int]
 
     public static let empty = ShelfSnapshot(books: [], shelves: [])
 
-    public init(books: [Source], shelves: [Folder], notes: [ShelfNote] = []) {
+    public init(books: [Source], shelves: [Folder], notes: [ShelfNote] = [], highlightCounts: [UUID: Int] = [:]) {
         self.books = books
         self.shelves = shelves
         self.notes = notes
+        self.highlightCounts = highlightCounts
     }
 
     public var groups: [ShelfGroup] { ShelfGroup.make(books: books, shelves: shelves, notes: notes) }
@@ -519,25 +537,82 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var pageCount: Int
     public var editedToday: Int
     public var recent: [PagePreview]
+    /// Заметка, которую правили последней: на «Столе» она лежит большой карточкой на своей обложке.
+    public var desk: DeskNote? = nil
+    /// Папки в корне библиотеки (без полок с книгами): сначала те, где правили недавно.
+    public var folders: [LibraryFolder] = []
 
     public static let empty = HomeSnapshot(inboxCount: 0, pageCount: 0, editedToday: 0, recent: [])
+
+    /// Сколько папок показывает «Стол».
+    public static let folderLimit = 4
 
     public static func fetch(_ db: Database, now: Date = Date(), calendar: Calendar = .current) throws -> HomeSnapshot {
         // Строки баз данных (задачи) это тоже страницы, но в «Недавних» и счётчиках им не место.
         let alive = Page.filter(Column("deletedAt") == nil && Column("databaseId") == nil)
         let startOfDay = calendar.startOfDay(for: now)
-        return HomeSnapshot(
+        let recent = try previews(db, sql: """
+            SELECT page.*, pageSearch.body AS excerpt
+            FROM page
+            LEFT JOIN pageSearch ON pageSearch.pageId = \(uuidText("page.id"))
+            WHERE page.deletedAt IS NULL AND page.databaseId IS NULL
+            ORDER BY page.updatedAt DESC
+            LIMIT 7
+            """)
+        var snapshot = HomeSnapshot(
             inboxCount: try alive.filter(Column("inInbox") == true).fetchCount(db),
             pageCount: try alive.fetchCount(db),
             editedToday: try alive.filter(Column("updatedAt") >= startOfDay).fetchCount(db),
-            recent: try previews(db, sql: """
-                SELECT page.*, pageSearch.body AS excerpt
-                FROM page
-                LEFT JOIN pageSearch ON pageSearch.pageId = \(uuidText("page.id"))
-                WHERE page.deletedAt IS NULL AND page.databaseId IS NULL
-                ORDER BY page.updatedAt DESC
-                LIMIT 6
-                """)
+            recent: recent
+        )
+        // Тетрадь от руки и таблица (те же «Задачи») текста не показывают, на стол кладём заметку.
+        let tablePages = try UUID.fetchSet(db, sql: "SELECT pageId FROM dataTable")
+        if let last = recent.first(where: { !$0.page.isNotebook && !tablePages.contains($0.id) }) {
+            snapshot.desk = try DeskNote.fetch(db, preview: last)
+        }
+        snapshot.recent = Array(recent.filter { $0.id != snapshot.desk?.id }.prefix(6))
+        snapshot.folders = try Row.fetchAll(db, sql: """
+            SELECT folder.*,
+                (SELECT COUNT(*) FROM page
+                    WHERE page.folderId = folder.id AND page.deletedAt IS NULL
+                    AND page.databaseId IS NULL AND page.parentId IS NULL) AS itemCount,
+                (SELECT MAX(page.updatedAt) FROM page
+                    WHERE page.folderId = folder.id AND page.deletedAt IS NULL) AS lastEdit
+            FROM folder
+            WHERE folder.deletedAt IS NULL AND folder.parentId IS NULL AND folder.isShelf = 0
+            ORDER BY COALESCE(lastEdit, folder.updatedAt) DESC
+            LIMIT \(folderLimit)
+            """).map { row in
+            LibraryFolder(folder: try Folder(row: row), itemCount: row["itemCount"] ?? 0)
+        }
+        return snapshot
+    }
+}
+
+/// Заметка на «Столе»: где она лежит, сколько в ней листов и выдержек из книг.
+public struct DeskNote: Identifiable, Hashable, Sendable {
+    public var preview: PagePreview
+    /// Путь от библиотеки или «Входящих» до заметки, без неё самой.
+    public var path: [Breadcrumb]
+    public var sheetCount: Int
+    public var excerptCount: Int
+
+    public var id: UUID { preview.id }
+    public var page: Page { preview.page }
+
+    static func fetch(_ db: Database, preview: PagePreview) throws -> DeskNote {
+        let pageId = preview.page.id
+        let breaks = try Block
+            .filter(Column("pageId") == pageId && Column("parentBlockId") == nil && Column("type") == BlockType.sheetBreak.rawValue)
+            .fetchCount(db)
+        let excerpts = try Block
+            .filter(Column("pageId") == pageId && Column("type") == BlockType.excerpt.rawValue)
+            .fetchCount(db)
+        return DeskNote(
+            preview: preview,
+            path: try BreadcrumbQuery.fetch(db, pageId: pageId),
+            sheetCount: breaks + 1,
+            excerptCount: excerpts
         )
     }
 }

@@ -222,3 +222,38 @@ public struct ShelfNote: Identifiable, Hashable, Sendable {
         return "\(count) \(word)"
     }
 }
+
+/// Какие книги видны на полке: все, начатые, ещё не открытые («хочу прочитать») или дочитанные.
+public enum ShelfStatus: String, CaseIterable, Identifiable, Sendable {
+    case all
+    case reading
+    case wanted
+    case finished
+
+    public var id: Self { self }
+
+    /// С этого места книга считается дочитанной (так же считает «Стол»).
+    public static let finishedProgress = 0.995
+
+    public var title: String {
+        switch self {
+        case .all: "Все"
+        case .reading: "Читаю"
+        case .wanted: "Хочу"
+        case .finished: "Прочитано"
+        }
+    }
+
+    public func contains(_ book: Source) -> Bool {
+        switch self {
+        case .all: true
+        case .reading: book.lastOpenedAt != nil && book.progress < Self.finishedProgress
+        case .wanted: book.lastOpenedAt == nil && book.progress < Self.finishedProgress
+        case .finished: book.progress >= Self.finishedProgress
+        }
+    }
+
+    public func count(in books: [Source]) -> Int {
+        books.reduce(0) { $0 + (contains($1) ? 1 : 0) }
+    }
+}

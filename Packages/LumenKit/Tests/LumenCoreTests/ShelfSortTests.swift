@@ -23,6 +23,23 @@ struct ShelfSortTests {
         #expect(ShelfSort.added.sorted(books).map(\.title) == ["Анна Каренина", "Записки", "Идиот"])
     }
 
+    @Test func statusSplitsBooksIntoReadingWantedAndFinished() {
+        var reading = book("Анна Каренина", progress: 0.4)
+        reading.lastOpenedAt = Date()
+        let wanted = book("Идиот")
+        var finished = book("Записки", progress: 1)
+        finished.lastOpenedAt = Date()
+        let books = [reading, wanted, finished]
+        #expect(books.filter(ShelfStatus.reading.contains).map(\.title) == ["Анна Каренина"])
+        #expect(books.filter(ShelfStatus.wanted.contains).map(\.title) == ["Идиот"])
+        #expect(books.filter(ShelfStatus.finished.contains).map(\.title) == ["Записки"])
+        #expect(ShelfStatus.all.count(in: books) == 3)
+        // Каждая книга ровно в одной группе.
+        for book in books {
+            #expect([ShelfStatus.reading, .wanted, .finished].filter { $0.contains(book) }.count == 1)
+        }
+    }
+
     @Test func customOrderPutsNewBooksFirst() {
         let a = book("A", key: "V")
         let b = book("B", key: "F")

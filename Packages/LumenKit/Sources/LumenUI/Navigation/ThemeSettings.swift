@@ -43,12 +43,18 @@ private struct LumenThemeHost: ViewModifier {
     @AppStorage(DaylightSchedule.dayKey) private var dayID = Theme.linen.id
     @AppStorage(DaylightSchedule.eveningKey) private var eveningID = Theme.study.id
     @AppStorage(DaylightSchedule.nightKey) private var nightID = Theme.midnight.id
+    @AppStorage(CoverTint.enabledKey) private var followsCover = true
     /// Текущее время для «света по времени суток»; обновляется, когда меняется часть суток.
     @State private var now = Date()
+    private let coverTint = CoverTint.shared
 
     private var theme: Theme {
-        guard followsDaylight else { return Theme.named(schemeID) }
-        return DaylightSchedule(dayID: dayID, eveningID: eveningID, nightID: nightID).theme(at: now)
+        let base = followsDaylight
+            ? DaylightSchedule(dayID: dayID, eveningID: eveningID, nightID: nightID).theme(at: now)
+            : Theme.named(schemeID)
+        // Окно в цвет обложки открытой заметки, если это включено в Настройках.
+        guard followsCover, let cover = coverTint.color else { return base }
+        return base.tinted(by: cover)
     }
 
     func body(content: Content) -> some View {
@@ -81,8 +87,20 @@ struct AppearanceSection: View {
     @AppStorage(DaylightSchedule.dayKey) private var dayID = Theme.linen.id
     @AppStorage(DaylightSchedule.eveningKey) private var eveningID = Theme.study.id
     @AppStorage(DaylightSchedule.nightKey) private var nightID = Theme.midnight.id
+    @AppStorage(CoverTint.enabledKey) private var followsCover = true
 
     var body: some View {
+        Section {
+            Toggle("Окно в цвет обложки заметки", isOn: $followsCover)
+                .accessibilityIdentifier("settings.coverTint")
+                .keyHint("Окно в цвет обложки") { followsCover.toggle() }
+        } header: {
+            Text("Обложки")
+        } footer: {
+            Text(followsCover
+                ? "Открыта заметка с обложкой: фон окна и кнопки берут цвет обложки. Без обложки окно в цветах схемы."
+                : "Окно всегда в цветах выбранной схемы, какая бы обложка ни была у заметки.")
+        }
         Section {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 10)], spacing: 10) {
                 ForEach(Theme.schemes) { scheme in
