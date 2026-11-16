@@ -83,7 +83,8 @@ extension View {
 /// Мягкая дорожка прогресса с точками глав.
 struct SoftProgressTrack: View {
     let progress: Double
-    var marks: Int = 0
+    /// Где начинаются главы, доли от 0 до 1: точки стоят там, где глава правда начинается.
+    var marks: [Double] = []
     let ink: Color
 
     var body: some View {
@@ -91,13 +92,11 @@ struct SoftProgressTrack: View {
             let width = geometry.size.width
             ZStack(alignment: .leading) {
                 Capsule().fill(ink.opacity(0.12))
-                if marks > 1 {
-                    ForEach(1..<marks, id: \.self) { index in
-                        Circle()
-                            .fill(ink.opacity(0.35))
-                            .frame(width: 4, height: 4)
-                            .position(x: width * CGFloat(index) / CGFloat(marks), y: geometry.size.height / 2)
-                    }
+                ForEach(marks.indices, id: \.self) { index in
+                    Circle()
+                        .fill(ink.opacity(0.35))
+                        .frame(width: 4, height: 4)
+                        .position(x: width * CGFloat(marks[index]), y: geometry.size.height / 2)
                 }
                 Capsule()
                     .fill(LinearGradient(colors: [ReaderStyle.peach, ReaderStyle.peachDeep], startPoint: .leading, endPoint: .trailing))

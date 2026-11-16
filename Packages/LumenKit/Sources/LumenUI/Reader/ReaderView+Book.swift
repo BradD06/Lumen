@@ -154,20 +154,20 @@ extension ReaderView {
             HStack(spacing: 12) {
                 if sections.count > 1 {
                     Button {
-                        model.openSection(model.section - 1)
+                        model.openPreviousChapter()
                     } label: {
                         Image(systemName: "chevron.left")
                     }
                     .buttonStyle(SheetRoundButtonStyle(ink: ink))
-                    .disabled(model.section == 0)
-                    .help("Предыдущая глава")
+                    .disabled(!model.canOpenPreviousChapter)
+                    .help("Предыдущий раздел")
                 }
                 if !isCompact, let title = model.currentTocEntry?.title {
                     Text(title)
                         .lineLimit(1)
                         .frame(maxWidth: 170, alignment: .leading)
                 }
-                SoftProgressTrack(progress: model.progress, marks: sections.count <= 30 ? sections.count : 0, ink: ink)
+                SoftProgressTrack(progress: model.progress, marks: model.chapterMarks, ink: ink)
                     .frame(minWidth: 80)
                 Text(model.positionLabel)
                     .monospacedDigit()
@@ -178,13 +178,13 @@ extension ReaderView {
                 }
                 if sections.count > 1 {
                     Button {
-                        model.openSection(model.section + 1)
+                        model.openNextChapter()
                     } label: {
                         Image(systemName: "chevron.right")
                     }
                     .buttonStyle(SheetRoundButtonStyle(ink: ink))
-                    .disabled(model.section >= sections.count - 1)
-                    .help("Следующая глава")
+                    .disabled(!model.canOpenNextChapter)
+                    .help("Следующий раздел")
                 }
             }
             .font(.system(size: isCompact ? 12 : 13, weight: .bold, design: .rounded))
