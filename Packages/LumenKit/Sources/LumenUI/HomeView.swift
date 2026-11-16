@@ -449,7 +449,9 @@ private struct DeskNoteCard: View {
         .padding(.top, isCompact ? 18 : 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
-            shape.fill(theme.cardFill)
+            // Лист непрозрачный: обложка лежит под ним и не просвечивает краем сквозь стекло.
+            shape.fill(theme.menuFill)
+                .overlay(shape.fill(theme.cardFill))
                 .overlay(shape.fill(theme.contrast.opacity(0.035)))
                 .overlay(shape.strokeBorder(theme.cardStroke, lineWidth: 1))
                 .shadow(color: .black.opacity(theme.shadowOpacity * 0.8), radius: 20, y: -6)
