@@ -64,9 +64,12 @@ struct PageEditorView: View {
     @AppStorage(LumenSounds.enabledKey) private var soundsEnabled = true
     @AppStorage(ScreenOptions.breadcrumbsKey) private var showsBreadcrumbs = false
     /// Листы, видные на экране (по якорю листа): по ним подсвечивается заголовок на карте и номер листа.
-    @State private var visibleSheetIds: [UUID] = []
-    /// Ширина редактора: миниатюры листов слева видны, только если есть место рядом с листом.
-    @State private var editorWidth: CGFloat = 0
+    /// Отдельный объект: его читают только карта и миниатюры, и редактор со всеми листами
+    /// не пересчитывается, когда при листании на экран выходит следующий лист.
+    @State private var visibility = SheetVisibility()
+    /// Есть ли место рядом с листом для миниатюр листов слева. Только да или нет, а не ширина:
+    /// иначе весь редактор со всеми листами пересчитывался бы на каждом кадре изменения размера окна.
+    @State private var hasRoomForRail = false
     /// Над заметкой держат выписку, утащенную из книги.
     @State private var isExcerptTargeted = false
     #if os(iOS)
@@ -369,13 +372,13 @@ struct PageEditorView: View {
             }
             .animation(LumenMotion.standard, value: model.hasBlockSelection)
             .onScrollTargetVisibilityChange(idType: UUID.self) { ids in
-                visibleSheetIds = ids
+                visibility.ids = ids
                 let anchors = model.sheets.map { sheetAnchor($0) }
                 if let first = ids.compactMap({ anchors.firstIndex(of: $0) }).min(), model.visibleSheet != first {
                     model.visibleSheet = first
                 }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { editorWidth = $0 }
+            .onGeometryChange(for: Bool.self) { $0.size.width >= Self.railMinWidth } action: { hasRoomForRail = $0 }
             .onChange(of: model.sheetScrollRequest) { _, request in
                 guard let request else { return }
                 model.sheetScrollRequest = nil
@@ -383,10 +386,8 @@ struct PageEditorView: View {
             }
             .overlay(alignment: .topLeading) {
                 if showsSheetRail {
-                    SheetRail(
-                        count: model.sheetCount,
-                        current: model.visibleSheet,
-                        pinned: model.pinnedSheet,
+                    LiveSheetRail(
+                        model: model,
                         onSelect: { scrollToSheet($0, proxy: proxy) },
                         onAdd: {
                             LumenSounds.play(.addSheet)
@@ -409,8 +410,8 @@ struct PageEditorView: View {
             .animation(LumenMotion.quick, value: isExcerptTargeted)
             .overlay(alignment: .bottomTrailing) {
                 if !isEmbedded, !isCompact, isActivePane {
-                    WordCountCapsule(
-                        words: model.wordCount,
+                    LiveWordCount(
+                        model: model,
                         isFocusMode: focusMode.isOn,
                         onToggleFocus: { focusMode.toggle() },
                         timerEnd: focusMode.timerEnd,
@@ -439,9 +440,8 @@ struct PageEditorView: View {
             }
             #endif
             .overlay(alignment: .trailing) {
-                let outline = model.outline
-                if showsOutline, !showsSubpages, outline.count >= 2 {
-                    PageOutlineView(items: outline, currentId: currentHeadingId(in: outline)) { item in
+                if showsOutline, !showsSubpages {
+                    LiveOutline(model: model, visibility: visibility) { item in
                         LumenSounds.play(.navigate)
                         // Лист в ленивом списке мог ещё не построиться: сначала к листу, потом к заголовку.
                         if let sheet = model.sheets.first(where: { $0.blocks.contains { $0.id == item.anchorId } }) {
@@ -685,21 +685,6 @@ struct PageEditorView: View {
         #endif
     }
 
-    /// Заголовок, в разделе которого сейчас верх экрана: последний, что начинается не ниже
-    /// начала первого видного листа. Пока виден текст до первого заголовка, не подсвечен ни один.
-    private func currentHeadingId(in outline: [OutlineItem]) -> UUID? {
-        let topLevel = model.children(of: nil).map(\.id)
-        let sheets = model.sheets
-        let visible = visibleSheetIds.compactMap { id in sheets.firstIndex { sheetAnchor($0) == id } }
-        guard let first = visible.min() else { return nil }
-        // Первый блок видного листа; у пустого листа его граница.
-        guard let start = sheets[first].blocks.first?.id ?? sheets[first].breakId,
-              let startIndex = topLevel.firstIndex(of: start) else { return nil }
-        return outline.last { item in
-            (topLevel.firstIndex(of: item.anchorId) ?? .max) <= startIndex
-        }?.id
-    }
-
     /// Поле на Mac, получив фокус, выделяет весь свой текст. Курсор ставится в конец, как в Notion.
     private func placeCaretAtEnd() {
         #if os(macOS)
@@ -844,7 +829,7 @@ struct PageEditorView: View {
 
     /// Якорь листа для прокрутки: граница листа, у первого листа id страницы.
     private func sheetAnchor(_ sheet: NoteSheets.Sheet) -> UUID {
-        sheet.breakId ?? model.pageId
+        model.sheetAnchor(sheet)
     }
 
     private func scrollToSheet(_ index: Int, proxy: ScrollViewProxy) {
@@ -858,8 +843,11 @@ struct PageEditorView: View {
 
     /// Миниатюры листов слева: на широком экране, когда листов больше одного и рядом с листом есть место.
     private var showsSheetRail: Bool {
-        !isEmbedded && !isCompact && model.sheetCount > 1 && editorWidth >= CGFloat(NoteSheets.width) + 48 + 2 * 110
+        !isEmbedded && !isCompact && model.sheetCount > 1 && hasRoomForRail
     }
+
+    /// С какой ширины редактора рядом с листом помещаются миниатюры.
+    private static let railMinWidth = CGFloat(NoteSheets.width) + 48 + 2 * 110
 
     private var displayTitle: String {
         let trimmed = model.title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1102,6 +1090,91 @@ public struct EditorCommands: Commands {
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .disabled(editor?.canRedo != true)
         }
+    }
+}
+
+/// Какие листы сейчас на экране (по якорю листа). Читают только карта заголовков и миниатюры.
+@MainActor
+@Observable
+final class SheetVisibility {
+    var ids: [UUID] = []
+}
+
+extension PageEditorModel {
+    /// Якорь листа для прокрутки: граница листа, у первого листа id страницы.
+    func sheetAnchor(_ sheet: NoteSheets.Sheet) -> UUID {
+        sheet.breakId ?? pageId
+    }
+}
+
+/// Миниатюры листов слева. Номер видного листа читается здесь, а не в редакторе:
+/// при листании пересчитывается только колонка миниатюр.
+private struct LiveSheetRail: View {
+    let model: PageEditorModel
+    var onSelect: (Int) -> Void
+    var onAdd: () -> Void
+    var onDelete: (Int) -> Void
+
+    var body: some View {
+        SheetRail(
+            count: model.sheetCount,
+            current: model.visibleSheet,
+            pinned: model.pinnedSheet,
+            onSelect: onSelect,
+            onAdd: onAdd,
+            onDelete: onDelete
+        )
+    }
+}
+
+/// Счётчик слов: слова считаются здесь, а не при каждой сборке редактора.
+private struct LiveWordCount: View {
+    let model: PageEditorModel
+    let isFocusMode: Bool
+    var onToggleFocus: () -> Void
+    var timerEnd: Date?
+    var onStartTimer: () -> Void
+    var onStopTimer: () -> Void
+
+    var body: some View {
+        WordCountCapsule(
+            words: model.wordCount,
+            isFocusMode: isFocusMode,
+            onToggleFocus: onToggleFocus,
+            timerEnd: timerEnd,
+            onStartTimer: onStartTimer,
+            onStopTimer: onStopTimer
+        )
+    }
+}
+
+/// Карта заголовков справа. Какой заголовок подсветить, зависит от листов на экране,
+/// поэтому это считается здесь: при листании пересчитывается только карта.
+private struct LiveOutline: View {
+    let model: PageEditorModel
+    let visibility: SheetVisibility
+    var onSelect: (OutlineItem) -> Void
+
+    var body: some View {
+        let outline = model.outline
+        if outline.count >= 2 {
+            PageOutlineView(items: outline, currentId: currentHeadingId(in: outline), onSelect: onSelect)
+        }
+    }
+
+    /// Заголовок, в разделе которого сейчас верх экрана: последний, что начинается не ниже
+    /// начала первого видного листа. Пока виден текст до первого заголовка, не подсвечен ни один.
+    private func currentHeadingId(in outline: [OutlineItem]) -> UUID? {
+        let topLevel = model.children(of: nil).map(\.id)
+        let sheets = model.sheets
+        let visible = visibility.ids.compactMap { id in sheets.firstIndex { model.sheetAnchor($0) == id } }
+        guard let first = visible.min() else { return nil }
+        // Первый блок видного листа; у пустого листа его граница.
+        guard let start = sheets[first].blocks.first?.id ?? sheets[first].breakId,
+              let startIndex = topLevel.firstIndex(of: start) else { return nil }
+        return outline.last { item in
+            (topLevel.firstIndex(of: item.anchorId) ?? .max) <= startIndex
+        }?.id
     }
 }
 

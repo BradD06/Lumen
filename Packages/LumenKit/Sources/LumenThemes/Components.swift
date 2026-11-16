@@ -1,4 +1,8 @@
+import CoreImage
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// Фон кабинета: градиент схемы, за «стеклом» размыто виден книжный шкаф,
 /// в углу тёплая лампа, в противоположном углу второй, холодный свет.
@@ -11,11 +15,7 @@ public struct ThemedBackground: View {
         ZStack {
             theme.backgroundGradient
             if theme.wallOpacity > 0, !theme.wallColors.isEmpty {
-                BookcaseWall(colors: theme.wallColors, plank: theme.accent)
-                    .blur(radius: 14)
-                    // Размытый шкаф рисуется один раз в картинку. Без этого размытие на всё окно
-                    // пересчитывалось на каждом кадре любой прокрутки и анимации поверх него.
-                    .drawingGroup()
+                BlurredBookcase(colors: theme.wallColors, plank: theme.accent)
                     .opacity(theme.wallOpacity)
             }
             RadialGradient(
@@ -34,6 +34,67 @@ public struct ThemedBackground: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .ignoresSafeArea()
+    }
+}
+
+/// Размытый шкаф: готовая картинка на весь экран, окно её только обрезает. Раньше шкаф
+/// рисовался и размывался под размер окна, и при изменении размера окна или панелей
+/// размытие на всё окно считалось заново на каждом кадре.
+struct BlurredBookcase: View {
+    let colors: [Color]
+    let plank: Color
+
+    var body: some View {
+        Color.clear
+            .overlay(alignment: .topLeading) {
+                if let image = BookcaseImage.image(colors: colors, plank: plank) {
+                    Image(decorative: image, scale: BookcaseImage.scale)
+                }
+            }
+            .clipped()
+    }
+}
+
+/// Картинки размытого шкафа, по одной на набор цветов.
+@MainActor
+enum BookcaseImage {
+    /// Шкаф размыт, мелких деталей в нём нет: хватает половины точки на пиксель.
+    static let scale: CGFloat = 0.5
+    private static let blurRadius: CGFloat = 14
+    private static var cache: [String: CGImage] = [:]
+    private static let context = CIContext()
+
+    /// Больше любого окна: самый большой экран.
+    static var size: CGSize {
+        #if os(macOS)
+        let frames = NSScreen.screens.map(\.frame.size)
+        let width = frames.map(\.width).max() ?? 1920
+        let height = frames.map(\.height).max() ?? 1200
+        return CGSize(width: max(width, 1280).rounded(.up), height: max(height, 900).rounded(.up))
+        #else
+        return CGSize(width: 1400, height: 1400)
+        #endif
+    }
+
+    static func image(colors: [Color], plank: Color) -> CGImage? {
+        let size = size
+        let key = "\(colors.map(\.description))|\(plank.description)|\(Int(size.width))x\(Int(size.height))"
+        if let cached = cache[key] { return cached }
+        let renderer = ImageRenderer(
+            content: BookcaseWall(colors: colors, plank: plank)
+                .frame(width: size.width, height: size.height)
+        )
+        renderer.scale = scale
+        guard let wall = renderer.cgImage else { return nil }
+        let input = CIImage(cgImage: wall)
+        // Размытие в пикселях картинки: радиус в точках, умноженный на масштаб.
+        guard let blurred = CIFilter(name: "CIGaussianBlur", parameters: [
+            kCIInputImageKey: input,
+            kCIInputRadiusKey: blurRadius * scale,
+        ])?.outputImage,
+            let result = context.createCGImage(blurred, from: input.extent) else { return nil }
+        cache[key] = result
+        return result
     }
 }
 

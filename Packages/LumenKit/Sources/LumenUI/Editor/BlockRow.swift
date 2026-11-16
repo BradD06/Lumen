@@ -22,7 +22,9 @@ struct BlockRow: View {
     static var handleInset: CGFloat { handleWidth + handleSpacing }
 
     @State private var isHovered = false
-    @State private var size: CGSize = .zero
+    /// Размер строки нужен только приёму перетаскивания, поэтому лежит в коробке: строка
+    /// не пересчитывается, когда меняется ширина листа (окно, панели).
+    @State private var size = GeometryBox(CGSize.zero)
     @State private var isCommentsShown = false
     @State private var isColorPickerShown = false
     /// Разметка, которую человек сейчас набирает. Держится, пока блок в фокусе, чтобы курсор
@@ -97,7 +99,7 @@ struct BlockRow: View {
                 model.dropIndicator = nil
             }
         }
-        .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { size.value = $0 }
         // Где строка на листе: по этим рамкам выделяет рамка мышью.
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(EditorSpace.blocks)) } action: { model.blockFrames[block.id] = $0 }
         #if os(iOS)
@@ -112,9 +114,11 @@ struct BlockRow: View {
         #endif
         .onDrop(
             of: [.lumenBlock],
-            delegate: BlockDropDelegate(targetId: block.id, size: size, model: model)
+            delegate: BlockDropDelegate(targetId: block.id, sizeBox: size, model: model)
         )
-        .modifier(BlockContextMenu(previewPage: linkedPage, database: model.database, menu: menu))
+        // Пункты меню собираются, только когда меню открывают: на каждой строке их десятки,
+        // и раньше они строились при каждой сборке строки, в том числе при листании.
+        .modifier(BlockContextMenu(previewPage: linkedPage, database: model.database, menu: DeferredMenu { menu }))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("row-\(block.text)")
     }
@@ -876,8 +880,10 @@ struct DropIndicator: Equatable {
 /// правая четверть ставит рядом в новую колонку.
 struct BlockDropDelegate: DropDelegate {
     let targetId: UUID
-    let size: CGSize
+    let sizeBox: GeometryBox<CGSize>
     let model: PageEditorModel
+
+    private var size: CGSize { sizeBox.value }
 
     private func zone(at location: CGPoint) -> BlockDropZone {
         if size.width > 0, location.x > size.width * 0.75 { return .beside }
@@ -1044,6 +1050,15 @@ private struct PageLinkBlock: View {
 
 /// Меню блока по правой кнопке или долгому нажатию. У ссылки на страницу на iPhone и iPad
 /// долгое нажатие показывает над меню карточку с началом этой страницы.
+/// Содержимое меню, которое строится, когда его показывают, а не вместе со строкой.
+private struct DeferredMenu<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content()
+    }
+}
+
 private struct BlockContextMenu<MenuItems: View>: ViewModifier {
     let previewPage: Page?
     let database: AppDatabase

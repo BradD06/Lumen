@@ -57,7 +57,9 @@ public struct RootView: View {
     @State private var paletteMove: PaletteMove?
     /// К какому краю сейчас держат вкладку, и ширина области панелей для расчёта краёв.
     @State private var tabDropSide: TabDropSide?
-    @State private var panesWidth: CGFloat = 0
+    /// Ширина в коробке, а не сама в `@State`: она меняется на каждом кадре изменения размера окна,
+    /// а нужна только при броске вкладки. Иначе на каждом кадре пересобиралось бы всё окно.
+    @State private var panesWidth = GeometryBox<CGFloat>(0)
     /// Окно выше, чем шире (iPad стоя): панели тогда сами встают друг под другом.
     @State private var isTallWindow = false
     #if os(iOS)
@@ -351,13 +353,14 @@ public struct RootView: View {
             .onChange(of: workspace.draggingTabId) { _, id in
                 if id == nil { tabDropSide = nil }
             }
-            .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
-                panesWidth = size.width
-                isTallWindow = PaneArrangement.isTall(width: Double(size.width), height: Double(size.height))
-            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { panesWidth.value = $0 }
+            // Только да или нет: экран пересобирается, когда окно стало выше, чем шире, а не на каждом кадре.
+            .onGeometryChange(for: Bool.self) { proxy in
+                PaneArrangement.isTall(width: Double(proxy.size.width), height: Double(proxy.size.height))
+            } action: { isTallWindow = $0 }
             .onDrop(
                 of: [.lumenTab],
-                delegate: TabEdgeDropDelegate(workspace: workspace, width: panesWidth, side: $tabDropSide)
+                delegate: TabEdgeDropDelegate(workspace: workspace, widthBox: panesWidth, side: $tabDropSide)
             )
         }
         .background {

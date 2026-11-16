@@ -426,7 +426,10 @@ enum TabDrag {
 /// Края экрана, куда можно бросить вкладку: левая или правая треть открывает её рядом.
 struct TabEdgeDropDelegate: DropDelegate {
     let workspace: Workspace
-    let width: CGFloat
+    /// Ширина области панелей. Читается только во время перетаскивания, поэтому лежит в коробке:
+    /// иначе экран пересобирался бы на каждом кадре изменения размера окна.
+    let widthBox: GeometryBox<CGFloat>
+    private var width: CGFloat { widthBox.value }
     @Binding var side: TabDropSide?
 
     func validateDrop(info: DropInfo) -> Bool {

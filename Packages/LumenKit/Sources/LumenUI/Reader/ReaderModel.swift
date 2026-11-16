@@ -100,8 +100,19 @@ final class ReaderModel {
     /// Последний пройденный якорь оглавления в открытой главе.
     private(set) var currentAnchor: String?
 
-    @ObservationIgnored let web = WebReaderController()
-    @ObservationIgnored let pdf = PDFReaderController()
+    // Веб-вид и PDF создаются при первом обращении. SwiftUI создаёт модель при каждой сборке
+    // экрана читалки (и выбрасывает лишние): с готовыми видами это был новый WKWebView и PDFView
+    // на каждом кадре изменения размера окна.
+    @ObservationIgnored private(set) lazy var web: WebReaderController = {
+        let controller = WebReaderController()
+        controller.onEvent = { [weak self] event in self?.handle(event) }
+        return controller
+    }()
+    @ObservationIgnored private(set) lazy var pdf: PDFReaderController = {
+        let controller = PDFReaderController()
+        controller.onEvent = { [weak self] event in self?.handle(event) }
+        return controller
+    }()
     /// Ищет в оригинале PDF то, что выделили в режиме «Текст»: так выделение видно в обоих видах.
     @ObservationIgnored private var textFinder: PDFTextFinder?
     /// Где у страниц PDF поля и колонки. Ищется один раз в фоне и потом берётся из кэша.
@@ -127,8 +138,6 @@ final class ReaderModel {
         self.database = database
         self.sourceId = sourceId
         self.pendingReveal = highlightId
-        web.onEvent = { [weak self] event in self?.handle(event) }
-        pdf.onEvent = { [weak self] event in self?.handle(event) }
     }
 
     // MARK: Загрузка
