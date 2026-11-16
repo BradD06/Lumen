@@ -72,6 +72,10 @@ struct PageEditorView: View {
     @State private var hasRoomForRail = false
     /// Над заметкой держат выписку, утащенную из книги.
     @State private var isExcerptTargeted = false
+    /// Выбирают ракурс обложки: картинку можно тянуть, лист отъехал вниз.
+    @State private var isAdjustingCover = false
+    /// Окно в цвет обложки, см. `CoverTint`.
+    @AppStorage(CoverTint.enabledKey) private var followsCover = true
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -334,7 +338,17 @@ struct PageEditorView: View {
             _ = model.backspaceInEmptyBlock(id)
         }
         #endif
+        // Окно в цвет обложки: красит его только заметка в активной панели.
+        .task(id: CoverTintRequest(
+            cover: model.isNotebook ? nil : model.page?.cover,
+            isLoaded: model.isLoaded,
+            isActive: isActivePane && !isEmbedded,
+            isEnabled: followsCover
+        )) {
+            await updateCoverTint()
+        }
         .onDisappear {
+            if !isEmbedded { CoverTint.shared.clear(for: model.pageId) }
             #if os(macOS)
             if let keyMonitor {
                 NSEvent.removeMonitor(keyMonitor)
@@ -356,11 +370,26 @@ struct PageEditorView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 0) {
-                    // Обложка на всю ширину окна, от края до края, как в Notion.
+                    // Обложка на всю ширину окна, лист лежит на её нижнем крае.
+                    // Пока выбирают ракурс, лист отъезжает и обложка видна целиком.
                     if let cover = model.page?.pageCover {
-                        ScrolledPageCover(scroll: scroll, cover: cover, attachments: model.database.attachments)
+                        PageCoverBand(
+                            model: model,
+                            cover: cover,
+                            scroll: scroll,
+                            isAdjusting: $isAdjustingCover,
+                            showsControls: !isEmbedded && isActivePane,
+                            isCompact: isCompact
+                        ) {
+                            coverMenuItems
+                        }
                     }
                     content
+                        .padding(.top, model.page?.pageCover != nil && !isAdjustingCover ? -coverOverlap : 0)
+                }
+                .animation(LumenMotion.standard, value: isAdjustingCover)
+                .onChange(of: model.page?.pageCover == nil) { _, isGone in
+                    if isGone { isAdjustingCover = false }
                 }
             }
             .keyHintClip()
@@ -954,45 +983,30 @@ struct PageEditorView: View {
         }
     }
 
+    /// Отдаёт окну цвет обложки (или `nil`, если обложки нет), когда заметка в активной панели.
+    private func updateCoverTint() async {
+        guard !isEmbedded else { return }
+        guard isActivePane else {
+            // Активной стала другая панель: её экран задаёт цвет сам, наш снимается.
+            CoverTint.shared.clear(for: model.pageId)
+            return
+        }
+        guard model.isLoaded else { return }
+        guard followsCover, !model.isNotebook, let cover = model.page?.pageCover else {
+            CoverTint.shared.show(nil, for: model.pageId)
+            return
+        }
+        let color = await CoverColor.color(of: cover, theme: theme, attachments: model.database.attachments)
+        guard !Task.isCancelled else { return }
+        CoverTint.shared.show(color, for: model.pageId)
+    }
+
+    /// Насколько первый лист заходит на обложку: вместе с отступом над листами.
+    private var coverOverlap: CGFloat { isCompact ? 60 : 110 }
+
     private var coverMenu: some View {
         Menu {
-            Menu {
-                ForEach(WallpaperPalette.all) { palette in
-                    Button(palette.name) { setMountainCover(palette: palette.id, isFaceted: false) }
-                }
-            } label: {
-                Label("Горы", systemImage: "mountain.2")
-            }
-            Menu {
-                ForEach(WallpaperPalette.all) { palette in
-                    Button(palette.name) { setMountainCover(palette: palette.id, isFaceted: true) }
-                }
-            } label: {
-                Label("Гранёные горы", systemImage: "triangle")
-            }
-            if case .wallpaper(var wallpaper) = model.page?.pageCover {
-                Button {
-                    wallpaper.seed = Int.random(in: 0..<100_000)
-                    model.setCover(.wallpaper(wallpaper))
-                } label: {
-                    Label("Другие горы", systemImage: "shuffle")
-                }
-            }
-            Divider()
-            ForEach(Array(Self.coverGradients.enumerated()), id: \.offset) { index, name in
-                Button(name) { model.setCover(.gradient(index)) }
-            }
-            Divider()
-            Button {
-                photoTarget = .cover
-                isPickingPhoto = true
-            } label: {
-                Label("Фото…", systemImage: "photo")
-            }
-            if model.page?.cover != nil {
-                Divider()
-                Button("Убрать обложку", role: .destructive) { model.setCover(nil) }
-            }
+            coverMenuItems
         } label: {
             Label("Обложка", systemImage: "photo.artframe")
                 .font(.subheadline)
@@ -1001,6 +1015,52 @@ struct PageEditorView: View {
         .menuStyle(.button)
         .buttonStyle(.plain)
         .fixedSize()
+    }
+
+    /// Выбор обложки: горы, цвет, своё фото. Тот же список в «Обложка» над названием
+    /// и в «Сменить» на самой обложке.
+    @ViewBuilder
+    private var coverMenuItems: some View {
+        Menu {
+            ForEach(WallpaperPalette.all) { palette in
+                Button(palette.name) { setMountainCover(palette: palette.id, isFaceted: false) }
+            }
+        } label: {
+            Label("Горы", systemImage: "mountain.2")
+        }
+        Menu {
+            ForEach(WallpaperPalette.all) { palette in
+                Button(palette.name) { setMountainCover(palette: palette.id, isFaceted: true) }
+            }
+        } label: {
+            Label("Гранёные горы", systemImage: "triangle")
+        }
+        if case .wallpaper(var wallpaper) = model.page?.pageCover {
+            Button {
+                wallpaper.seed = Int.random(in: 0..<100_000)
+                model.setCover(.wallpaper(wallpaper))
+            } label: {
+                Label("Другие горы", systemImage: "shuffle")
+            }
+        }
+        Divider()
+        ForEach(Array(Self.coverGradients.enumerated()), id: \.offset) { index, name in
+            Button(name) { model.setCover(.gradient(index)) }
+        }
+        Divider()
+        Button {
+            photoTarget = .cover
+            isPickingPhoto = true
+        } label: {
+            Label("Фото…", systemImage: "photo")
+        }
+        if model.page?.cover != nil {
+            Divider()
+            Button("Ракурс и высота…", systemImage: "arrow.up.and.down.and.arrow.left.and.right") {
+                isAdjustingCover = true
+            }
+            Button("Убрать обложку", role: .destructive) { model.setCover(nil) }
+        }
     }
 
     /// Горная обложка в выбранной палитре. Если горы уже стоят, их форма сохраняется.
@@ -1178,6 +1238,14 @@ private struct LiveOutline: View {
     }
 }
 
+/// Всё, от чего зависит цвет окна под обложку: меняется что-то одно, цвет считается заново.
+private struct CoverTintRequest: Equatable {
+    var cover: String?
+    var isLoaded: Bool
+    var isActive: Bool
+    var isEnabled: Bool
+}
+
 /// Насколько прокручена страница. Его читают только фон и обложка ниже.
 @MainActor
 @Observable
@@ -1201,13 +1269,3 @@ private struct ScrolledPageBackground: View {
     }
 }
 
-/// Обложка страницы: горы на ней тоже темнеют при прокрутке.
-private struct ScrolledPageCover: View {
-    let scroll: PageScrollOffset
-    let cover: PageCover
-    let attachments: AttachmentStore
-
-    var body: some View {
-        PageCoverView(cover: cover, attachments: attachments, sunset: scroll.offset / 220)
-    }
-}

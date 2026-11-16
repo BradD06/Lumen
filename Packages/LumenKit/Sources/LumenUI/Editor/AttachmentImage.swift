@@ -31,6 +31,8 @@ struct AttachmentImage: View {
     /// размере занимает в памяти десятки мегабайт, а на экране столько точек не нужно.
     /// `nil`: как есть (картинка, открытая в читалке, где её увеличивают).
     let maxPixelSize: Int?
+    /// Картинка готова: её размер. Обложке он нужен, чтобы знать, сколько картинки скрыто.
+    var onLoad: ((CGSize) -> Void)?
 
     @State private var image: PlatformImage?
     @State private var isMissing = false
@@ -50,12 +52,14 @@ struct AttachmentImage: View {
         name: String,
         attachments: AttachmentStore,
         contentMode: ContentMode = .fit,
-        maxPixelSize: Int? = AttachmentImage.defaultMaxPixelSize
+        maxPixelSize: Int? = AttachmentImage.defaultMaxPixelSize,
+        onLoad: ((CGSize) -> Void)? = nil
     ) {
         self.name = name
         self.attachments = attachments
         self.contentMode = contentMode
         self.maxPixelSize = maxPixelSize
+        self.onLoad = onLoad
         _image = State(initialValue: Self.cache.object(forKey: Self.cacheKey(attachments.url(for: name), maxPixelSize)))
     }
 
@@ -84,6 +88,7 @@ struct AttachmentImage: View {
             if let cached = Self.cache.object(forKey: key) {
                 image = cached
                 isMissing = false
+                onLoad?(cached.size)
                 return
             }
             let maxPixelSize = maxPixelSize
@@ -92,6 +97,7 @@ struct AttachmentImage: View {
                 image = loaded
                 isMissing = false
                 Self.cache.setObject(loaded, forKey: key, cost: decoded.cost)
+                onLoad?(loaded.size)
                 return
             }
             // Без уменьшения или формат, который ImageIO не читает (например PDF): как раньше.
@@ -100,6 +106,7 @@ struct AttachmentImage: View {
             isMissing = image == nil
             if let image, let data {
                 Self.cache.setObject(image, forKey: key, cost: data.count)
+                onLoad?(image.size)
             }
         }
     }
@@ -140,10 +147,18 @@ struct PageCoverView: View {
     let attachments: AttachmentStore
     /// Насколько зашло солнце на горной обложке, см. `LayeredWallpaper.sunset`.
     var sunset: Double = 0
-    /// Высота полосы: в редакторе обложка большая, на плитке библиотеки маленькая.
-    var height: CGFloat = 240
+    /// Ракурс: какая часть картинки видна. Высоту полосы он задаёт, только если `height` не указана.
+    var crop = CoverCrop()
+    /// Высота полосы: на плитке библиотеки маленькая; `nil` берёт высоту из ракурса.
+    var height: CGFloat?
+    /// Сколько картинки скрыто по ширине и высоте: столько её можно сдвинуть, выбирая ракурс.
+    var onLayout: ((CoverLayout) -> Void)?
 
     @Environment(\.lumenTheme) private var theme
+    /// Размер картинки, когда она прочитана: без него неизвестно, сколько её скрыто.
+    @State private var imageSize: CGSize?
+
+    private var bandHeight: CGFloat { height ?? CGFloat(crop.height.points) }
 
     var body: some View {
         Group {
@@ -164,12 +179,23 @@ struct PageCoverView: View {
                     endPoint: .bottomTrailing
                 )
             case .image(let name):
-                Color.clear.overlay {
-                    AttachmentImage(name: name, attachments: attachments, contentMode: .fill)
+                GeometryReader { geometry in
+                    let layout = crop.layout(
+                        boxWidth: geometry.size.width,
+                        boxHeight: geometry.size.height,
+                        imageWidth: imageSize.map { Double($0.width) },
+                        imageHeight: imageSize.map { Double($0.height) }
+                    )
+                    AttachmentImage(name: name, attachments: attachments, contentMode: .fill, onLoad: { size in
+                        if imageSize != size { imageSize = size }
+                    })
+                    .frame(width: layout.width, height: layout.height)
+                    .offset(x: layout.offsetX, y: layout.offsetY)
+                    .onChange(of: layout, initial: true) { _, layout in onLayout?(layout) }
                 }
             }
         }
-        .frame(height: height)
+        .frame(height: bandHeight)
         .frame(maxWidth: .infinity)
         .clipped()
     }

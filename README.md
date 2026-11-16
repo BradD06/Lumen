@@ -43,7 +43,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Hover over an excerpt to preview the book and the place it came from. Hover over a link to a page (or long-press it on iPhone) to see how that page starts, then open it here or beside the current one.
 - On iPhone, a keyboard bar (new block, indent, move, hide keyboard) and block-type chips above it.
 - Subpages and links to any page with `[[` or `@`, plus backlinks at the bottom of every page.
-- Page covers from the theme's gradients or your own photos.
+- Page covers from the theme's gradients, mountains or your own photos. The cover runs the full width of the window and the first sheet of the note lies on its lower edge. "Angle" lets you drag the picture to choose which part shows, zoom it with a pinch or a slider, and make the cover low, medium or high. The window takes the cover's color (background, glow and buttons) while the note is open; turn this off in Settings → Covers.
 - One **Create** button for everything: note (⌘N), task (⇧⌘N), handwritten notebook, book or file (⌘O), database, folder. On iPhone it is a round `+` button.
 - Quick note with ⌘N, from Shortcuts or from Siri. It lands in the Inbox to sort later.
 - A ⌘K command palette: search pages, books and quotes, open recent items, and run actions (⌘↵ opens a result beside the current one): tabs and panes, go back and forward, and act on the open note or book (favorite, move to a folder, copy its link, delete).

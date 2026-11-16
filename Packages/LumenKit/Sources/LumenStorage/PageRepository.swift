@@ -141,7 +141,20 @@ extension AppDatabase {
 
     public func setCover(_ id: UUID, cover: PageCover?) async throws {
         try await writer.write { db in
-            try Self.updatePage(db, id) { $0.pageCover = cover }
+            try Self.updatePage(db, id) { page in
+                // Новая картинка встаёт по центру, высота полосы остаётся прежней.
+                if page.pageCover != cover {
+                    page.pageCoverCrop = CoverCrop(height: page.pageCoverCrop.height)
+                }
+                page.pageCover = cover
+            }
+        }
+    }
+
+    /// Ракурс и высота обложки.
+    public func setCoverCrop(_ id: UUID, crop: CoverCrop) async throws {
+        try await writer.write { db in
+            try Self.updatePage(db, id) { $0.pageCoverCrop = crop }
         }
     }
 

@@ -10,6 +10,25 @@ struct PageRepositoryTests {
         db = try AppDatabase.inMemory()
     }
 
+    @Test func coverCropIsSavedAndResetByANewPicture() async throws {
+        let page = try await db.createPage(title: "Лекция 5")
+        try await db.setCover(page.id, cover: .image("a.jpg"))
+        try await db.setCoverCrop(page.id, crop: CoverCrop(focusY: 0.2, zoom: 1.5, height: .high))
+        var saved = try #require(try await db.page(page.id))
+        #expect(abs(saved.pageCoverCrop.focusY - 0.2) < 0.001)
+        #expect(saved.pageCoverCrop.height == .high)
+
+        // Та же картинка: ракурс остаётся.
+        try await db.setCover(page.id, cover: .image("a.jpg"))
+        saved = try #require(try await db.page(page.id))
+        #expect(abs(saved.pageCoverCrop.zoom - 1.5) < 0.001)
+
+        // Новая картинка встаёт по центру, высота полосы прежняя.
+        try await db.setCover(page.id, cover: .image("b.jpg"))
+        saved = try #require(try await db.page(page.id))
+        #expect(saved.pageCoverCrop == CoverCrop(height: .high))
+    }
+
     @Test func quickNoteGoesToInbox() async throws {
         let page = try await db.createQuickNote("Купить молоко\n\nи хлеб\nи сыр")
         #expect(page.inInbox)
