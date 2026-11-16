@@ -21,7 +21,9 @@ struct BlockRow: View {
     static let handleSpacing: CGFloat = 4
     static var handleInset: CGFloat { handleWidth + handleSpacing }
 
-    @State private var isHovered = false
+    /// Наведение лежит в коробке: его читает только ручка (`HandleGlyph`), так что курсор,
+    /// проходящий над строками, не пересобирает строку целиком.
+    @State private var hover = RowHover()
     /// Размер строки нужен только приёму перетаскивания, поэтому лежит в коробке: строка
     /// не пересчитывается, когда меняется ширина листа (окно, панели).
     @State private var size = GeometryBox(CGSize.zero)
@@ -85,18 +87,15 @@ struct BlockRow: View {
         .animation(.easeInOut(duration: 0.25), value: isFocused)
         .overlay { dropIndicator }
         .contentShape(Rectangle())
-        .onHover { hovering in
-            // Ручка и «+» слева проявляются и гаснут плавно.
-            withAnimation(LumenMotion.quick) { isHovered = hovering }
-            if hovering {
-                model.hoveredBlockId = block.id
-            } else if model.hoveredBlockId == block.id {
-                model.hoveredBlockId = nil
-            }
-            // Перетаскивание отменили мимо строк: обычное наведение убирает оставшуюся линию.
-            // Во время самого перетаскивания линию сразу ставит заново приём блока.
-            if hovering, model.dropIndicator != nil {
-                model.dropIndicator = nil
+        // Непрерывное наведение: после прокрутки ручка появляется у строки под курсором
+        // при первом же движении мыши, а пока страница едет, строки не загораются.
+        .onContinuousHover { phase in
+            switch phase {
+            case .active:
+                guard !model.isScrolling else { return }
+                setHovered(true)
+            case .ended:
+                setHovered(false)
             }
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size.value = $0 }
@@ -449,6 +448,23 @@ struct BlockRow: View {
         focus.wrappedValue == .block(block.id)
     }
 
+    /// Курсор зашёл на строку или ушёл с неё. Ручка проявляется и гаснет плавно.
+    private func setHovered(_ hovering: Bool) {
+        if hover.isHovered != hovering {
+            withAnimation(LumenMotion.quick) { hover.isHovered = hovering }
+        }
+        if hovering {
+            if model.hoveredBlockId != block.id { model.hoveredBlockId = block.id }
+        } else if model.hoveredBlockId == block.id {
+            model.hoveredBlockId = nil
+        }
+        // Перетаскивание отменили мимо строк: обычное наведение убирает оставшуюся линию.
+        // Во время самого перетаскивания линию сразу ставит заново приём блока.
+        if hovering, model.dropIndicator != nil {
+            model.dropIndicator = nil
+        }
+    }
+
     /// Текст после `/` в пустом абзаце открывает меню выбора типа блока.
     private var slashQuery: String? {
         guard block.type == .paragraph, block.text.hasPrefix("/") else { return nil }
@@ -463,12 +479,7 @@ struct BlockRow: View {
 
     /// Ручка слева от блока: потяните, чтобы переставить блок. На Mac видна при наведении.
     private var dragHandle: some View {
-        Image(systemName: "line.3.horizontal")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(theme.textSecondary)
-            .frame(width: Self.handleWidth, height: 24)
-            .contentShape(Rectangle())
-            .opacity(handleOpacity)
+        HandleGlyph(hover: hover, isFocused: isFocused, color: theme.textSecondary)
             // Нажатие на ручку выделяет блок: с ⇧ диапазон, с ⌘ добавить или убрать.
             .onTapGesture {
                 #if os(macOS)
@@ -494,14 +505,6 @@ struct BlockRow: View {
             .help("Перетащите, чтобы переместить блок. Нажмите, чтобы выделить")
             .accessibilityLabel("Переместить блок")
             .accessibilityIdentifier("handle-\(block.text)")
-    }
-
-    private var handleOpacity: Double {
-        #if os(macOS)
-        return isHovered || isFocused ? 0.8 : 0
-        #else
-        return isFocused ? 0.8 : 0.25
-        #endif
     }
 
     /// Сколько блоков поедет, если тянуть этот: все выделенные, если он среди них.
@@ -1346,5 +1349,36 @@ struct SlashMenu: View {
         }
         .frame(maxWidth: 300)
         .lumenCard(padding: 6)
+    }
+}
+
+/// Наведена ли мышь на строку. Отдельный объект, чтобы наведение перерисовывало только ручку.
+@MainActor
+@Observable
+final class RowHover {
+    var isHovered = false
+}
+
+/// Значок ручки блока. Один читает наведение, поэтому строка от него не пересобирается.
+private struct HandleGlyph: View {
+    let hover: RowHover
+    let isFocused: Bool
+    let color: Color
+
+    var body: some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(color)
+            .frame(width: BlockRow.handleWidth, height: 24)
+            .contentShape(Rectangle())
+            .opacity(opacity)
+    }
+
+    private var opacity: Double {
+        #if os(macOS)
+        return hover.isHovered || isFocused ? 0.8 : 0
+        #else
+        return isFocused ? 0.8 : 0.25
+        #endif
     }
 }

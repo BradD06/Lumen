@@ -103,7 +103,12 @@ struct ImageBlock: View {
                 }
             }
             .animation(LumenMotion.quick, value: handlesVisible)
-            .onHover { isHovered = $0 }
+            // Пока страница едет, ручки размера не загораются от курсора.
+            .onContinuousHover { phase in
+                var hovering = !model.isScrolling
+                if case .ended = phase { hovering = false }
+                if isHovered != hovering { isHovered = hovering }
+            }
             #if os(iOS)
             .onTapGesture {
                 withAnimation(LumenMotion.quick) { showsHandles.toggle() }

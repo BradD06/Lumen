@@ -72,6 +72,9 @@ final class PageEditorModel {
     @ObservationIgnored var blockFrames: [UUID: CGRect] = [:]
     /// Строка под курсором мыши: по ней ⇧-щелчок в тексте выделяет диапазон.
     @ObservationIgnored var hoveredBlockId: UUID?
+    /// Страница сейчас едет (жест, инерция, анимация прокрутки). Пока едет, наведение на строки
+    /// не включается: иначе каждая строка под неподвижным курсором пересобиралась бы на лету.
+    @ObservationIgnored var isScrolling = false
 
     struct SourceRequest: Equatable {
         var sourceId: UUID
