@@ -163,7 +163,27 @@ struct PageRepositoryTests {
         #expect(home.inboxCount == 1)
         #expect(home.pageCount == 2)
         #expect(home.editedToday == 2)
-        #expect(home.recent.count == 2)
+        // Последняя заметка лежит на столе отдельно, в «Недавних» её нет.
+        #expect(home.desk != nil)
+        #expect(home.recent.count == 1)
+    }
+
+    @Test func homeDeskShowsLastNoteWithItsFolder() async throws {
+        let folder = try await db.createFolder(name: "Учёба")
+        let shelf = try await db.createShelf(name: "Романы")
+        _ = try await db.createPage(title: "Старая", folderId: folder.id)
+        let note = try await db.createPage(title: "Лекция", folderId: folder.id)
+        try await db.writer.write { db in
+            try db.execute(sql: "UPDATE page SET updatedAt = ? WHERE id = ?", arguments: [Date().addingTimeInterval(60), note.id])
+        }
+        let home = try await db.reader.read { try HomeSnapshot.fetch($0) }
+        #expect(home.desk?.id == note.id)
+        #expect(home.desk?.path.map(\.title) == ["Библиотека", "Учёба"])
+        #expect(home.desk?.sheetCount == 1)
+        // Полка с книгами в папки «Стола» не попадает.
+        #expect(home.folders.map(\.folder.id) == [folder.id])
+        #expect(home.folders.first?.itemCount == 2)
+        #expect(!home.folders.contains { $0.folder.id == shelf.id })
     }
 }
 

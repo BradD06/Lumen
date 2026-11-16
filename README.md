@@ -98,7 +98,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - A desk lamp on the Today shelf: switch it on and the rooms and tabs step away, the edges of the window dim, and a 25-minute study timer starts; switch it off and the light comes back.
 - Quiet sounds, on by default and easy to turn off in Settings: a book sliding onto the shelf, the lamp's switch, tape when an excerpt sticks to a note, paper rustling.
 - The Desk (Today) shows one shelf of the books you read most recently, newest on the left; "All books" opens the full shelves.
-- A **Today** screen: a capture field (tick "This is a task" to add it to today's tasks), Continue reading, today's tasks you can check off, the Inbox, and recent pages.
+- A **Today** screen: a capture field (tick "This is a task" to add it to today's tasks); the note you wrote last as a big card, its sheet lying on its cover, so you pick up where you stopped; today's tasks you can check off; the book you are reading with today's reading minutes; your folders as covered tiles next to the Inbox (with "Sort" one by one); and recent pages.
 
 ## Roadmap
 
