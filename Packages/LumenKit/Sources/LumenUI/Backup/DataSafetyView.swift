@@ -10,8 +10,8 @@ import UniformTypeIdentifiers
 struct DataSafetyView: View {
     let database: AppDatabase
 
-    @AppStorage("backup.includeFiles") private var includeFiles = true
-    @AppStorage("backup.lastDate") private var lastBackupDate: Double = 0
+    @Setting("backup.includeFiles") private var includeFiles = true
+    @Setting("backup.lastDate") private var lastBackupDate: Double = 0
     @State private var isWorking = false
     @State private var workTitle = ""
     /// Готовая копия во временной папке, ждёт, куда её перенесут.

@@ -99,18 +99,18 @@ enum ReaderProgressMode: String, CaseIterable, Identifiable, Sendable {
 
 /// Раздел настроек: что показывать на экране.
 struct ScreenOptionsSection: View {
-    @AppStorage(ScreenOptions.tabStripKey) private var tabStrip = TabStripMode.multiple
-    @AppStorage(ScreenOptions.windowButtonsKey) private var windowButtons = ScreenOptions.windowButtonsDefault
-    @AppStorage(ScreenOptions.saveStatusKey) private var saveStatus = SaveStatusMode.briefly
-    @AppStorage(ScreenOptions.wordCountKey) private var wordCount = false
-    @AppStorage(ScreenOptions.breadcrumbsKey) private var breadcrumbs = false
-    @AppStorage(ScreenOptions.readerProgressKey) private var readerProgress = ReaderProgressMode.defaultMode
-    @AppStorage(ScreenOptions.gridKey) private var snapToGrid = false
+    @Setting(ScreenOptions.tabStripKey) private var tabStrip = TabStripMode.multiple
+    @Setting(ScreenOptions.windowButtonsKey) private var windowButtons = ScreenOptions.windowButtonsDefault
+    @Setting(ScreenOptions.saveStatusKey) private var saveStatus = SaveStatusMode.briefly
+    @Setting(ScreenOptions.wordCountKey) private var wordCount = false
+    @Setting(ScreenOptions.breadcrumbsKey) private var breadcrumbs = false
+    @Setting(ScreenOptions.readerProgressKey) private var readerProgress = ReaderProgressMode.defaultMode
+    @Setting(ScreenOptions.gridKey) private var snapToGrid = false
 
-    @AppStorage(ScreenOptions.homeReadingKey) private var homeReading = true
-    @AppStorage(ScreenOptions.homeTasksKey) private var homeTasks = true
-    @AppStorage(ScreenOptions.homeInboxKey) private var homeInbox = true
-    @AppStorage(ScreenOptions.homeRecentKey) private var homeRecent = true
+    @Setting(ScreenOptions.homeReadingKey) private var homeReading = true
+    @Setting(ScreenOptions.homeTasksKey) private var homeTasks = true
+    @Setting(ScreenOptions.homeInboxKey) private var homeInbox = true
+    @Setting(ScreenOptions.homeRecentKey) private var homeRecent = true
 
     var body: some View {
         Section {

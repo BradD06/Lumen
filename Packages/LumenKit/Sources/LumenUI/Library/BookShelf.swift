@@ -45,9 +45,9 @@ struct BookShelf: View {
     @State private var importShelf: Folder?
     /// Насколько прокручена каждая полка: место, куда бросили книгу, считается от начала полки.
     @State private var scrollOffsets: [UUID?: CGFloat] = [:]
-    @AppStorage(BookShelf.sortKey) private var sort = ShelfSort.recent
+    @Setting(BookShelf.sortKey) private var sort = ShelfSort.recent
     /// Какие книги видны: все по полкам или одна полка «Читаю», «Хочу», «Прочитано».
-    @AppStorage(BookShelf.statusKey) private var status = ShelfStatus.all
+    @Setting(BookShelf.statusKey) private var status = ShelfStatus.all
     @Environment(\.lumenTheme) private var theme
     @Environment(\.bookShowcase) private var showcase
     @Environment(\.appActions) private var appActions

@@ -64,8 +64,8 @@ public struct RootView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     @Environment(\.lumenTheme) private var theme
-    @AppStorage(ScreenOptions.tabStripKey) private var tabStripMode = TabStripMode.multiple
-    @AppStorage(ScreenOptions.windowButtonsKey) private var showsWindowButtons = ScreenOptions.windowButtonsDefault
+    @Setting(ScreenOptions.tabStripKey) private var tabStripMode = TabStripMode.multiple
+    @Setting(ScreenOptions.windowButtonsKey) private var showsWindowButtons = ScreenOptions.windowButtonsDefault
 
     public init(database: AppDatabase) {
         self.database = database
@@ -537,6 +537,7 @@ public struct RootView: View {
 
     private func appActions(pane: Int?) -> AppActions {
         AppActions(
+            owner: pane.map { "pane \($0)" } ?? "window",
             open: { open($0, pane: pane) },
             create: { kind in
                 if kind == .book {

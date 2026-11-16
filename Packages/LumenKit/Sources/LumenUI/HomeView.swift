@@ -24,10 +24,10 @@ struct HomeView: View {
     @State private var isWide = true
     @Environment(\.appActions) private var appActions
     @Environment(\.lumenTheme) private var theme
-    @AppStorage(ScreenOptions.homeReadingKey) private var showsReading = true
-    @AppStorage(ScreenOptions.homeTasksKey) private var showsTasks = true
-    @AppStorage(ScreenOptions.homeInboxKey) private var showsInbox = true
-    @AppStorage(ScreenOptions.homeRecentKey) private var showsRecent = true
+    @Setting(ScreenOptions.homeReadingKey) private var showsReading = true
+    @Setting(ScreenOptions.homeTasksKey) private var showsTasks = true
+    @Setting(ScreenOptions.homeInboxKey) private var showsInbox = true
+    @Setting(ScreenOptions.homeRecentKey) private var showsRecent = true
 
     private static let deskHeight: CGFloat = 370
 
@@ -449,7 +449,9 @@ private struct DeskNoteCard: View {
         .padding(.top, isCompact ? 18 : 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
-            shape.fill(theme.cardFill)
+            // Лист непрозрачный: обложка лежит под ним и не просвечивает краем сквозь стекло.
+            shape.fill(theme.menuFill)
+                .overlay(shape.fill(theme.cardFill))
                 .overlay(shape.fill(theme.contrast.opacity(0.035)))
                 .overlay(shape.strokeBorder(theme.cardStroke, lineWidth: 1))
                 .shadow(color: .black.opacity(theme.shadowOpacity * 0.8), radius: 20, y: -6)
@@ -538,7 +540,7 @@ private struct ReadingNowCard: View {
     var onOpenBook: () -> Void
     var onShowReading: () -> Void
 
-    @AppStorage(ReadingGoal.key) private var goalMinutes = ReadingGoal.defaultMinutes
+    @Setting(ReadingGoal.key) private var goalMinutes = ReadingGoal.defaultMinutes
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {

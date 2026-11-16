@@ -38,12 +38,12 @@ private struct ThemedToolbar: ViewModifier {
 }
 
 private struct LumenThemeHost: ViewModifier {
-    @AppStorage(Theme.storageKey) private var schemeID = Theme.study.id
-    @AppStorage(DaylightSchedule.enabledKey) private var followsDaylight = false
-    @AppStorage(DaylightSchedule.dayKey) private var dayID = Theme.linen.id
-    @AppStorage(DaylightSchedule.eveningKey) private var eveningID = Theme.study.id
-    @AppStorage(DaylightSchedule.nightKey) private var nightID = Theme.midnight.id
-    @AppStorage(CoverTint.enabledKey) private var followsCover = true
+    @Setting(Theme.storageKey) private var schemeID = Theme.study.id
+    @Setting(DaylightSchedule.enabledKey) private var followsDaylight = false
+    @Setting(DaylightSchedule.dayKey) private var dayID = Theme.linen.id
+    @Setting(DaylightSchedule.eveningKey) private var eveningID = Theme.study.id
+    @Setting(DaylightSchedule.nightKey) private var nightID = Theme.midnight.id
+    @Setting(CoverTint.enabledKey) private var followsCover = true
     /// Текущее время для «света по времени суток»; обновляется, когда меняется часть суток.
     @State private var now = Date()
     private let coverTint = CoverTint.shared
@@ -82,12 +82,12 @@ private struct LumenThemeHost: ViewModifier {
 
 /// Раздел «Оформление» в Настройках: шесть цветовых схем и «свет по времени суток».
 struct AppearanceSection: View {
-    @AppStorage(Theme.storageKey) private var schemeID = Theme.study.id
-    @AppStorage(DaylightSchedule.enabledKey) private var followsDaylight = false
-    @AppStorage(DaylightSchedule.dayKey) private var dayID = Theme.linen.id
-    @AppStorage(DaylightSchedule.eveningKey) private var eveningID = Theme.study.id
-    @AppStorage(DaylightSchedule.nightKey) private var nightID = Theme.midnight.id
-    @AppStorage(CoverTint.enabledKey) private var followsCover = true
+    @Setting(Theme.storageKey) private var schemeID = Theme.study.id
+    @Setting(DaylightSchedule.enabledKey) private var followsDaylight = false
+    @Setting(DaylightSchedule.dayKey) private var dayID = Theme.linen.id
+    @Setting(DaylightSchedule.eveningKey) private var eveningID = Theme.study.id
+    @Setting(DaylightSchedule.nightKey) private var nightID = Theme.midnight.id
+    @Setting(CoverTint.enabledKey) private var followsCover = true
 
     var body: some View {
         Section {

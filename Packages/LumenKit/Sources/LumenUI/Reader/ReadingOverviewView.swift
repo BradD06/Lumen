@@ -15,7 +15,7 @@ struct ReadingOverviewView: View {
 
     @State private var snapshot = ReadingOverviewSnapshot.empty
     @State private var period: ReadingOverview.Period = .week
-    @AppStorage(ReadingGoal.key) private var goalMinutes = ReadingGoal.defaultMinutes
+    @Setting(ReadingGoal.key) private var goalMinutes = ReadingGoal.defaultMinutes
     @Environment(\.lumenTheme) private var theme
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass

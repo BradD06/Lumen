@@ -47,7 +47,7 @@ struct LibraryView: View {
     @State var favorites: [Page] = []
     @State var trashCount = 0
     @State var isSyncInfoPresented = false
-    @AppStorage(ScreenOptions.gridKey) var snapToGrid = false
+    @Setting(ScreenOptions.gridKey) var snapToGrid = false
     /// Меню «Создать» над холстом.
     @State var isCreateMenuOpen = false
     #if os(iOS)

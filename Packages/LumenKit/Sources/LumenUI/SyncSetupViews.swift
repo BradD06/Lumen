@@ -145,7 +145,7 @@ struct SyncSetupCard: View {
 
     @Environment(FolderSyncController.self) private var folderSync: FolderSyncController?
     @Environment(\.lumenTheme) private var theme
-    @AppStorage(Self.hiddenKey) private var isHidden = false
+    @Setting(Self.hiddenKey) private var isHidden = false
     @State private var isPicking = false
     /// Включили с этой карточки: показываем итог, даже когда всё связалось.
     @State private var justTurnedOn = false

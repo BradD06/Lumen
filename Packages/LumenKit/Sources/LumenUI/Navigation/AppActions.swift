@@ -77,13 +77,18 @@ enum CreateKind: String, CaseIterable, Identifiable, Sendable {
 
 /// Действия приложения, доступные с любого экрана: открыть раздел, создать, найти, настроить.
 /// Корневой экран (Mac, iPad, iPhone) кладёт их в окружение, экраны только вызывают.
-struct AppActions {
+struct AppActions: Equatable {
+    /// Чьи это действия: окно целиком или его половина. Сравниваются только по нему: замыкания трогают
+    /// лишь `@State` и базу корня, поэтому старые работают так же, а экраны не пересобираются вслед за `RootView`.
+    var owner = ""
     var open: @MainActor (SidebarItem) -> Void = { _ in }
     var create: @MainActor (CreateKind) -> Void = { _ in }
     /// Быстрая мысль из поля «Запишите мысль»: во «Входящие» или задачей на сегодня.
     var capture: @MainActor (_ text: String, _ asTask: Bool) -> Void = { _, _ in }
     var search: @MainActor () -> Void = {}
     var settings: @MainActor () -> Void = {}
+
+    static func == (lhs: AppActions, rhs: AppActions) -> Bool { lhs.owner == rhs.owner }
 }
 
 extension EnvironmentValues {
@@ -439,7 +444,7 @@ struct SettingsSheet: View {
     let database: AppDatabase
     var onDone: () -> Void
 
-    @AppStorage(LumenSounds.enabledKey) private var soundsEnabled = true
+    @Setting(LumenSounds.enabledKey) private var soundsEnabled = true
     @Environment(FolderSyncController.self) private var folderSync: FolderSyncController?
     @State private var isPickingSyncFolder = false
 
