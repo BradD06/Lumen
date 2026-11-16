@@ -48,9 +48,9 @@ struct PhoneRootView: View {
     @State private var isSettingsPresented = false
 
     var body: some View {
-        // Вкладки называются как комнаты «Кабинета».
+        // Вкладки те же, что колонка слева на Mac и iPad: названия и значки из `StudyRoom`.
         TabView(selection: $tab) {
-            Tab("Стол", systemImage: "lamp.desk", value: PhoneTab.home) {
+            Tab(StudyRoom.desk.title, systemImage: StudyRoom.desk.systemImage, value: PhoneTab.home) {
                 stack(.home) {
                     HomeView(
                         database: database,
@@ -64,18 +64,18 @@ struct PhoneRootView: View {
                     .overlay(alignment: .bottomTrailing) { createButton }
                 }
             }
-            Tab("Записки", systemImage: "envelope", value: PhoneTab.inbox) {
+            Tab(StudyRoom.notes.title, systemImage: StudyRoom.notes.systemImage, value: PhoneTab.inbox) {
                 stack(.inbox) {
                     InboxView(database: database, onOpen: { push(.page($0)) }, onNewNote: newQuickNote)
                         .overlay(alignment: .bottomTrailing) { createButton }
                 }
             }
-            Tab("Дела", systemImage: "checklist", value: PhoneTab.tasks) {
+            Tab(StudyRoom.tasks.title, systemImage: StudyRoom.tasks.systemImage, value: PhoneTab.tasks) {
                 stack(.tasks) {
                     TasksScreen(database: database, onOpenPage: { push(.page($0)) })
                 }
             }
-            Tab("Полка", systemImage: "books.vertical", value: PhoneTab.library) {
+            Tab(StudyRoom.shelf.title, systemImage: StudyRoom.shelf.systemImage, value: PhoneTab.library) {
                 stack(.library) {
                     library(folderId: nil)
                         .toolbar {
