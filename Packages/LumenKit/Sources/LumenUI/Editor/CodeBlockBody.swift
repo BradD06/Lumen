@@ -17,10 +17,10 @@ struct CodeBlockBody<Field: View>: View {
 
     @Environment(\.lumenTheme) private var theme
 
-    private var language: CodeLanguage { CodeLanguage.detect(code) }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        // Язык угадывается по тексту: один раз на сборку, а не для подписи и подсветки отдельно.
+        let language = CodeLanguage.detect(code)
+        return VStack(alignment: .leading, spacing: 6) {
             if language != .plain {
                 Text(language.displayName)
                     .font(.caption.weight(.medium))
@@ -31,7 +31,7 @@ struct CodeBlockBody<Field: View>: View {
             field()
                 .overlay(alignment: .topLeading) {
                     if !isEditing || CodePalette.overlaysWhileEditing {
-                        Text(highlighted)
+                        Text(highlighted(language))
                             .font(font)
                             .fixedSize(horizontal: false, vertical: true)
                             .allowsHitTesting(false)
@@ -43,7 +43,7 @@ struct CodeBlockBody<Field: View>: View {
         .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    private var highlighted: AttributedString {
+    private func highlighted(_ language: CodeLanguage) -> AttributedString {
         var result = AttributedString()
         for token in CodeHighlighter.tokens(in: code, language: language) {
             var run = AttributedString(token.text)

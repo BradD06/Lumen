@@ -106,21 +106,25 @@ struct PaneCard: ViewModifier {
             }
             // Тень рисуется отдельным слоем по контуру карточки. Раньше её отбрасывало всё содержимое
             // панели (заметка, книга), и при каждой прокрутке и каждой букве тень считалась заново.
-            .background { PaneShadow(shape: shape) }
+            .background { ShapeShadow(shape: shape) }
     }
 }
 
-/// Тень вокруг карточки панели, только снаружи: внутри карточка полупрозрачная,
-/// и тёмная подложка под ней была бы видна.
-private struct PaneShadow: View {
-    let shape: RoundedRectangle
+/// Тень вокруг карточки по её контуру, только снаружи: внутри карточка полупрозрачная,
+/// и тёмная подложка под ней была бы видна. Считается по форме, а не по содержимому,
+/// поэтому прокрутка и набор текста внутри карточки тень не пересчитывают.
+struct ShapeShadow<S: Shape>: View {
+    let shape: S
+    var opacity: Double = 0.3
+    var radius: CGFloat = 14
+    var y: CGFloat = 6
 
     var body: some View {
         shape.fill(.black)
-            .shadow(color: .black.opacity(0.3), radius: 14, y: 6)
+            .shadow(color: .black.opacity(opacity), radius: radius, y: y)
             .mask {
                 Rectangle()
-                    .padding(-40)
+                    .padding(-(radius * 2 + abs(y) + 12))
                     .overlay { shape.fill(.black).blendMode(.destinationOut) }
                     .compositingGroup()
             }

@@ -20,6 +20,10 @@ final class KeyHintCenter {
         var layer: Int
         /// Видимая часть списка, в котором лежит место: прокрученное за край не подписывается.
         var clip: CGRect
+        /// Та же видимая часть, но живая: её пишет `keyHintClip()`, а читает только `activate()`.
+        var clipBox: GeometryBox<CGRect>?
+
+        @MainActor var visibleClip: CGRect { clipBox?.value ?? clip }
     }
 
     struct Labeled: Identifiable {
@@ -42,8 +46,11 @@ final class KeyHintCenter {
     /// Окно в тех же координатах, что и места: что за его краем, не подписывается.
     @ObservationIgnored var bounds: CGRect = .null
 
-    func register(_ id: UUID, frame: CGRect, title: String, layer: Int, clip: CGRect, action: @escaping () -> Void, secondary: (() -> Void)?) {
-        targets[id] = Target(frame: frame, title: title, action: action, secondary: secondary, layer: layer, clip: clip)
+    func register(
+        _ id: UUID, frame: CGRect, title: String, layer: Int, clip: CGRect, clipBox: GeometryBox<CGRect>? = nil,
+        action: @escaping () -> Void, secondary: (() -> Void)?
+    ) {
+        targets[id] = Target(frame: frame, title: title, action: action, secondary: secondary, layer: layer, clip: clip, clipBox: clipBox)
     }
 
     func updateAction(_ id: UUID, title: String, action: @escaping () -> Void, secondary: (() -> Void)?) {
@@ -71,7 +78,7 @@ final class KeyHintCenter {
                 let corner = CGPoint(x: frame.minX + 6, y: frame.minY + 6)
                 return frame.width > 2 && frame.height > 2
                     && (bounds.isNull || bounds.contains(corner))
-                    && (target.clip.isNull || target.clip.contains(corner))
+                    && (target.visibleClip.isNull || target.visibleClip.contains(corner))
             }
             .sorted { a, b in Self.readingOrder(a.value.frame, b.value.frame) }
         let labels = Self.labels(count: visible.count)
@@ -164,8 +171,9 @@ extension EnvironmentValues {
     @Entry var keyHints: KeyHintCenter?
     /// Что открыто поверх экрана, ставит слой выше: тогда буквы только у него.
     @Entry var keyHintLayer = 0
-    /// Видимая часть ближайшего списка (`keyHintClip()`), в координатах окна.
-    @Entry var keyHintClip = CGRect.null
+    /// Видимая часть ближайшего списка (`keyHintClip()`), в координатах окна. Коробка, а не сама рамка:
+    /// рамка меняется на каждом кадре изменения размера окна, и все места с буквами пересчитывались бы.
+    @Entry var keyHintClip: GeometryBox<CGRect>?
 }
 
 extension View {
@@ -195,7 +203,7 @@ private struct KeyHintModifier: ViewModifier {
         center?.updateAction(id, title: title, action: action, secondary: secondary)
         return content
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
-                center?.register(id, frame: frame, title: title, layer: layer, clip: clip, action: action, secondary: secondary)
+                center?.register(id, frame: frame, title: title, layer: layer, clip: .null, clipBox: clip, action: action, secondary: secondary)
             }
             .onDisappear { center?.unregister(id) }
     }
@@ -356,12 +364,12 @@ extension View {
 }
 
 private struct KeyHintClip: ViewModifier {
-    @State private var rect = CGRect.null
+    @State private var rect = GeometryBox(CGRect.null)
 
     func body(content: Content) -> some View {
         content
             .environment(\.keyHintClip, rect)
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect = $0 }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect.value = $0 }
     }
 }
 

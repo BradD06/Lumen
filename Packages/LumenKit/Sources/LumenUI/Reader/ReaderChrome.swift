@@ -50,24 +50,31 @@ extension View {
     func readerGlassCard(_ theme: Theme, radius: CGFloat = ReaderStyle.cardRadius) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         return self
-            .background(theme.cardFill.opacity(0.45), in: shape)
-            .background(.ultraThinMaterial, in: shape)
             .clipShape(shape)
+            // Тень отбрасывает само стекло, а не всё, что на нём: раньше каждая прокрутка
+            // и буква в заметках рядом с книгой пересчитывала тень всей заметки.
+            .background {
+                shape.fill(.ultraThinMaterial)
+                    .overlay(shape.fill(theme.cardFill.opacity(0.45)))
+                    .shadow(color: .black.opacity(0.3), radius: 24, y: 14)
+            }
             .overlay(shape.strokeBorder(
                 LinearGradient(colors: [.white.opacity(0.18), .white.opacity(0.04)], startPoint: .top, endPoint: .bottom),
                 lineWidth: 1
             ))
-            .shadow(color: .black.opacity(0.3), radius: 24, y: 14)
     }
 
     /// Лист книги: свой цвет, большое скругление и мягкая тень.
     func readerSheet(_ colors: [Color], radius: CGFloat = ReaderStyle.sheetRadius) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         return self
-            .background(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom), in: shape)
             .clipShape(shape)
+            // Тень отбрасывает лист, а не книга на нём: при листании её не надо считать заново.
+            .background {
+                shape.fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
+                    .shadow(color: .black.opacity(0.35), radius: 30, y: 18)
+            }
             .overlay(shape.strokeBorder(.white.opacity(0.07), lineWidth: 1))
-            .shadow(color: .black.opacity(0.35), radius: 30, y: 18)
     }
 }
 

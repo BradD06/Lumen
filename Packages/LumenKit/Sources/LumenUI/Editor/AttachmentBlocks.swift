@@ -231,17 +231,31 @@ struct PDFEmbed: UIViewRepresentable {
 
 // MARK: Видео
 
+/// Проигрыватель создаётся при первом обращении. SwiftUI создаёт вид блока при каждой пересборке
+/// редактора и лишние выбрасывает: с готовым `AVPlayer` каждая пересборка открывала бы файл заново.
+@MainActor
+final class PlayerHolder {
+    let url: URL
+    private(set) lazy var player = AVPlayer(url: url)
+
+    init(url: URL) {
+        self.url = url
+    }
+}
+
 /// Видео со своим проигрывателем. Высота по форме кадра, не выше 520 пунктов.
 struct VideoBlockPlayer: View {
     let url: URL
 
-    @State private var player: AVPlayer
+    @State private var holder: PlayerHolder
     @State private var aspect: Double = 9.0 / 16.0
 
     init(url: URL) {
         self.url = url
-        _player = State(initialValue: AVPlayer(url: url))
+        _holder = State(initialValue: PlayerHolder(url: url))
     }
+
+    private var player: AVPlayer { holder.player }
 
     var body: some View {
         VideoPlayer(player: player)
@@ -276,7 +290,7 @@ struct AudioBlockPlayer: View {
     let url: URL
     let title: String
 
-    @State private var player: AVPlayer
+    @State private var holder: PlayerHolder
     @State private var isPlaying = false
     @State private var position: Double = 0
     @State private var duration: Double = 0
@@ -286,8 +300,10 @@ struct AudioBlockPlayer: View {
     init(url: URL, title: String) {
         self.url = url
         self.title = title
-        _player = State(initialValue: AVPlayer(url: url))
+        _holder = State(initialValue: PlayerHolder(url: url))
     }
+
+    private var player: AVPlayer { holder.player }
 
     var body: some View {
         HStack(spacing: 12) {
