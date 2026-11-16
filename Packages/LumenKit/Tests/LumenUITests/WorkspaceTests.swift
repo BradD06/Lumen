@@ -157,6 +157,31 @@ struct WorkspaceTests {
         #expect(second.current == .home)
     }
 
+    @Test func removedScreensDoNotResetSavedTabs() throws {
+        let defaults = try #require(UserDefaults(suiteName: "WorkspaceTests-\(UUID().uuidString)"))
+        let first = UUID()
+        let second = UUID()
+        let page = UUID()
+        // Так старый выпуск сохранял вкладку с доской связей, которой больше нет.
+        let json = """
+            {"selectedTabId":"\(second.uuidString)","tabs":[
+              {"id":"\(first.uuidString)","focusedPane":0,"panes":[
+                {"back":[{"home":{}},{"board":{}}],"current":{"board":{}},"forward":[]}]},
+              {"id":"\(second.uuidString)","focusedPane":0,"panes":[
+                {"back":[{"board":{}},{"home":{}}],"current":{"page":{"_0":"\(page.uuidString)"}},"forward":[{"board":{}}]}]}
+            ]}
+            """
+        defaults.set(Data(json.utf8), forKey: "workspace")
+
+        let workspace = Workspace(storageKey: "workspace", defaults: defaults)
+        #expect(workspace.tabs.map(\.id) == [first, second])
+        #expect(workspace.tabs[0].panes[0].current == .home)
+        #expect(!workspace.tabs[0].panes[0].canGoBack)
+        #expect(workspace.current == .page(page))
+        #expect(workspace.selectedTab.panes[0].canGoBack)
+        #expect(!workspace.selectedTab.panes[0].canGoForward)
+    }
+
     @Test func trashedItemsLeaveEveryTab() {
         let workspace = Workspace()
         workspace.open(a)
