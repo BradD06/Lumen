@@ -102,6 +102,8 @@
 | Библиотека списком | iPhone | `Library/LibraryCompactList.swift` |
 | Папки с цветом и значком, «Переместить в…» | все | `Library/MoveToFolderSheet.swift`, `LumenCore/Folder.swift` |
 | Книжные полки: корешки (кожа, ткань, мягкая обложка), позы, закладки-ленты, потёртость у прочитанных; несколько полок (полка = папка); перетаскивание; сортировка | все | `Library/BookShelf.swift`, `LumenCore/ShelfSort.swift` |
+| «Читаю сейчас» над полками: обложка, прочитано / осталось / дочитаю, «Продолжить», «С заметками рядом», последняя выдержка, заметки к книге, «Тоже читаю» | все | `Library/ShelfReadingNow.swift`, `ShelfReadingSnapshot` в `LumenStorage/ReadingRepository.swift` |
+| Кнопки над полками «Все · Читаю · Хочу · Прочитано» с числом книг (кроме «Все» одна полка без перетаскивания); число выделений внизу корешка | все | `Library/BookShelf.swift` (`ShelfStatusPicker`), `LumenCore/ShelfSort.swift` (`ShelfStatus`) |
 | Книга «вылетает» с полки в витрину с обложкой и карточкой статистики | все | `Library/BookShowcase.swift`, `BookStatsCard.swift` |
 | Своя обложка: файл, ⌘V, перетаскивание, камера, Фото; выбор полоски для корешка; вернуть обложку из книги | все | `Library/BookCover.swift` |
 | Листы заметок на полке: папки-скоросшиватели, лоток одиночных листов, приколотые листы | все | `Library/ShelfSheets.swift` |

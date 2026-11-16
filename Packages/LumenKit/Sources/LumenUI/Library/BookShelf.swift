@@ -14,6 +14,7 @@ import AppKit
 /// Своя полка это папка библиотеки: книга, поставленная на полку, лежит в её папке.
 struct BookShelf: View {
     static let sortKey = "shelf.sort"
+    static let statusKey = "shelf.status"
 
     /// Что стоит на полке.
     enum Mode {
@@ -45,6 +46,8 @@ struct BookShelf: View {
     /// Насколько прокручена каждая полка: место, куда бросили книгу, считается от начала полки.
     @State private var scrollOffsets: [UUID?: CGFloat] = [:]
     @AppStorage(BookShelf.sortKey) private var sort = ShelfSort.recent
+    /// Какие книги видны: все по полкам или одна полка «Читаю», «Хочу», «Прочитано».
+    @AppStorage(BookShelf.statusKey) private var status = ShelfStatus.all
     @Environment(\.lumenTheme) private var theme
     @Environment(\.bookShowcase) private var showcase
     @Environment(\.appActions) private var appActions
@@ -100,18 +103,21 @@ struct BookShelf: View {
             // Между полками просторно: над каждой видно, что книги разной высоты.
             VStack(alignment: .leading, spacing: 22) {
                 HStack(alignment: .center, spacing: 12) {
-                    ViewThatFits(in: .horizontal) {
-                        caption("На полке · лента показывает, докуда дочитано")
-                        caption("На полке")
-                    }
+                    ShelfStatusPicker(status: status, books: snapshot.books, onPick: pickStatus)
+                        .layoutPriority(2)
                     Spacer(minLength: 0)
                     ShelfSortPicker(sort: sort, onPick: choose)
                         .layoutPriority(1)
                 }
-                ForEach(groups) { group in
-                    shelfRow(group, titled: groups.count > 1)
+                if status == .all {
+                    ForEach(groups) { group in
+                        shelfRow(group, titled: groups.count > 1)
+                    }
+                    newShelfButton
+                } else {
+                    // Одна полка с отобранными книгами. Порядок задаёт сортировка, книги тут не перетаскивают.
+                    plainRow(sort.sorted(snapshot.books.filter(status.contains)), emptyText: statusEmptyText, lamp: false)
                 }
-                newShelfButton
             }
         case .recent:
             VStack(alignment: .leading, spacing: 12) {
@@ -146,7 +152,33 @@ struct BookShelf: View {
 
     /// Полка «Стола»: порядок задаёт время чтения, поэтому книги здесь не перетаскивают.
     private var recentRow: some View {
-        let books = Self.recentlyRead(snapshot.books)
+        plainRow(
+            Self.recentlyRead(snapshot.books),
+            emptyText: snapshot.books.isEmpty
+                ? "Добавьте первую книгу, и она встанет на полку"
+                : "Откройте книгу, и она встанет сюда",
+            lamp: showsLamp
+        )
+    }
+
+    private var statusEmptyText: String {
+        switch status {
+        case .all, .wanted: "Здесь встанут книги, которые вы ещё не открывали"
+        case .reading: "Откройте книгу, и она встанет сюда"
+        case .finished: "Здесь встанут дочитанные книги"
+        }
+    }
+
+    private func pickStatus(_ option: ShelfStatus) {
+        LumenSounds.play(.tap)
+        withAnimation(LumenMotion.standard) {
+            hoveredId = nil
+            status = option
+        }
+    }
+
+    /// Одна полка без перетаскивания: книги в заданном порядке, в конце «+».
+    private func plainRow(_ books: [Source], emptyText: String, lamp: Bool) -> some View {
         let angles = leanAngles(books)
         return VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
@@ -161,9 +193,7 @@ struct BookShelf: View {
                         addButton(title: "Добавить книгу", help: "Поставить на полку книгу или файл", add: onAdd)
                     }
                     if books.isEmpty {
-                        Text(snapshot.books.isEmpty
-                            ? "Добавьте первую книгу, и она встанет на полку"
-                            : "Откройте книгу, и она встанет сюда")
+                        Text(emptyText)
                             .font(.callout.italic())
                             .foregroundStyle(theme.textSecondary)
                             .padding(.leading, 12)
@@ -175,7 +205,7 @@ struct BookShelf: View {
                 .padding(.top, ShelfLayout.headroom)
             }
             .safeAreaInset(edge: .trailing, spacing: 0) {
-                if showsLamp {
+                if lamp {
                     ShelfLamp()
                         .padding(.horizontal, 8)
                         .frame(maxHeight: .infinity, alignment: .bottom)
@@ -218,10 +248,12 @@ struct BookShelf: View {
             let style = BookSpineStyle(source: book)
             Color.clear.frame(width: style.slotWidth, height: style.slotHeight)
         } else if let showcase {
-            ShelfBook(source: book, attachments: database.attachments, isPulled: isPulled, angle: angle)
+            ShelfBook(source: book, attachments: database.attachments, isPulled: isPulled, angle: angle,
+                      highlightCount: snapshot.highlightCounts[book.id] ?? 0)
                 .matchedGeometryEffect(id: book.id, in: showcase.namespace)
         } else {
-            ShelfBook(source: book, attachments: database.attachments, isPulled: isPulled, angle: angle)
+            ShelfBook(source: book, attachments: database.attachments, isPulled: isPulled, angle: angle,
+                      highlightCount: snapshot.highlightCounts[book.id] ?? 0)
         }
     }
 
@@ -695,6 +727,8 @@ struct ShelfBook: View {
     var isPulled: Bool
     /// Наклон среди соседок (`BookSpineStyle.leanAngles`): 0, если опереться не на что.
     var angle: Double
+    /// Сколько в книге выделений: число внизу корешка.
+    var highlightCount = 0
 
     var body: some View {
         let style = BookSpineStyle(source: source)
@@ -702,6 +736,12 @@ struct ShelfBook: View {
         let pose = isPulled ? BookSpineStyle.Pose.upright : style.pose
         ZStack {
             BookSpine(source: source, attachments: attachments)
+                .overlay(alignment: .bottom) {
+                    if highlightCount > 0 {
+                        SpineCountBadge(count: highlightCount)
+                            .padding(.bottom, 7)
+                    }
+                }
                 .rotation3DEffect(.degrees(isPulled ? -90 : 0), axis: (x: 0, y: 1, z: 0), anchor: .trailing, perspective: 0.6)
                 .opacity(isPulled ? 0 : 1)
             SourceCoverArt(source: source, attachments: attachments, width: coverWidth, height: style.height)
@@ -718,6 +758,25 @@ struct ShelfBook: View {
         )
         .offset(y: isPulled ? -20 : 0)
         .scaleEffect(isPulled ? 1.04 : 1, anchor: .bottom)
+    }
+}
+
+/// Число выделений внизу корешка: маленький латунный ярлычок.
+private struct SpineCountBadge: View {
+    let count: Int
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        Text(count > 99 ? "99+" : "\(count)")
+            .font(.system(size: 9, weight: .bold, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(theme.onAccent)
+            .padding(.horizontal, 3)
+            .frame(minWidth: 16, minHeight: 14)
+            .background(theme.accent, in: Capsule())
+            .fixedSize()
+            .help("Выделений в книге: \(count)")
+            .accessibilityLabel("Выделений: \(count)")
     }
 }
 
@@ -1244,6 +1303,73 @@ struct ShelfDropDelegate: DropDelegate {
 }
 
 /// Кнопки порядка над полкой; где места мало, они складываются в одно меню.
+/// «Все · Читаю · Хочу · Прочитано» с числом книг. На узком экране сворачивается в меню.
+struct ShelfStatusPicker: View {
+    let status: ShelfStatus
+    let books: [Source]
+    var onPick: (ShelfStatus) -> Void
+
+    @Environment(\.lumenTheme) private var theme
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 4) {
+                ForEach(ShelfStatus.allCases) { option in
+                    chip(option)
+                }
+            }
+            .padding(3)
+            .lumenGlass(Capsule())
+            Menu {
+                Picker("Какие книги", selection: Binding(get: { status }, set: onPick)) {
+                    ForEach(ShelfStatus.allCases) { option in
+                        Text("\(option.title) · \(option.count(in: books))").tag(option)
+                    }
+                }
+                .pickerStyle(.inline)
+            } label: {
+                Label("\(status.title) · \(status.count(in: books))", systemImage: "line.3.horizontal.decrease")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .foregroundStyle(theme.textPrimary)
+            .fixedSize()
+            .accessibilityIdentifier("shelf-status-menu")
+        }
+    }
+
+    private func chip(_ option: ShelfStatus) -> some View {
+        let isOn = option == status
+        return Button {
+            onPick(option)
+        } label: {
+            HStack(spacing: 5) {
+                Text(option.title)
+                Text("\(option.count(in: books))")
+                    .monospacedDigit()
+                    .opacity(0.6)
+            }
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 30)
+            .foregroundStyle(isOn ? theme.onAccent : theme.textPrimary)
+            .background {
+                if isOn {
+                    Capsule().fill(theme.textPrimary)
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .keyHint("Полка: \(option.title)") { onPick(option) }
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+        .accessibilityIdentifier("shelf-status-\(option.rawValue)")
+    }
+}
+
 struct ShelfSortPicker: View {
     let sort: ShelfSort
     var onPick: (ShelfSort) -> Void

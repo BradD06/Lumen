@@ -141,3 +141,57 @@ public struct ReadingOverviewSnapshot: Equatable, Sendable {
         return ReadingOverviewSnapshot(sessions: sessions, sources: sources + finished)
     }
 }
+
+/// «Читаю сейчас» над полками: книга, которую читаешь, где она стоит, её последняя выдержка
+/// и заметки к ней, и что ещё начато, но не дочитано.
+public struct ShelfReadingSnapshot: Equatable, Sendable {
+    /// Книга, которую открывали последней и ещё не дочитали. Нет такой: блока «Читаю» нет.
+    public var current: Source?
+    /// Своя полка, на которой стоит книга (папка-полка).
+    public var shelfName: String?
+    /// Все отрезки чтения книги: для «осталось» и «дочитаю».
+    public var sessions: [ReadingSession] = []
+    /// Последнее выделение в книге.
+    public var lastHighlight: Highlight?
+    /// Заметки к книге и страницы внутри них, свежие сверху.
+    public var notes: [Page] = []
+    public var noteCount = 0
+    /// Другие начатые книги, от свежей к давней.
+    public var others: [Source] = []
+
+    public static let empty = ShelfReadingSnapshot()
+
+    /// Сколько начатых книг показывать рядом.
+    public static let othersLimit = 4
+
+    public init(current: Source? = nil) {
+        self.current = current
+    }
+
+    public static func fetch(_ db: Database) throws -> ShelfReadingSnapshot {
+        let reading = try Source
+            .filter(Column("deletedAt") == nil && Column("lastOpenedAt") != nil && Column("progress") < 0.995)
+            .order(Column("lastOpenedAt").desc)
+            .limit(othersLimit + 1)
+            .fetchAll(db)
+        guard let current = reading.first else { return .empty }
+        var snapshot = ShelfReadingSnapshot(current: current)
+        snapshot.others = Array(reading.dropFirst())
+        if let folderId = current.folderId,
+           let folder = try Folder.fetchOne(db, key: folderId), folder.isShelf, folder.deletedAt == nil {
+            snapshot.shelfName = folder.displayName
+        }
+        snapshot.sessions = try ReadingSession.forSource(current.id, db)
+        snapshot.lastHighlight = try Highlight
+            .filter(Column("sourceId") == current.id && Column("deletedAt") == nil)
+            .order(Column("createdAt").desc)
+            .fetchOne(db)
+        // Заметки к книге: страница с её sourceId и подстраницы этой страницы.
+        let notes = Page.filter(sql: """
+            deletedAt IS NULL AND (sourceId = ? OR parentId IN (SELECT id FROM page WHERE sourceId = ? AND deletedAt IS NULL))
+            """, arguments: [current.id, current.id])
+        snapshot.noteCount = try notes.fetchCount(db)
+        snapshot.notes = try notes.order(Column("updatedAt").desc).limit(3).fetchAll(db)
+        return snapshot
+    }
+}

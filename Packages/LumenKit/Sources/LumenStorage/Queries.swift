@@ -441,8 +441,23 @@ public enum ShelfQuery {
                 .filter(Column("isShelf") == true && Column("deletedAt") == nil)
                 .order(Column("createdAt"), Column("name"))
                 .fetchAll(db),
-            notes: try notes(db)
+            notes: try notes(db),
+            highlightCounts: try highlightCounts(db)
         )
+    }
+
+    /// Сколько живых выделений в каждой книге.
+    public static func highlightCounts(_ db: Database) throws -> [UUID: Int] {
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT sourceId, COUNT(*) AS count FROM highlight WHERE deletedAt IS NULL GROUP BY sourceId
+            """)
+        var counts: [UUID: Int] = [:]
+        for row in rows {
+            let id: UUID = row["sourceId"]
+            let count: Int = row["count"]
+            counts[id] = count
+        }
+        return counts
     }
 
     /// Заметки, которые стоят на полках рядом с книгами: разобранные (не во «Входящих»),
@@ -501,13 +516,16 @@ public struct ShelfSnapshot: Equatable, Sendable {
     public var books: [Source]
     public var shelves: [Folder]
     public var notes: [ShelfNote]
+    /// Сколько выделений в каждой книге: число на корешке.
+    public var highlightCounts: [UUID: Int]
 
     public static let empty = ShelfSnapshot(books: [], shelves: [])
 
-    public init(books: [Source], shelves: [Folder], notes: [ShelfNote] = []) {
+    public init(books: [Source], shelves: [Folder], notes: [ShelfNote] = [], highlightCounts: [UUID: Int] = [:]) {
         self.books = books
         self.shelves = shelves
         self.notes = notes
+        self.highlightCounts = highlightCounts
     }
 
     public var groups: [ShelfGroup] { ShelfGroup.make(books: books, shelves: shelves, notes: notes) }

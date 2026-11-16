@@ -14,6 +14,9 @@ import UIKit
 /// а выписка потом открывает книгу ровно на этом месте.
 /// Книга, содержание и заметки лежат отдельными мягкими листами с зазорами между ними.
 struct ReaderView: View {
+    /// Открыта ли панель заметок рядом с книгой. «С заметками рядом» на полке включает её.
+    static let notesOpenKey = "reader.notesOpen"
+
     @State var model: ReaderModel
     let highlightId: UUID?
     var onOpenPage: (UUID) -> Void
@@ -24,7 +27,7 @@ struct ReaderView: View {
     @AppStorage("reader.palette") var paletteRaw = ReaderAppearance.Palette.night.rawValue
     @AppStorage("reader.fontSize") var fontSize = 18
     @AppStorage("reader.typeface") var typefaceRaw = ReaderAppearance.Typeface.serif.rawValue
-    @AppStorage("reader.notesOpen") var showsNotes = true
+    @AppStorage(ReaderView.notesOpenKey) var showsNotes = true
     /// Где заметки: рядом с книгой или под ней и с какой стороны. Своё у каждой книги.
     @State var arrangement: PaneArrangement
     /// Читалка выше, чем шире (iPad стоя): заметки тогда сами встают под книгу.
