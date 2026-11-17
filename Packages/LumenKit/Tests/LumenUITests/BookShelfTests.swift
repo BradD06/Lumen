@@ -214,4 +214,31 @@ struct ShelfReorderTests {
         #expect(ShelfLayout.reorder([a, b], moving: c, x: 30, widths: widths) == [a, c, b])
         #expect(ShelfLayout.reorder([], moving: c, x: 5, widths: widths) == [c])
     }
+
+    @Test func searchCaptionCountsBooksInRussian() {
+        #expect(BookShelf.foundCaption(1) == "Нашлась 1 книга")
+        #expect(BookShelf.foundCaption(3) == "Нашлось 3 книги")
+        #expect(BookShelf.foundCaption(5) == "Нашлось 5 книг")
+        #expect(BookShelf.foundCaption(12) == "Нашлось 12 книг")
+        #expect(BookShelf.foundCaption(21) == "Нашлась 21 книга")
+    }
+
+    @Test func bookHeldOverTheDropTileGoesLast() {
+        let a = UUID(), b = UUID(), c = UUID()
+        let widths: [UUID: CGFloat] = [a: 30, b: 30, c: 30]
+        // Плитка в конце полки держит книгу дальше всех остальных.
+        #expect(ShelfLayout.reorder([a, b, c], moving: a, x: 1_000_000, widths: widths) == [b, c, a])
+        // Книга с другой полки тоже встаёт последней.
+        #expect(ShelfLayout.reorder([a, b], moving: c, x: 1_000_000, widths: widths) == [a, b, c])
+    }
+
+    @Test func listRowNamesTheBookStatus() {
+        func book(progress: Double = 0, opened: Bool = false) -> Source {
+            Source(title: "Идиот", format: .epub, file: "b.epub", originalName: "b.epub",
+                   progress: progress, lastOpenedAt: opened ? Date() : nil)
+        }
+        #expect(ShelfListRow.statusTitle(book()) == "Хочу")
+        #expect(ShelfListRow.statusTitle(book(progress: 0.3, opened: true)) == "Читаю")
+        #expect(ShelfListRow.statusTitle(book(progress: 1, opened: true)) == "Прочитано")
+    }
 }
