@@ -220,6 +220,9 @@ struct NotebookView: View {
             Spacer(minLength: 0)
             zoomControls
             #else
+            if tool == .draw {
+                ShapeSnapToggle()
+            }
             Spacer(minLength: 0)
             #endif
         }
@@ -416,10 +419,21 @@ struct NotebookView: View {
             Divider()
             pdfMenuItems
             Divider()
-            Picker("Линовка", selection: Binding(get: { pattern }, set: { model.setPaper($0) })) {
-                ForEach(PaperPattern.allCases) { pattern in
-                    Label(pattern.title, systemImage: pattern.symbolName).tag(pattern)
+            sheetPaperMenu(min(visibleSheet, sheets - 1))
+            Menu {
+                ForEach(PaperPattern.allCases) { option in
+                    Button {
+                        model.setPaper(option)
+                    } label: {
+                        if option == pattern && !model.hasSheetPapers {
+                            Label(option.title, systemImage: "checkmark")
+                        } else {
+                            Label(option.title, systemImage: option.symbolName)
+                        }
+                    }
                 }
+            } label: {
+                Label("Шаблон всех листов", systemImage: "doc.on.doc")
             }
             Picker("Бумага", selection: Binding(get: { tone }, set: { model.setPaperTone($0) })) {
                 ForEach(PaperTone.allCases) { tone in
@@ -445,6 +459,26 @@ struct NotebookView: View {
 
     // MARK: Листы
 
+    /// Шаблон одного листа: линейка, клетка, Корнелл, план недели, ноты.
+    private func sheetPaperMenu(_ sheet: Int) -> some View {
+        let current = model.sheetPaper(sheet)
+        return Menu {
+            ForEach(PaperPattern.allCases) { option in
+                Button {
+                    model.setSheetPaper(option, sheet: sheet)
+                } label: {
+                    if option == current {
+                        Label(option.title, systemImage: "checkmark")
+                    } else {
+                        Label(option.title, systemImage: option.symbolName)
+                    }
+                }
+            }
+        } label: {
+            Label("Шаблон листа \(sheet + 1)", systemImage: current.symbolName)
+        }
+    }
+
     @ViewBuilder
     private var canvas: some View {
         if let block {
@@ -459,6 +493,7 @@ struct NotebookView: View {
                         sheets: sheets,
                         pattern: pattern,
                         tone: tone,
+                        sheetPatterns: block.content.sheetPapers ?? [],
                         backgrounds: block.content.sheetBackgrounds ?? [],
                         attachments: model.database.attachments.folder
                     ),
@@ -589,7 +624,7 @@ struct NotebookView: View {
         let background = NotebookSheets.background(of: block.content, sheet: index)
         return ZStack(alignment: .topLeading) {
             // Под страницей PDF бумага чистая: линовка не лезет на поля страницы.
-            PaperSheet(pattern: background == nil ? pattern : .blank, tone: tone)
+            PaperSheet(pattern: background == nil ? NotebookSheets.paper(of: block.content, sheet: index) : .blank, tone: tone)
             if let background {
                 SheetPDFPage(background: background, attachments: model.database.attachments, dark: tone.isDark)
             }
@@ -649,6 +684,7 @@ struct NotebookView: View {
             } label: {
                 Label("Добавить лист после этого", systemImage: "plus.rectangle.on.rectangle")
             }
+            sheetPaperMenu(index)
             if sheets > 1 {
                 Button(role: .destructive) {
                     model.removeNotebookSheet(index)

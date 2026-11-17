@@ -15,6 +15,8 @@ struct PencilCanvas: UIViewRepresentable {
         var sheets: Int
         var pattern: PaperPattern
         var tone: PaperTone
+        /// Свои шаблоны листов, по номеру листа. `nil` у листа с шаблоном всей тетради.
+        var sheetPatterns: [PaperPattern?] = []
         /// Страницы PDF под листами, по номеру листа.
         var backgrounds: [SheetBackground?] = []
         /// Папка вложений, где лежат эти PDF.
@@ -73,6 +75,7 @@ struct PencilCanvas: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.canvas = canvas
         coordinator.lastData = data
+        coordinator.strokeCount = canvas.drawing.strokes.count
         coordinator.toolPicker.addObserver(canvas)
         let tap = UITapGestureRecognizer(target: coordinator, action: #selector(Coordinator.tapped(_:)))
         tap.isEnabled = false
@@ -99,6 +102,7 @@ struct PencilCanvas: UIViewRepresentable {
             canvas.drawing = DrawingSupport.drawing(from: data)
             coordinator.isApplying = false
             coordinator.lastData = data
+            coordinator.strokeCount = canvas.drawing.strokes.count
         }
         let style: UIUserInterfaceStyle = isDark ? .dark : .light
         if canvas.overrideUserInterfaceStyle != style {
@@ -124,6 +128,8 @@ struct PencilCanvas: UIViewRepresentable {
         weak var canvas: NotebookCanvasView?
         var lastData: Data?
         var isApplying = false
+        /// Сколько штрихов было на холсте: по нему виден только что дописанный штрих.
+        var strokeCount = 0
         var onChange: (Data?) -> Void = { _ in }
         var onVisibleSheet: (Int) -> Void = { _ in }
         var onTap: ((CGPoint) -> Void)?
@@ -134,7 +140,21 @@ struct PencilCanvas: UIViewRepresentable {
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             guard !isApplying else { return }
-            let data = DrawingSupport.data(of: canvasView.drawing)
+            var drawing = canvasView.drawing
+            // Новый штрих пером в режиме «Фигуры» или с задержкой в конце становится ровной фигурой.
+            // Холст получает её в следующем такте: PencilKit ещё заканчивает свой штрих.
+            if canvasView.tool is PKInkingTool,
+               let snapped = ShapeStrokes.snappingNewStroke(in: drawing, previousCount: strokeCount) {
+                drawing = snapped
+                Task { @MainActor [weak self, weak canvasView] in
+                    guard let self, let canvasView, canvasView.drawing.strokes.count == snapped.strokes.count else { return }
+                    self.isApplying = true
+                    canvasView.drawing = snapped
+                    self.isApplying = false
+                }
+            }
+            strokeCount = drawing.strokes.count
+            let data = DrawingSupport.data(of: drawing)
             guard data != lastData else { return }
             lastData = data
             onChange(data)
@@ -368,9 +388,18 @@ final class NotebookCanvasView: PKCanvasView {
         let colors = PaperColors(paper.tone)
         let logical = CGSize(width: NotebookLayout.sheetWidth, height: NotebookLayout.sheetHeight)
         var transform = CGAffineTransform(scaleX: scale, y: scale)
-        let lines = PaperGeometry.lines(paper.pattern, size: logical).flatMap { $0.copy(using: &transform) }
-        let margin = PaperGeometry.margin(paper.pattern, size: logical).flatMap { $0.copy(using: &transform) }
-        let dots = PaperGeometry.dots(paper.pattern, size: logical).flatMap { $0.copy(using: &transform) }
+        // Линии каждого шаблона строятся один раз на всю тетрадь, листы с одним шаблоном делят их.
+        var cache: [PaperPattern: (lines: CGPath?, margin: CGPath?, dots: CGPath?)] = [:]
+        func paths(for pattern: PaperPattern) -> (lines: CGPath?, margin: CGPath?, dots: CGPath?) {
+            if let ready = cache[pattern] { return ready }
+            let made = (
+                lines: PaperGeometry.lines(pattern, size: logical).flatMap { $0.copy(using: &transform) },
+                margin: PaperGeometry.margin(pattern, size: logical).flatMap { $0.copy(using: &transform) },
+                dots: PaperGeometry.dots(pattern, size: logical).flatMap { $0.copy(using: &transform) }
+            )
+            cache[pattern] = made
+            return made
+        }
         let bounds = CGRect(origin: .zero, size: logical.applying(transform))
         let shadow = UIBezierPath(roundedRect: bounds, cornerRadius: 6).cgPath
         let displayScale = max(traitCollection.displayScale, 1)
@@ -402,13 +431,15 @@ final class NotebookCanvasView: PKCanvasView {
                 shape.contentsScale = displayScale
                 shape.isHidden = background != nil
             }
-            layers.lines.path = lines
+            let own = paper.sheetPatterns.indices.contains(index) ? paper.sheetPatterns[index] : nil
+            let shapes = paths(for: own ?? paper.pattern)
+            layers.lines.path = shapes.lines
             layers.lines.strokeColor = colors.line
             layers.lines.fillColor = nil
-            layers.margin.path = margin
+            layers.margin.path = shapes.margin
             layers.margin.strokeColor = colors.margin
             layers.margin.fillColor = nil
-            layers.dots.path = dots
+            layers.dots.path = shapes.dots
             layers.dots.fillColor = colors.line
             layers.dots.strokeColor = nil
         }

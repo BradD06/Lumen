@@ -114,11 +114,13 @@
 
 | Функция | Где | Код |
 |---|---|---|
-| Тетради с листами: бумага чистая / линейка / клетка / точка, тон бумаги, масштаб листов | все | `Drawing/NotebookView.swift`, `LumenCore/Notebook.swift` |
+| Тетради с листами: тон бумаги, масштаб листов | все | `Drawing/NotebookView.swift`, `LumenCore/Notebook.swift` |
+| Шаблоны листов: чистый, линейка, клетка, мелкая клетка 5 мм, точка, конспект Корнелла, план недели, нотный стан; для всей тетради или одного листа (меню «Листы», на Mac правый щелчок по листу); новый лист берёт шаблон предыдущего | все | `PaperPattern` в `LumenCore/Notebook.swift`, `BlockContent.sheetPapers` + `NotebookSheets.paper`, рисует `PaperGeometry` в `Drawing/DrawingSupport.swift` |
+| Ровные фигуры: линия, круг, эллипс, треугольник, прямоугольник, много­угольник; задержать перо в конце штриха (0,5 с) или режим «Фигуры» (кнопка рядом с пером, UserDefaults `drawing.shapes`) | все | `LumenCore/ShapeRecognizer.swift`, `Drawing/ShapeSnapping.swift` |
 | Перо, маркер, палитра цветов, текст и картинки на листе (файл, фото, буфер) | все | `Drawing/NotebookItemsViews.swift`, `DrawingColors.swift`, `NotebookPasteboard.swift` |
 | Apple Pencil и палец | iPad, iPhone | `Drawing/PencilCanvas.swift` |
 | Рисование мышью и трекпадом | Mac | `Drawing/MouseDrawing.swift` |
-| Лассо: выделить, переместить, растянуть, перекрасить, дублировать, удалить | все | `Drawing/DrawingLasso.swift` |
+| Лассо: выделить, переместить, растянуть, повернуть (прилипает к углам через 15°), перекрасить, выровнять в ровные фигуры, дублировать, удалить | Mac (на iPad и iPhone системное лассо PencilKit) | `Drawing/DrawingLasso.swift`, `Drawing/MouseDrawing.swift` |
 | Страницы PDF и книг из библиотеки как листы тетради | все | `Drawing/SheetPDFImages.swift` |
 | Блок «Рисунок» внутри обычной заметки | все | `Drawing/DrawingBlock.swift` |
 

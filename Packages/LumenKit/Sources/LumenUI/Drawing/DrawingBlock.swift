@@ -126,6 +126,7 @@ struct DrawingBlock: View {
             Label("Рисование", systemImage: "pencil.and.scribble")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(theme.textSecondary)
+            ShapeSnapToggle()
             #endif
             Spacer(minLength: 0)
             if block.drawing != nil {

@@ -7,12 +7,21 @@ public enum PageKind: String, Codable, Sendable {
     case notebook
 }
 
-/// Линовка бумаги рукописной заметки.
+/// Линовка бумаги рукописной заметки: шаблон листа.
 public enum PaperPattern: String, Codable, Sendable, CaseIterable, Identifiable {
     case blank
     case lined
     case grid
+    /// Мелкая клетка 5 мм, как в школьной тетради по математике.
+    case smallGrid
     case dotted
+    /// Конспект по Корнеллу: узкое поле слева для вопросов и ключевых слов, справа записи,
+    /// внизу итог страницы своими словами.
+    case cornell
+    /// План недели: восемь клеток, семь дней и заметки.
+    case week
+    /// Нотный стан.
+    case staff
 
     public var id: String { rawValue }
 
@@ -21,7 +30,11 @@ public enum PaperPattern: String, Codable, Sendable, CaseIterable, Identifiable 
         case .blank: "Чистый лист"
         case .lined: "В линейку"
         case .grid: "В клетку"
+        case .smallGrid: "Мелкая клетка"
         case .dotted: "В точку"
+        case .cornell: "Конспект Корнелла"
+        case .week: "План недели"
+        case .staff: "Нотный стан"
         }
     }
 
@@ -30,7 +43,11 @@ public enum PaperPattern: String, Codable, Sendable, CaseIterable, Identifiable 
         case .blank: "doc"
         case .lined: "line.3.horizontal"
         case .grid: "squareshape.split.3x3"
+        case .smallGrid: "grid"
         case .dotted: "circle.grid.3x3"
+        case .cornell: "rectangle.split.1x2"
+        case .week: "calendar"
+        case .staff: "music.note"
         }
     }
 }
@@ -125,5 +142,16 @@ public enum NotebookLayout {
     /// и отступ первой линии сверху. Одни и те же числа для экрана и для PDF.
     public static let lineSpacing: CGFloat = 32
     public static let gridSpacing: CGFloat = 28
+    /// Мелкая клетка: 5 мм на листе A4.
+    public static let smallGridSpacing: CGFloat = (sheetWidth / 210 * 5).rounded()
     public static let topMargin: CGFloat = 96
+    /// Конспект Корнелла: ширина поля вопросов слева и высота итога внизу.
+    public static let cornellCueWidth: CGFloat = 230
+    public static let cornellSummaryHeight: CGFloat = 220
+    /// Нотный стан: расстояние между линейками, между станами и поля по бокам.
+    public static let staffLineSpacing: CGFloat = 9
+    public static let staffGap: CGFloat = 60
+    public static let staffSideMargin: CGFloat = 48
+    /// План недели: поля листа вокруг клеток.
+    public static let weekMargin: CGFloat = 36
 }

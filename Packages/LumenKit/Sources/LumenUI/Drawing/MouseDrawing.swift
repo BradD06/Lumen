@@ -68,7 +68,7 @@ final class MouseInk {
             case .pencil: "Карандаш"
             case .marker: "Маркер"
             case .eraser: "Ластик"
-            case .lasso: "Лассо: обвести и двигать"
+            case .lasso: "Лассо: обвести, двигать, растянуть, повернуть"
             }
         }
 
@@ -141,7 +141,7 @@ struct MouseDrawingLayer: View {
 
     /// Чем занято текущее движение мыши.
     private enum DragMode {
-        case ink, lasso, move, resize
+        case ink, lasso, move, resize, rotate
     }
 
     @State private var points: [TimedPoint] = []
@@ -205,17 +205,20 @@ struct MouseDrawingLayer: View {
             .pointerStyle(ink.tool == .lasso ? PointerStyle.default : PointerStyle.rectSelection)
 
             if let lift, let image = lift.image {
-                let rect = toScreen(LassoGeometry.strokesBounds(lift.strokes).applying(lift.transform))
-                Image(platformImage: image)
-                    .resizable()
-                    .frame(width: rect.width, height: rect.height)
-                    .offset(x: rect.minX, y: rect.minY)
-                    .allowsHitTesting(false)
+                // Поднятые штрихи одной картинкой: сдвиг, растяжение и поворот без перерисовки листа.
+                let rect = toScreen(LassoGeometry.strokesBounds(lift.strokes))
+                let transform = screenTransform(lift.transform)
+                Canvas { context, _ in
+                    context.concatenate(transform)
+                    context.draw(Image(platformImage: image), in: rect)
+                }
+                .allowsHitTesting(false)
             }
             if let frame = selectionFrame {
                 selectionChrome(frame)
             }
         }
+        .coordinateSpace(.named(Self.space))
         .accessibilityLabel("Холст для рисования")
         .onChange(of: DrawingSignature(drawing)) { _, signature in
             if signature != expected, lift == nil {
@@ -247,6 +250,12 @@ struct MouseDrawingLayer: View {
         CGRect(x: (rect.minX - origin.x) * scale, y: (rect.minY - origin.y) * scale, width: rect.width * scale, height: rect.height * scale)
     }
 
+    /// Правка в координатах рисунка, пересчитанная в координаты слоя.
+    private func screenTransform(_ transform: CGAffineTransform) -> CGAffineTransform {
+        let toLayer = CGAffineTransform(scaleX: scale, y: scale).translatedBy(x: -origin.x, y: -origin.y)
+        return toLayer.inverted().concatenating(transform).concatenating(toLayer)
+    }
+
     /// Рамка выделения на экране, с запасом, чтобы тонкую линию было легко схватить.
     private var selectionFrame: CGRect? {
         guard let selection, !selection.bounds.isNull else { return nil }
@@ -276,6 +285,7 @@ struct MouseDrawingLayer: View {
                 )
                 .pointerStyle(.frameResize(position: .bottomTrailing))
                 .help("Растянуть")
+            rotateHandle(frame)
             if lift == nil {
                 actionBar
                     .fixedSize()
@@ -299,6 +309,16 @@ struct MouseDrawingLayer: View {
                     ink.choose(color, remember: true)
                 }
                 .padding(16)
+            }
+            if selection?.strokes.isEmpty == false {
+                Button {
+                    straighten()
+                } label: {
+                    Image(systemName: "square.on.circle")
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .help("Выровнять: линии, круги и многоугольники станут ровными")
             }
             Button {
                 applyResult { DrawingLasso.duplicating($0, in: drawing, items: items) }
@@ -325,6 +345,29 @@ struct MouseDrawingLayer: View {
         .overlay(Capsule().strokeBorder(theme.textSecondary.opacity(0.2), lineWidth: 1))
         .shadow(color: .black.opacity(0.2), radius: 6, y: 2)
     }
+
+    /// Кружок над рамкой: потяните вбок, чтобы повернуть обведённое вокруг его середины.
+    /// Возле 0°, 90° и других углов, кратных 15°, поворот прилипает к ним.
+    private func rotateHandle(_ frame: CGRect) -> some View {
+        Image(systemName: "arrow.clockwise")
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(theme.onAccent)
+            .frame(width: 20, height: 20)
+            .background(theme.accent, in: Circle())
+            .overlay(Circle().strokeBorder(.white, lineWidth: 2))
+            .contentShape(Rectangle().inset(by: -6))
+            .offset(x: frame.midX - 10, y: frame.maxY + 8)
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.space))
+                    .onChanged { value in rotate(from: value.startLocation, to: value.location) }
+                    .onEnded { _ in dropLift() }
+            )
+            .pointerStyle(.grabIdle)
+            .help("Повернуть")
+            .accessibilityLabel("Повернуть выделенное")
+    }
+
+    private static let space = "MouseDrawingLayer"
 
     // MARK: Мышь
 
@@ -355,7 +398,7 @@ struct MouseDrawingLayer: View {
             emitLiveItems()
         case .lasso:
             points.append(TimedPoint(location: value.location, time: 0))
-        case .resize:
+        case .resize, .rotate:
             break
         case .ink:
             if ink.tool == .eraser {
@@ -385,12 +428,22 @@ struct MouseDrawingLayer: View {
             let polygon = points.map { toDrawing($0.location) }
             selection = DrawingLasso.select(polygon: polygon, in: drawing, items: onLasso == nil ? [] : items)
             expected = DrawingSignature(drawing)
-        case .resize:
+        case .resize, .rotate:
             break
         case .ink:
             guard ink.tool != .eraser, !points.isEmpty else { return }
             var result = drawing
-            result.strokes.append(makeStroke())
+            var stroke = makeStroke()
+            // В режиме «Фигуры» или если мышь задержали в конце штриха он становится ровной фигурой.
+            let hold = ShapeRecognizer.holdDuration(
+                points: points.map(\.location),
+                times: points.map(\.time),
+                end: Date().timeIntervalSince(startedAt)
+            )
+            if ShapeSnap.shared.isOn || hold >= ShapeRecognizer.holdToSnap, let snapped = ShapeStrokes.snapped(stroke) {
+                stroke = snapped
+            }
+            result.strokes.append(stroke)
             onChange(result, true)
         }
     }
@@ -428,6 +481,34 @@ struct MouseDrawingLayer: View {
         let factor = max(width / bounds.width, 0.1)
         lift?.transform = DrawingLasso.scaling(factor, around: bounds.origin)
         emitLiveItems()
+    }
+
+    /// Поворот вокруг середины выделения: угол между тем, где взяли кружок, и где мышь сейчас.
+    private func rotate(from start: CGPoint, to location: CGPoint) {
+        if lift == nil {
+            mode = .rotate
+            liftIfNeeded()
+        }
+        guard let current = lift, !current.selection.bounds.isNull else { return }
+        let bounds = current.selection.bounds
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        let pivot = toScreen(CGRect(origin: center, size: .zero)).origin
+        let begin = atan2(start.y - pivot.y, start.x - pivot.x)
+        let now = atan2(location.y - pivot.y, location.x - pivot.x)
+        let angle = DrawingLasso.snappedAngle(now - begin)
+        lift?.transform = DrawingLasso.rotation(angle, around: center)
+        emitLiveItems()
+    }
+
+    /// «Выровнять»: обведённые линии, круги и многоугольники становятся ровными.
+    private func straighten() {
+        guard let selection else { return }
+        guard let result = DrawingLasso.straightening(selection, in: drawing, items: items) else {
+            NoticeCenter.shared.show("Ровных фигур тут не нашлось")
+            return
+        }
+        self.selection = result.selection
+        emit(drawing: result.drawing, items: nil, newStep: true)
     }
 
     /// Тексты и картинки двигаются вживую: они лёгкие, в отличие от штрихов.
@@ -555,6 +636,7 @@ struct MouseInkBar: View {
                     .help(tool.title)
                     .accessibilityLabel(tool.title)
                 }
+                ShapeSnapToggle()
             }
             Divider().frame(height: 20)
             HStack(spacing: 5) {

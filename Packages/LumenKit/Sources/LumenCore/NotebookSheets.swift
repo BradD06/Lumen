@@ -30,14 +30,62 @@ public enum NotebookSheets {
         into list: [SheetBackground?]?,
         sheetCount: Int
     ) -> [SheetBackground?]? {
+        insertingValues(added, after: index, into: list, sheetCount: sheetCount)
+    }
+
+    /// Без листа `index`: страницы листов ниже поднимаются на его место.
+    public static func removing(_ index: Int, from list: [SheetBackground?]?) -> [SheetBackground?]? {
+        removingValue(index, from: list)
+    }
+
+    // MARK: Шаблоны листов
+
+    /// Шаблон листа: свой, если его выбрали для этого листа, иначе шаблон всей тетради.
+    public static func paper(of content: BlockContent, sheet: Int) -> PaperPattern {
+        if let list = content.sheetPapers, list.indices.contains(sheet), let own = list[sheet] {
+            return own
+        }
+        return content.paper ?? .lined
+    }
+
+    /// Свой шаблон листа `sheet`. Шаблон, равный шаблону всей тетради, не хранится.
+    public static func settingPaper(_ pattern: PaperPattern, sheet: Int, in content: BlockContent) -> [PaperPattern?]? {
+        let count = NotebookLayout.sheetCount(of: content)
+        guard (0..<count).contains(sheet) else { return content.sheetPapers }
+        var full = padded(content.sheetPapers, to: count)
+        full[sheet] = pattern == (content.paper ?? .lined) ? nil : pattern
+        return normalized(full)
+    }
+
+    /// Шаблоны листов после вставки листов `added` после листа `index` (или в конец).
+    public static func insertingPapers(
+        _ added: [PaperPattern?],
+        after index: Int?,
+        into list: [PaperPattern?]?,
+        sheetCount: Int
+    ) -> [PaperPattern?]? {
+        insertingValues(added, after: index, into: list, sheetCount: sheetCount)
+    }
+
+    public static func removingPaper(_ index: Int, from list: [PaperPattern?]?) -> [PaperPattern?]? {
+        removingValue(index, from: list)
+    }
+
+    // MARK: Списки по номерам листов
+
+    private static func insertingValues<Value: Equatable>(
+        _ added: [Value?],
+        after index: Int?,
+        into list: [Value?]?,
+        sheetCount: Int
+    ) -> [Value?]? {
         var full = padded(list, to: sheetCount)
         let position = index.map { min(max($0 + 1, 0), full.count) } ?? full.count
         full.insert(contentsOf: added, at: position)
         return normalized(full)
     }
 
-    /// Без листа `index`: страницы листов ниже поднимаются на его место.
-    public static func removing(_ index: Int, from list: [SheetBackground?]?) -> [SheetBackground?]? {
+    private static func removingValue<Value: Equatable>(_ index: Int, from list: [Value?]?) -> [Value?]? {
         guard var full = list, full.indices.contains(index) else { return list }
         full.remove(at: index)
         return normalized(full)
@@ -63,7 +111,7 @@ public enum NotebookSheets {
             && (content.items ?? []).isEmpty && background(of: content, sheet: 0) == nil
     }
 
-    private static func padded(_ list: [SheetBackground?]?, to count: Int) -> [SheetBackground?] {
+    private static func padded<Value>(_ list: [Value?]?, to count: Int) -> [Value?] {
         var full = list ?? []
         if full.count < count {
             full += Array(repeating: nil, count: count - full.count)
@@ -71,7 +119,7 @@ public enum NotebookSheets {
         return full
     }
 
-    private static func normalized(_ list: [SheetBackground?]) -> [SheetBackground?]? {
+    private static func normalized<Value>(_ list: [Value?]) -> [Value?]? {
         var list = list
         while let last = list.last, last == nil {
             list.removeLast()
