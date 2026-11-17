@@ -256,7 +256,7 @@ struct ShelfListRow: View {
     }
 
     /// «Читаю», «Хочу» или «Прочитано», как кнопки над полками.
-    static func statusTitle(_ book: Source) -> String {
+    nonisolated static func statusTitle(_ book: Source) -> String {
         ShelfStatus.allCases.first { $0 != .all && $0.contains(book) }?.title ?? ShelfStatus.wanted.title
     }
 }
