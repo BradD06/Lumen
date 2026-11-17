@@ -18,6 +18,14 @@ enum EditorFocus: Hashable {
     case block(UUID)
     /// Ячейка таблицы: блок, строка, столбец.
     case cell(UUID, Int, Int)
+
+    /// Блок, в котором курсор: сам блок или таблица с ячейкой.
+    var blockId: UUID? {
+        switch self {
+        case .title: nil
+        case .block(let id), .cell(let id, _, _): id
+        }
+    }
 }
 
 /// Редактор страницы. Первая простая версия по плану: каждый блок это отдельное текстовое поле
@@ -77,6 +85,8 @@ struct PageEditorView: View {
     /// Листы в ленивой стопке (`SheetStack`). Запоминается, когда заметка загрузилась: пока она
     /// открыта, вид стопки не меняется (новый лист не перестраивает все строки заново).
     @State private var isLazyStack: Bool?
+    /// Какие листы уже построены: длинная заметка достраивается по листу после открытия.
+    @State private var sheetLoader = SheetLoader()
     /// Окно в цвет обложки, см. `CoverTint`.
     @Setting(CoverTint.enabledKey) private var followsCover = true
     #if os(iOS)
@@ -409,7 +419,17 @@ struct PageEditorView: View {
             }
             .onChange(of: model.isLoaded, initial: true) { _, isLoaded in
                 guard isLoaded, isLazyStack == nil else { return }
-                isLazyStack = model.sheets.count > Self.eagerSheetLimit
+                let isLazy = model.sheetCount > Self.lazySheetLimit
+                if isLazy { sheetLoader.finish() }
+                isLazyStack = isLazy
+            }
+            // Остальные листы достраиваются по одному, когда заметка открылась.
+            .task(id: isLazyStack) {
+                guard isLazyStack == false else { return }
+                await sheetLoader.buildRest(
+                    sheetCount: { model.sheetCount },
+                    isScrolling: { model.isScrolling }
+                )
             }
             .onScrollTargetVisibilityChange(idType: UUID.self) { ids in
                 visibility.ids = ids
@@ -483,8 +503,9 @@ struct PageEditorView: View {
                 if showsOutline, !showsSubpages {
                     LiveOutline(model: model, visibility: visibility) { item in
                         LumenSounds.play(.navigate)
-                        // Лист в ленивом списке мог ещё не построиться: сначала к листу, потом к заголовку.
+                        // Лист мог ещё не построиться: сначала к листу, потом к заголовку.
                         if let sheet = model.sheets.first(where: { $0.blocks.contains { $0.id == item.anchorId } }) {
+                            sheetLoader.reveal(sheet.index)
                             proxy.scrollTo(sheetAnchor(sheet), anchor: .top)
                         }
                         Task { @MainActor in
@@ -682,6 +703,10 @@ struct PageEditorView: View {
     /// а поле, в котором нажали Return, на macOS ещё успевает забрать фокус обратно.
     /// Поэтому фокус ставится сразу и повторяется в следующих кадрах, пока не закрепится.
     private func moveFocus(to target: EditorFocus) {
+        // Курсор уходит на лист, который ещё не построен: строим его сейчас.
+        if !sheetLoader.isFinished, let id = target.blockId, let index = sheetIndex(containing: id) {
+            sheetLoader.reveal(index)
+        }
         focus = target
         focusTask?.cancel()
         focusTask = Task { @MainActor in
@@ -738,10 +763,14 @@ struct PageEditorView: View {
     private var content: some View {
         let sheets = model.sheets
         let lastFull = sheets.last.map { model.fillShare(of: $0) >= NoteSheets.fullShare } ?? false
-        return SheetStack(isLazy: isLazyStack ?? (sheets.count > Self.eagerSheetLimit), spacing: isCompact ? 16 : 28) {
+        return SheetStack(isLazy: isLazyStack ?? (sheets.count > Self.lazySheetLimit), spacing: isCompact ? 16 : 28) {
             ForEach(sheets, id: \.index) { sheet in
-                sheetView(sheet, count: sheets.count)
-                    .id(sheetAnchor(sheet))
+                DeferredSheet(index: sheet.index, loader: sheetLoader) {
+                    sheetView(sheet, count: sheets.count)
+                } placeholder: {
+                    sheetPlaceholder(sheet, count: sheets.count)
+                }
+                .id(sheetAnchor(sheet))
             }
             AddSheetBar(sheetCount: sheets.count, isLastFull: lastFull) { model.addSheet() }
             Color.clear
@@ -810,6 +839,21 @@ struct PageEditorView: View {
         }
     }
 
+    /// Лист, до которого ещё не дошла очередь: та же бумага с номером и меню, но без строк.
+    /// Он не короче A4, как и настоящий лист, поэтому страница не прыгает, когда лист построится.
+    private func sheetPlaceholder(_ sheet: NoteSheets.Sheet, count: Int) -> some View {
+        SheetPaper(
+            number: sheet.index + 1,
+            title: displayTitle,
+            isPinned: model.pinnedSheet == sheet.index,
+            isCompact: isCompact
+        ) {
+            EmptyView()
+        } menu: {
+            sheetMenu(sheet.index, count: count)
+        }
+    }
+
     /// Текст не поместился на лист: лишнее можно разложить по новым листам одной кнопкой.
     private func overflowNotice(_ sheet: NoteSheets.Sheet) -> some View {
         HStack(spacing: 10) {
@@ -872,9 +916,22 @@ struct PageEditorView: View {
         model.sheetAnchor(sheet)
     }
 
+    /// На каком листе блок: лист держит блоки верхнего уровня, вложенный ищется по предку.
+    private func sheetIndex(containing id: UUID) -> Int? {
+        var top = model.findBlock(id)
+        // Не глубже 64 уровней: на случай петли в испорченных данных.
+        for _ in 0..<64 {
+            guard let parent = top?.parentBlockId else { break }
+            top = model.findBlock(parent)
+        }
+        guard let top else { return nil }
+        return model.sheets.first { sheet in sheet.blocks.contains { $0.id == top.id } }?.index
+    }
+
     private func scrollToSheet(_ index: Int, proxy: ScrollViewProxy) {
         let sheets = model.sheets
         guard sheets.indices.contains(index) else { return }
+        sheetLoader.reveal(index)
         LumenSounds.play(.navigate)
         withAnimation(.easeInOut(duration: 0.35)) {
             proxy.scrollTo(sheetAnchor(sheets[index]), anchor: .top)
@@ -1012,9 +1069,11 @@ struct PageEditorView: View {
         CoverTint.shared.show(color, for: model.pageId)
     }
 
-    /// До скольких листов заметка лежит в обычной стопке: листается плавно, а открывается
-    /// почти так же быстро, как ленивая (3 листа: +0,1 с, 6 листов: +0,27 с в Debug; 14 листов уже +0,9 с).
-    static let eagerSheetLimit = 6
+    /// До скольких листов заметка лежит в обычной стопке: она листается плавно, а открывается быстро,
+    /// потому что сразу строятся только первые листы (`SheetLoader`). Построенная целиком
+    /// обычная стопка из 14 листов открывалась бы на 0,9 с дольше ленивой (Debug).
+    /// Совсем длинные заметки остаются ленивыми: держать все их строки сразу незачем.
+    static let lazySheetLimit = 30
 
     /// Насколько первый лист заходит на обложку: вместе с отступом над листами.
     private var coverOverlap: CGFloat { isCompact ? 60 : 110 }
@@ -1286,8 +1345,9 @@ private struct ScrolledPageBackground: View {
 
 /// Стопка листов. Обычный `VStack` при прокрутке только сдвигается, а `LazyVStack` на каждом кадре
 /// заново отдаёт весь документ, и мелкие надписи в строках (маркеры, значки) перерисовываются:
-/// быстрое листание теряло до трети кадров. Зато ленивая стопка открывает длинную заметку
-/// в разы быстрее, поэтому она остаётся для заметок длиннее `PageEditorView.eagerSheetLimit` листов.
+/// быстрое листание теряло до трети кадров. Чтобы обычная стопка открывалась быстро, листы
+/// достраиваются после открытия (`SheetLoader`). Ленивой остаются только заметки
+/// длиннее `PageEditorView.lazySheetLimit` листов.
 private struct SheetStack<Content: View>: View {
     let isLazy: Bool
     let spacing: CGFloat
