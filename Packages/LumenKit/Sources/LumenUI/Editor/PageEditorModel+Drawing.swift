@@ -109,15 +109,20 @@ extension PageEditorModel {
         }
     }
 
-    /// Чистый лист в конец тетради или после листа `index`.
+    /// Чистый лист в конец тетради или после листа `index`. Шаблон у него тот же,
+    /// что у листа, после которого он встаёт: как в Goodnotes.
     func addNotebookSheet(after index: Int? = nil) {
-        insertNotebookSheets([nil], after: index)
+        guard let block = notebookBlock else { return }
+        let count = NotebookLayout.sheetCount(of: block.content)
+        let source = min(max(index ?? count - 1, 0), count - 1)
+        let own = block.content.sheetPapers.flatMap { $0.indices.contains(source) ? $0[source] : nil }
+        insertNotebookSheets([nil], after: index, papers: [own])
     }
 
     /// Листы после листа `index` (или в конец): чистые (`nil`) или со страницами PDF.
     /// Всё, что ниже, опускается вместе со своими листами. Возвращает номер первого нового листа.
     @discardableResult
-    func insertNotebookSheets(_ backgrounds: [SheetBackground?], after index: Int?) -> Int? {
+    func insertNotebookSheets(_ backgrounds: [SheetBackground?], after index: Int?, papers: [PaperPattern?]? = nil) -> Int? {
         guard let block = notebookBlock, !backgrounds.isEmpty else { return nil }
         let count = NotebookLayout.sheetCount(of: block.content)
         let added = min(backgrounds.count, NotebookLayout.maxSheets - count)
@@ -129,6 +134,10 @@ extension PageEditorModel {
             $0.content.sheetCount = count + added
             $0.content.sheetBackgrounds = NotebookSheets.inserting(
                 pages, after: after, into: $0.content.sheetBackgrounds, sheetCount: count
+            )
+            let addedPapers = (0..<added).map { index in papers.flatMap { $0.indices.contains(index) ? $0[index] : nil } }
+            $0.content.sheetPapers = NotebookSheets.insertingPapers(
+                addedPapers, after: after, into: $0.content.sheetPapers, sheetCount: count
             )
             if let after {
                 let drawing = NotebookEditing.insertingSheet(after: after, count: added, in: DrawingSupport.drawing(from: $0.drawing))
@@ -156,6 +165,7 @@ extension PageEditorModel {
                 $0.content.items = rest.isEmpty ? nil : rest
             }
             $0.content.sheetBackgrounds = NotebookSheets.removing(index, from: $0.content.sheetBackgrounds)
+            $0.content.sheetPapers = NotebookSheets.removingPaper(index, from: $0.content.sheetPapers)
         }
     }
 
@@ -197,6 +207,7 @@ extension PageEditorModel {
             update(block.id) {
                 $0.content.sheetCount = backgrounds.count
                 $0.content.sheetBackgrounds = backgrounds
+                $0.content.sheetPapers = nil
             }
             return 0
         }
@@ -214,10 +225,33 @@ extension PageEditorModel {
         }
     }
 
+    /// Шаблон всей тетради: достаётся всем листам, свои шаблоны листов сбрасываются.
     func setPaper(_ pattern: PaperPattern) {
-        guard let block = notebookBlock, block.content.paper != pattern else { return }
+        guard let block = notebookBlock, block.content.paper != pattern || block.content.sheetPapers != nil else { return }
         recordUndo()
-        update(block.id) { $0.content.paper = pattern }
+        update(block.id) {
+            $0.content.paper = pattern
+            $0.content.sheetPapers = nil
+        }
+    }
+
+    /// Шаблон одного листа.
+    func setSheetPaper(_ pattern: PaperPattern, sheet: Int) {
+        guard let block = notebookBlock else { return }
+        let papers = NotebookSheets.settingPaper(pattern, sheet: sheet, in: block.content)
+        guard papers != block.content.sheetPapers else { return }
+        recordUndo()
+        update(block.id) { $0.content.sheetPapers = papers }
+    }
+
+    /// Шаблон листа `sheet`: свой или всей тетради.
+    func sheetPaper(_ sheet: Int) -> PaperPattern {
+        notebookBlock.map { NotebookSheets.paper(of: $0.content, sheet: sheet) } ?? .lined
+    }
+
+    /// Есть ли у листов свои шаблоны, отличные от шаблона тетради.
+    var hasSheetPapers: Bool {
+        notebookBlock?.content.sheetPapers != nil
     }
 
     func setPaperTone(_ tone: PaperTone) {

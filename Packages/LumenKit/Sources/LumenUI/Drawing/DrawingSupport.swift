@@ -179,45 +179,91 @@ enum PaperGeometry {
     static let dotRadius: CGFloat = 1.6
     static let lineWidth: CGFloat = 1
 
-    /// Линии: строки в линейку, клетка. Для чистого листа и листа в точку `nil`.
+    /// Линии шаблона: строки, клетка, нотный стан, клетки плана недели. Для чистого листа и листа в точку `nil`.
     static func lines(_ pattern: PaperPattern, size: CGSize) -> CGPath? {
         let path = CGMutablePath()
         switch pattern {
         case .blank, .dotted:
             return nil
-        case .lined:
+        case .lined, .cornell:
             var y = NotebookLayout.topMargin
             while y < size.height - 24 {
-                path.move(to: CGPoint(x: 0, y: y))
-                path.addLine(to: CGPoint(x: size.width, y: y))
+                horizontal(path, y: y, from: 0, to: size.width)
                 y += NotebookLayout.lineSpacing
             }
-        case .grid:
-            let step = NotebookLayout.gridSpacing
+        case .grid, .smallGrid:
+            let step = pattern == .grid ? NotebookLayout.gridSpacing : NotebookLayout.smallGridSpacing
             var y = step
             while y < size.height {
-                path.move(to: CGPoint(x: 0, y: y))
-                path.addLine(to: CGPoint(x: size.width, y: y))
+                horizontal(path, y: y, from: 0, to: size.width)
                 y += step
             }
             var x = step
             while x < size.width {
-                path.move(to: CGPoint(x: x, y: 0))
-                path.addLine(to: CGPoint(x: x, y: size.height))
+                vertical(path, x: x, from: 0, to: size.height)
                 x += step
+            }
+        case .staff:
+            let side = NotebookLayout.staffSideMargin
+            let spacing = NotebookLayout.staffLineSpacing
+            var top = NotebookLayout.topMargin
+            while top + spacing * 4 <= size.height - side {
+                for line in 0..<5 {
+                    horizontal(path, y: top + CGFloat(line) * spacing, from: side, to: size.width - side)
+                }
+                // Края стана, как на нотной бумаге.
+                vertical(path, x: side, from: top, to: top + spacing * 4)
+                vertical(path, x: size.width - side, from: top, to: top + spacing * 4)
+                top += spacing * 4 + NotebookLayout.staffGap
+            }
+        case .week:
+            let box = weekBox(size: size)
+            path.addRect(box)
+            vertical(path, x: box.midX, from: box.minY, to: box.maxY)
+            for row in 1..<4 {
+                horizontal(path, y: box.minY + box.height * CGFloat(row) / 4, from: box.minX, to: box.maxX)
             }
         }
         return path
     }
 
-    /// Поля слева на листе в линейку, как в школьной тетради.
+    /// Восемь клеток плана недели: под заголовком до нижнего поля.
+    static func weekBox(size: CGSize) -> CGRect {
+        let margin = NotebookLayout.weekMargin
+        return CGRect(
+            x: margin,
+            y: NotebookLayout.topMargin,
+            width: size.width - margin * 2,
+            height: size.height - NotebookLayout.topMargin - margin
+        )
+    }
+
+    /// Цветные линии полей: поле слева у листа в линейку, поле вопросов и итог у конспекта Корнелла.
     static func margin(_ pattern: PaperPattern, size: CGSize) -> CGPath? {
-        guard pattern == .lined else { return nil }
         let path = CGMutablePath()
-        let x: CGFloat = 72
-        path.move(to: CGPoint(x: x, y: 0))
-        path.addLine(to: CGPoint(x: x, y: size.height))
+        switch pattern {
+        case .lined:
+            vertical(path, x: 72, from: 0, to: size.height)
+        case .cornell:
+            let header = NotebookLayout.topMargin - NotebookLayout.lineSpacing
+            let summary = size.height - NotebookLayout.cornellSummaryHeight
+            horizontal(path, y: header, from: 0, to: size.width)
+            vertical(path, x: NotebookLayout.cornellCueWidth, from: header, to: summary)
+            horizontal(path, y: summary, from: 0, to: size.width)
+        default:
+            return nil
+        }
         return path
+    }
+
+    private static func horizontal(_ path: CGMutablePath, y: CGFloat, from: CGFloat, to: CGFloat) {
+        path.move(to: CGPoint(x: from, y: y))
+        path.addLine(to: CGPoint(x: to, y: y))
+    }
+
+    private static func vertical(_ path: CGMutablePath, x: CGFloat, from: CGFloat, to: CGFloat) {
+        path.move(to: CGPoint(x: x, y: from))
+        path.addLine(to: CGPoint(x: x, y: to))
     }
 
     static func dots(_ pattern: PaperPattern, size: CGSize) -> CGPath? {

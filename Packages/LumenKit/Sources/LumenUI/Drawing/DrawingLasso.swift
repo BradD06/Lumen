@@ -87,9 +87,16 @@ enum DrawingLasso {
         }
     }
 
-    /// Текст или картинка после сдвига и растяжения. Текст растёт вместе с рамкой.
+    /// Текст или картинка после сдвига, растяжения или поворота. Текст растёт вместе с рамкой.
+    /// Сами тексты и картинки не поворачиваются: при повороте вокруг середины выделения
+    /// переезжает только их середина.
     static func transformed(_ item: NotebookItem, by transform: CGAffineTransform) -> NotebookItem {
         var item = item
+        if abs(transform.b) > 0.0001 || abs(transform.c) > 0.0001 {
+            let center = CGPoint(x: item.frame.midX, y: item.frame.midY).applying(transform)
+            item.frame.origin = CGPoint(x: center.x - item.frame.width / 2, y: center.y - item.frame.height / 2)
+            return item
+        }
         let scale = abs(transform.a)
         item.frame = item.frame.applying(transform)
         if item.kind == .text, abs(scale - 1) > 0.001 {
@@ -104,6 +111,21 @@ enum DrawingLasso {
         CGAffineTransform(translationX: origin.x, y: origin.y)
             .scaledBy(x: factor, y: factor)
             .translatedBy(x: -origin.x, y: -origin.y)
+    }
+
+    /// Поворот на `angle` радиан вокруг точки `center`.
+    static func rotation(_ angle: CGFloat, around center: CGPoint) -> CGAffineTransform {
+        CGAffineTransform(translationX: center.x, y: center.y)
+            .rotated(by: angle)
+            .translatedBy(x: -center.x, y: -center.y)
+    }
+
+    /// Угол поворота с шагом 15°, если он близок к такому (в пределах 4°): так легко
+    /// повернуть ровно на прямой угол или вернуть как было.
+    static func snappedAngle(_ angle: CGFloat) -> CGFloat {
+        let step = CGFloat.pi / 12
+        let snapped = (angle / step).rounded() * step
+        return abs(angle - snapped) < 4 * .pi / 180 ? snapped : angle
     }
 
     static func recolored(_ strokes: [PKStroke], to color: HexColor) -> [PKStroke] {
@@ -152,6 +174,17 @@ enum DrawingLasso {
             if item.kind == .text { item.color = color.hex }
             return item
         })
+    }
+
+    /// Обведённые штрихи, в которых узнаётся линия, круг или многоугольник, становятся ровными.
+    /// `nil`, если ровнять нечего.
+    static func straightening(_ selection: LassoSelection, in drawing: PKDrawing, items: [NotebookItem]) -> Result? {
+        let selected = strokes(selection.strokes, of: drawing)
+        let snapped = selected.map { ShapeStrokes.snapped($0) }
+        guard snapped.contains(where: { $0 != nil }) else { return nil }
+        return applying(to: selection, in: drawing, items: items, strokes: { originals in
+            zip(originals, snapped).map { original, shape in shape ?? original }
+        }, items: { $0 })
     }
 
     static func deleting(_ selection: LassoSelection, in drawing: PKDrawing, items: [NotebookItem]) -> Result {

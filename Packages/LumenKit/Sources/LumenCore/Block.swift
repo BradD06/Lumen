@@ -88,6 +88,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
     public var comments: [BlockComment]?
     /// Копия синхронного блока: чей оригинал она показывает.
     public var syncedFrom: SyncedReference?
+    /// Шаблон отдельных листов тетради, по номеру листа. `nil` у листа с шаблоном всей тетради (`paper`).
+    public var sheetPapers: [PaperPattern?]?
 
     public init(
         runs: [TextRun] = [],
@@ -112,7 +114,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
         file: FileAttachment? = nil,
         bookmark: WebBookmark? = nil,
         comments: [BlockComment]? = nil,
-        syncedFrom: SyncedReference? = nil
+        syncedFrom: SyncedReference? = nil,
+        sheetPapers: [PaperPattern?]? = nil
     ) {
         self.runs = runs
         self.isChecked = isChecked
@@ -137,6 +140,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         self.bookmark = bookmark
         self.comments = comments
         self.syncedFrom = syncedFrom
+        self.sheetPapers = sheetPapers
     }
 
     public init(text: String, isChecked: Bool = false) {
@@ -165,6 +169,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case runs, isChecked, pageId, attachment, imageWidth, imageAspect, isCollapsed, textColor, backgroundColor, columnWidth, excerpt
         case drawingHeight, drawingWidth, sheetCount, paper, paperTone, items, sheetBackgrounds, table, file, bookmark, comments, syncedFrom
+        case sheetPapers
     }
 
     public init(from decoder: any Decoder) throws {
@@ -196,6 +201,9 @@ public struct BlockContent: Hashable, Codable, Sendable {
         bookmark = try? container.decodeIfPresent(WebBookmark.self, forKey: .bookmark)
         comments = try? container.decodeIfPresent([BlockComment].self, forKey: .comments)
         syncedFrom = try? container.decodeIfPresent(SyncedReference.self, forKey: .syncedFrom)
+        // Незнакомый шаблон листа из более новой версии читается как шаблон всей тетради.
+        sheetPapers = (try? container.decodeIfPresent([String?].self, forKey: .sheetPapers))?
+            .map { $0.flatMap(PaperPattern.init(rawValue:)) }
     }
 
     /// Элемент тетради, который не ломает чтение остальных, если сам не читается.
