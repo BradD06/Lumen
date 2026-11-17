@@ -70,8 +70,10 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 
 ### 🖊️ Handwriting
 - Goodnotes-style notebooks: paper sheets, pens, a 72-color palette, text boxes and images.
+- Sheet templates: blank, lined, grid, small 5 mm grid, dotted, Cornell notes, a week planner and music staves. Pick one for the whole notebook or for a single sheet; a new sheet takes the template of the sheet before it.
+- Perfect shapes: draw a line, circle, oval, triangle or rectangle and hold the pen for a moment at the end, and it snaps into a clean shape. Turn on Shapes mode to snap every stroke.
 - Turn PDF pages, or pages of a book from your library, into notebook sheets and write over them.
-- A lasso to select, move, resize and recolor strokes.
+- A lasso to select, move, resize, rotate and recolor strokes, or straighten them into clean shapes.
 - A drawing block that fits inside any regular note.
 - Apple Pencil on iPad. On the Mac you can draw with the mouse or trackpad.
 
