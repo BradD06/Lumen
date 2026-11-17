@@ -15,6 +15,7 @@ import AppKit
 struct BookShelf: View {
     static let sortKey = "shelf.sort"
     static let statusKey = "shelf.status"
+    static let displayKey = "shelf.display"
 
     /// Что стоит на полке.
     enum Mode {
@@ -48,6 +49,12 @@ struct BookShelf: View {
     @Setting(BookShelf.sortKey) private var sort = ShelfSort.recent
     /// Какие книги видны: все по полкам или одна полка «Читаю», «Хочу», «Прочитано».
     @Setting(BookShelf.statusKey) private var status = ShelfStatus.all
+    /// Корешками, обложками или списком (только в комнате «Полка»).
+    @Setting(BookShelf.displayKey) private var display = ShelfDisplay.spines
+    /// Поиск по полке: название или автор. Не запоминается.
+    @State private var query = ""
+    /// Список книг широкий: в строке есть место для выделений и «Читаю / Хочу / Прочитано».
+    @State private var isListWide = true
     @Environment(\.lumenTheme) private var theme
     @Environment(\.bookShowcase) private var showcase
     @Environment(\.appActions) private var appActions
@@ -99,25 +106,10 @@ struct BookShelf: View {
     private var content: some View {
         switch mode {
         case .shelves:
-            let groups = snapshot.groups
             // Между полками просторно: над каждой видно, что книги разной высоты.
             VStack(alignment: .leading, spacing: 22) {
-                HStack(alignment: .center, spacing: 12) {
-                    ShelfStatusPicker(status: status, books: snapshot.books, onPick: pickStatus)
-                        .layoutPriority(2)
-                    Spacer(minLength: 0)
-                    ShelfSortPicker(sort: sort, onPick: choose)
-                        .layoutPriority(1)
-                }
-                if status == .all {
-                    ForEach(groups) { group in
-                        shelfRow(group, titled: groups.count > 1)
-                    }
-                    newShelfButton
-                } else {
-                    // Одна полка с отобранными книгами. Порядок задаёт сортировка, книги тут не перетаскивают.
-                    plainRow(sort.sorted(snapshot.books.filter(status.contains)), emptyText: statusEmptyText, lamp: false)
-                }
+                controls
+                shelves
             }
         case .recent:
             VStack(alignment: .leading, spacing: 12) {
@@ -144,6 +136,264 @@ struct BookShelf: View {
         }
     }
 
+    /// Над полками: «Все · Читаю · Хочу · Прочитано», поиск, вид и порядок.
+    /// В узком окне поиск и вид уходят во вторую строку.
+    private var controls: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 10) {
+                statusPicker
+                Spacer(minLength: 8)
+                ShelfSearchField(text: $query)
+                    .frame(width: 210)
+                ShelfDisplayPicker(display: display, onPick: pickDisplay)
+                ShelfSortPicker(sort: sort, onPick: choose, compact: true)
+            }
+            HStack(alignment: .center, spacing: 10) {
+                statusPicker
+                Spacer(minLength: 8)
+                ShelfSearchField(text: $query)
+                    .frame(width: 180)
+                ShelfDisplayPicker(display: display, showsTitles: false, onPick: pickDisplay)
+                ShelfSortPicker(sort: sort, onPick: choose, compact: true)
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 10) {
+                    statusPicker
+                    Spacer(minLength: 0)
+                    ShelfSortPicker(sort: sort, onPick: choose, compact: true)
+                }
+                HStack(alignment: .center, spacing: 10) {
+                    ShelfSearchField(text: $query)
+                    ShelfDisplayPicker(display: display, showsTitles: false, onPick: pickDisplay)
+                }
+            }
+        }
+    }
+
+    private var statusPicker: some View {
+        ShelfStatusPicker(status: status, books: snapshot.books, onPick: pickStatus)
+            .layoutPriority(2)
+    }
+
+    /// Книги комнаты «Полка». Все книги по полкам; с поиском или «Читаю / Хочу / Прочитано»
+    /// одна полка с отобранными, без перетаскивания: порядок задаёт сортировка.
+    @ViewBuilder
+    private var shelves: some View {
+        let terms = ShelfSearch.terms(query)
+        if !terms.isEmpty || status != .all {
+            let books = sort.sorted(snapshot.books.filter { status.contains($0) && ShelfSearch.matches($0, terms: terms) })
+            let searching = !terms.isEmpty
+            VStack(alignment: .leading, spacing: 10) {
+                if searching, !books.isEmpty {
+                    caption(Self.foundCaption(books.count))
+                        .padding(.leading, ShelfLayout.leading)
+                }
+                if books.isEmpty, searching || display != .spines {
+                    Text(searching ? "Ничего не нашлось. Попробуйте часть названия или фамилию автора" : statusEmptyText)
+                        .font(.callout.italic())
+                        .foregroundStyle(theme.textSecondary)
+                        .padding(.leading, ShelfLayout.leading)
+                }
+                switch display {
+                case .spines:
+                    if !books.isEmpty || !searching {
+                        plainRow(books, emptyText: statusEmptyText, lamp: false, add: searching ? .nothing : .tile)
+                    }
+                case .covers:
+                    if !books.isEmpty {
+                        coverGrid(books, group: nil, addsTile: false)
+                    }
+                case .list:
+                    if !books.isEmpty {
+                        bookList(books, group: nil, addsTile: false)
+                    }
+                }
+            }
+        } else {
+            let groups = snapshot.groups
+            ForEach(groups) { group in
+                switch display {
+                case .spines:
+                    shelfRow(group, titled: groups.count > 1)
+                case .covers, .list:
+                    bookSection(group, titled: groups.count > 1)
+                }
+            }
+            newShelfButton
+        }
+    }
+
+    /// «Нашлась 1 книга», «Нашлось 3 книги», «Нашлось 12 книг».
+    nonisolated static func foundCaption(_ count: Int) -> String {
+        let tens = count % 100
+        let ones = count % 10
+        if (11...14).contains(tens) { return "Нашлось \(count) книг" }
+        switch ones {
+        case 1: return "Нашлась \(count) книга"
+        case 2...4: return "Нашлось \(count) книги"
+        default: return "Нашлось \(count) книг"
+        }
+    }
+
+    private func pickDisplay(_ option: ShelfDisplay) {
+        guard option != display else { return }
+        LumenSounds.play(.tap)
+        withAnimation(LumenMotion.standard) {
+            hoveredId = nil
+            display = option
+        }
+    }
+
+    /// Полка обложками или списком: табличка с названием, книги в порядке полки, в конце место для файла.
+    private func bookSection(_ group: ShelfGroup, titled: Bool) -> some View {
+        let books = shownBooks(group)
+        return VStack(alignment: .leading, spacing: 10) {
+            if titled {
+                shelfTitle(group)
+            }
+            if display == .covers {
+                coverGrid(books, group: group, addsTile: true)
+            } else {
+                bookList(books, group: group, addsTile: true)
+            }
+        }
+    }
+
+    /// Обложки сеткой: в ряду столько книг, сколько помещается.
+    private func coverGrid(_ books: [Source], group: ShelfGroup?, addsTile: Bool) -> some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: ShelfCoverTile.width, maximum: ShelfCoverTile.width + 28), spacing: 16, alignment: .top)],
+            alignment: .leading,
+            spacing: 24
+        ) {
+            ForEach(books) { book in
+                Button {
+                    show(book)
+                } label: {
+                    ShelfCoverTile(book: book, attachments: database.attachments,
+                                   highlightCount: snapshot.highlightCounts[book.id] ?? 0)
+                }
+                .buttonStyle(.plain)
+                .keyHint(book.displayTitle) { show(book) }
+                .contextMenu { bookMenu(book, group: group, ordering: group != nil) }
+                .accessibilityLabel(BookSpineStyle.summary(book))
+                .accessibilityHint("Показать книгу и статистику чтения")
+            }
+            if addsTile {
+                dropTile(.cover, group: group)
+            }
+        }
+        .padding(.horizontal, ShelfLayout.leading)
+        .padding(.top, 6)
+    }
+
+    /// Книги строками на стекле. Где книги разных полок идут вместе, у строки подписана полка.
+    private func bookList(_ books: [Source], group: ShelfGroup?, addsTile: Bool) -> some View {
+        let shelfNames = group == nil ? bookShelfNames : [:]
+        return VStack(spacing: 2) {
+            ForEach(books) { book in
+                Button {
+                    show(book)
+                } label: {
+                    ShelfListRow(book: book, attachments: database.attachments,
+                                 highlightCount: snapshot.highlightCounts[book.id] ?? 0,
+                                 shelfName: shelfNames[book.id], isWide: isListWide)
+                }
+                .buttonStyle(.plain)
+                .keyHint(book.displayTitle) { show(book) }
+                .contextMenu { bookMenu(book, group: group, ordering: false) }
+                .accessibilityLabel(BookSpineStyle.summary(book))
+                .accessibilityHint("Показать книгу и статистику чтения")
+            }
+            if addsTile {
+                dropTile(.row, group: group)
+                    .padding(.top, books.isEmpty ? 0 : 4)
+            }
+        }
+        .padding(6)
+        .lumenGlass(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .onGeometryChange(for: Bool.self) { $0.size.width >= 560 } action: { isListWide = $0 }
+    }
+
+    /// На какой своей полке стоит книга (книг общей полки здесь нет).
+    private var bookShelfNames: [UUID: String] {
+        var names: [UUID: String] = [:]
+        for group in snapshot.groups {
+            guard let shelf = group.shelf else { continue }
+            for book in group.books { names[book.id] = shelf.displayName }
+        }
+        return names
+    }
+
+    /// Пунктирная плитка «Перетащите сюда файл книги». `group == nil`: общая полка.
+    private func dropTile(_ style: ShelfDropTile.Style, group: ShelfGroup?, books: ShelfDropDelegate? = nil) -> some View {
+        let shelf = group?.shelf
+        return ShelfDropTile(
+            style: style,
+            title: shelf.map { "Добавить книгу на полку «\($0.displayName)»" } ?? "Добавить книгу",
+            help: shelf == nil
+                ? "Перетащите сюда файл книги или нажмите, чтобы выбрать"
+                : "Перетащите сюда файл, и книга встанет на эту полку",
+            books: books,
+            add: { addBook(to: shelf) },
+            onFiles: { importDropped($0, onto: shelf) }
+        )
+    }
+
+    /// «+» и плитка: окно выбора файла. На своей полке книга сразу встаёт на неё.
+    private func addBook(to shelf: Folder?) {
+        if let shelf {
+            importShelf = shelf
+        } else {
+            onAdd()
+        }
+    }
+
+    /// Файлы бросили на плитку полки: они становятся книгами на этой полке.
+    private func importDropped(_ urls: [URL], onto shelf: Folder?) {
+        guard !urls.isEmpty else { return }
+        let database = database
+        Task {
+            let added = await SourceImporter.importFiles(urls, into: database, folderId: shelf?.id, positions: [])
+            if !added.isEmpty { LumenSounds.play(.dropIntoFolder) }
+        }
+    }
+
+    /// Меню книги: открыть, переставить (`ordering`: левее и правее, где книги стоят в порядке полки),
+    /// на другую полку, обложка, в корзину. `group == nil`: полку книги находим сами.
+    @ViewBuilder
+    private func bookMenu(_ book: Source, group: ShelfGroup?, ordering: Bool) -> some View {
+        Button("Открыть", systemImage: "book") { onOpen(book.id) }
+        if let home = group ?? snapshot.groups.first(where: { $0.books.contains { $0.id == book.id } }) {
+            if ordering {
+                let order = shownBooks(home).map(\.id)
+                let index = order.firstIndex(of: book.id)
+                Button("Поставить левее", systemImage: "arrow.left") { nudge(book.id, by: -1, in: home) }
+                    .disabled(index == nil || index == 0)
+                Button("Поставить правее", systemImage: "arrow.right") { nudge(book.id, by: 1, in: home) }
+                    .disabled(index == nil || index == order.count - 1)
+            }
+            let others = snapshot.groups.filter { $0.id != home.id }
+            if home.shelf != nil, let common = others.first(where: { $0.shelf == nil }) {
+                Button("Снять с полки", systemImage: "arrow.down.to.line") {
+                    place(shownBooks(common).map(\.id) + [book.id], on: common)
+                }
+            }
+            if !others.isEmpty {
+                Menu("Переставить на полку", systemImage: "books.vertical") {
+                    ForEach(others) { target in
+                        Button(target.shelf?.displayName ?? "Общая полка") {
+                            place(shownBooks(target).map(\.id) + [book.id], on: target)
+                        }
+                    }
+                }
+            }
+        }
+        BookCoverMenu(book: book)
+        Divider()
+        Button("Убрать в корзину", systemImage: "trash", role: .destructive) { trash(book) }
+    }
+
     /// Книги, которые открывали, от самой свежей к давней. Ещё не открытые сюда не попадают.
     nonisolated static func recentlyRead(_ books: [Source], limit: Int = 30) -> [Source] {
         let opened = books.filter { $0.lastOpenedAt != nil }
@@ -157,7 +407,8 @@ struct BookShelf: View {
             emptyText: snapshot.books.isEmpty
                 ? "Добавьте первую книгу, и она встанет на полку"
                 : "Откройте книгу, и она встанет сюда",
-            lamp: showsLamp
+            lamp: showsLamp,
+            add: .button
         )
     }
 
@@ -177,8 +428,18 @@ struct BookShelf: View {
         }
     }
 
-    /// Одна полка без перетаскивания: книги в заданном порядке, в конце «+».
-    private func plainRow(_ books: [Source], emptyText: String, lamp: Bool) -> some View {
+    /// Что стоит в конце полки без перетаскивания.
+    private enum PlainAdd {
+        /// Узкий «+» (полка «Стола»).
+        case button
+        /// Плитка «Перетащите сюда файл книги».
+        case tile
+        /// Ничего: например, в результатах поиска.
+        case nothing
+    }
+
+    /// Одна полка без перетаскивания: книги в заданном порядке, в конце «+» или плитка для файла.
+    private func plainRow(_ books: [Source], emptyText: String, lamp: Bool, add: PlainAdd) -> some View {
         let angles = leanAngles(books)
         return VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
@@ -186,11 +447,18 @@ struct BookShelf: View {
                     ForEach(books) { book in
                         recentBook(book, angle: angles[book.id] ?? 0)
                     }
-                    HStack(alignment: .bottom, spacing: 0) {
-                        if !books.isEmpty {
-                            Bookend()
+                    if add != .nothing {
+                        HStack(alignment: .bottom, spacing: 0) {
+                            if !books.isEmpty {
+                                Bookend()
+                            }
+                            if add == .tile {
+                                dropTile(.shelf, group: nil)
+                                    .padding(.leading, 8)
+                            } else {
+                                addButton(title: "Добавить книгу", help: "Поставить на полку книгу или файл", add: onAdd)
+                            }
                         }
-                        addButton(title: "Добавить книгу", help: "Поставить на полку книгу или файл", add: onAdd)
                     }
                     if books.isEmpty {
                         Text(emptyText)
@@ -225,12 +493,7 @@ struct BookShelf: View {
         }
         .buttonStyle(SpineButtonStyle())
         .keyHint(book.displayTitle) { show(book) }
-        .contextMenu {
-            Button("Открыть", systemImage: "book") { onOpen(book.id) }
-            BookCoverMenu(book: book)
-            Divider()
-            Button("Убрать в корзину", systemImage: "trash", role: .destructive) { trash(book) }
-        }
+        .contextMenu { bookMenu(book, group: nil, ordering: false) }
         .zIndex(hoveredId == book.id ? 1 : 0)
         .accessibilityLabel(BookSpineStyle.summary(book))
         .accessibilityHint("Показать книгу и статистику чтения")
@@ -295,14 +558,21 @@ struct BookShelf: View {
             VStack(spacing: 0) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .bottom, spacing: ShelfLayout.spacing) {
-                        ForEach(Array(shown.enumerated()), id: \.element.id) { index, book in
-                            shelfBook(book, index: index, count: shown.count, group: group, angle: angles[book.id] ?? 0)
+                        ForEach(shown) { book in
+                            shelfBook(book, group: group, angle: angles[book.id] ?? 0)
                         }
                         // Заметки из нескольких листов стоят папками после книг.
                         ForEach(group.folders) { note in
                             sheetBinder(note, group: group)
                         }
-                        addSpine(group)
+                        HStack(alignment: .bottom, spacing: 0) {
+                            if !shown.isEmpty {
+                                Bookend()
+                            }
+                            // Над плиткой книга этой полки встаёт последней, файл становится книгой на полке.
+                            dropTile(.shelf, group: group, books: bookDrop(group, shown: shown))
+                                .padding(.leading, 8)
+                        }
                         if !group.singleSheets.isEmpty {
                             SheetTray(notes: group.singleSheets, others: otherGroups(group), actions: noteActions)
                                 .padding(.leading, 14)
@@ -344,14 +614,19 @@ struct BookShelf: View {
         }
         // Книгу ловит вся полка с табличкой и доской, а не только корешки: иначе её трудно попасть.
         .contentShape(Rectangle())
-        .onDrop(of: [.text], delegate: ShelfDropDelegate(
+        .onDrop(of: [.text], delegate: bookDrop(group, shown: shown))
+    }
+
+    /// Перетаскивание книг по полке `group`.
+    private func bookDrop(_ group: ShelfGroup, shown: [Source]) -> ShelfDropDelegate {
+        ShelfDropDelegate(
             draggingId: $draggingId,
             order: orderBinding(group.id),
             shown: shown.map(\.id),
             widths: spineWidths,
             scrollOffset: scrollOffsets[group.id] ?? 0,
             onDrop: { place($0, on: group) }
-        ))
+        )
     }
 
     /// Папка с листами на полке: нажатие открывает заметку.
@@ -448,7 +723,7 @@ struct BookShelf: View {
     /// Нажатие выносит её крупно в центр окна, справа окно со статистикой (`BookShowcase`).
     /// Где витрины нет, нажатие сразу открывает книгу.
     @ViewBuilder
-    private func shelfBook(_ book: Source, index: Int, count: Int, group: ShelfGroup, angle: Double) -> some View {
+    private func shelfBook(_ book: Source, group: ShelfGroup, angle: Double) -> some View {
         let isDragged = draggingId == book.id && dragOrders[group.id] != nil
         Button {
             show(book)
@@ -467,30 +742,7 @@ struct BookShelf: View {
         } preview: {
             BookSpine(source: book, attachments: database.attachments)
         }
-        .contextMenu {
-            Button("Поставить левее", systemImage: "arrow.left") { nudge(book.id, by: -1, in: group) }
-                .disabled(index == 0)
-            Button("Поставить правее", systemImage: "arrow.right") { nudge(book.id, by: 1, in: group) }
-                .disabled(index == count - 1)
-            let others = snapshot.groups.filter { $0.id != group.id }
-            if group.shelf != nil, let common = others.first(where: { $0.shelf == nil }) {
-                Button("Снять с полки", systemImage: "arrow.down.to.line") {
-                    place(shownBooks(common).map(\.id) + [book.id], on: common)
-                }
-            }
-            if !others.isEmpty {
-                Menu("Переставить на полку", systemImage: "books.vertical") {
-                    ForEach(others) { target in
-                        Button(target.shelf?.displayName ?? "Общая полка") {
-                            place(shownBooks(target).map(\.id) + [book.id], on: target)
-                        }
-                    }
-                }
-            }
-            BookCoverMenu(book: book)
-            Divider()
-            Button("Убрать в корзину", systemImage: "trash", role: .destructive) { trash(book) }
-        }
+        .contextMenu { bookMenu(book, group: group, ordering: true) }
         .zIndex(hoveredId == book.id ? 1 : 0)
         .accessibilityLabel(BookSpineStyle.summary(book))
         .accessibilityHint("Показать книгу и статистику чтения")
@@ -640,28 +892,6 @@ struct BookShelf: View {
         }
     }
 
-    /// Пустое место на полке с «+»: добавить книгу или файл. На своей полке книга сразу встаёт на неё.
-    private func addSpine(_ group: ShelfGroup) -> some View {
-        let add = {
-            if let shelf = group.shelf {
-                importShelf = shelf
-            } else {
-                onAdd()
-            }
-        }
-        let title = group.shelf.map { "Добавить книгу на полку «\($0.displayName)»" } ?? "Добавить книгу"
-        return HStack(alignment: .bottom, spacing: 0) {
-            if !shownBooks(group).isEmpty {
-                Bookend()
-            }
-            addButton(
-                title: title,
-                help: group.shelf == nil ? "Поставить на полку книгу или файл" : "Поставить книгу на эту полку",
-                add: add
-            )
-        }
-    }
-
     private func addButton(title: String, help: String, add: @escaping () -> Void) -> some View {
         Button(action: add) {
             RoundedRectangle(cornerRadius: 3, style: .continuous)
@@ -762,7 +992,7 @@ struct ShelfBook: View {
 }
 
 /// Число выделений внизу корешка: маленький латунный ярлычок.
-private struct SpineCountBadge: View {
+struct SpineCountBadge: View {
     let count: Int
     @Environment(\.lumenTheme) private var theme
 
@@ -1283,8 +1513,25 @@ struct ShelfDropDelegate: DropDelegate {
     }
 
     func performDrop(info: DropInfo) -> Bool {
+        finish(at: info.location.x)
+    }
+
+    /// Дальше любой книги: книга, которую держат над плиткой в конце полки, встаёт последней.
+    private static let end: CGFloat = 1_000_000
+
+    func hoverAtEnd() -> DropProposal? {
+        guard draggingId != nil else { return nil }
+        move(to: Self.end)
+        return DropProposal(operation: .move)
+    }
+
+    func dropAtEnd() -> Bool {
+        finish(at: Self.end)
+    }
+
+    private func finish(at x: CGFloat) -> Bool {
         guard draggingId != nil else { return false }
-        let final = move(to: info.location.x)
+        let final = move(to: x)
         draggingId = nil
         onDrop(final)
         return true
@@ -1373,31 +1620,41 @@ struct ShelfStatusPicker: View {
 struct ShelfSortPicker: View {
     let sort: ShelfSort
     var onPick: (ShelfSort) -> Void
+    /// Сразу меню: рядом с поиском и видом полки для кнопок нет места.
+    var compact = false
 
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 4) {
-                ForEach(ShelfSort.allCases) { option in
-                    capsule(option)
+        if compact {
+            menu
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) {
+                    ForEach(ShelfSort.allCases) { option in
+                        capsule(option)
+                    }
                 }
+                menu
             }
-            Menu {
-                Picker("Порядок на полке", selection: Binding(get: { sort }, set: onPick)) {
-                    ForEach(ShelfSort.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.inline)
-            } label: {
-                Label(sort.title, systemImage: "arrow.up.arrow.down")
-                    .font(.caption.weight(.semibold))
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .foregroundStyle(theme.accent)
-            .fixedSize()
-            .accessibilityIdentifier("shelf-sort-menu")
         }
+    }
+
+    private var menu: some View {
+        Menu {
+            Picker("Порядок на полке", selection: Binding(get: { sort }, set: onPick)) {
+                ForEach(ShelfSort.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Label(sort.title, systemImage: "arrow.up.arrow.down")
+                .font(.caption.weight(.semibold))
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .foregroundStyle(theme.accent)
+        .fixedSize()
+        .accessibilityIdentifier("shelf-sort-menu")
     }
 
     private func capsule(_ option: ShelfSort) -> some View {
