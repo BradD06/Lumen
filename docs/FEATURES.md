@@ -67,7 +67,7 @@
 | Ссылки на страницы через `[[` или `@`, подстраницы, обратные ссылки внизу страницы («Ссылки на эту страницу») | все | `LumenCore/MentionTrigger.swift`, `Editor/PageEditorView.swift`, `SubpagesPanel.swift` |
 | Предпросмотр страницы по наведению (долгое нажатие на iPhone), предпросмотр выписки | все | `Editor/PageLinkPreview.swift` |
 | Карта документа (заголовки страницы) | Mac/iPad | `Editor/PageOutlineView.swift` |
-| Заметка как листы A4: «Добавить лист», меню листа (выше, ниже, соединить, удалить, приколоть к полке), миниатюры слева, «Разложить по листам» | все (миниатюры на широком экране) | `LumenCore/NoteSheets.swift`, `Editor/NoteSheetViews.swift`, `PageEditorModel+Sheets.swift` |
+| Заметка как листы A4: «Добавить лист», меню листа (выше, ниже, соединить, удалить, приколоть к полке), миниатюры слева, «Разложить по листам»; длинная заметка открывается сразу и листается плавно: листы достраиваются после открытия | все (миниатюры на широком экране) | `LumenCore/NoteSheets.swift`, `Editor/NoteSheetViews.swift`, `PageEditorModel+Sheets.swift`, `Editor/SheetLoading.swift` |
 | Обложка страницы (градиенты темы или своё фото), фон страницы (горы или фото) | все | `Editor/PageBackgroundPicker.swift`, `LumenThemes/LayeredWallpaper.swift` |
 | Путь над заголовком, «Сохранено», счётчик слов | все | `Editor/PageChrome.swift` |
 | Панель над клавиатурой (новый блок, вложить, переместить, спрятать клавиатуру) и чипы типов блоков | iPhone | `Editor/PageEditorView.swift`, `PageChrome.swift`, `EmptyBackspace.swift` |
