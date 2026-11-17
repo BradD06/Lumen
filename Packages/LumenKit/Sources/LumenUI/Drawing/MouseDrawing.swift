@@ -362,7 +362,7 @@ struct MouseDrawingLayer: View {
                     .onChanged { value in rotate(from: value.startLocation, to: value.location) }
                     .onEnded { _ in dropLift() }
             )
-            .pointerStyle(.grabActive)
+            .pointerStyle(.grabIdle)
             .help("Повернуть")
             .accessibilityLabel("Повернуть выделенное")
     }
