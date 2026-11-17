@@ -233,6 +233,10 @@ struct ShelfReorderTests {
     }
 
     @Test func listRowNamesTheBookStatus() {
+        func book(progress: Double = 0, opened: Bool = false) -> Source {
+            Source(title: "Идиот", format: .epub, file: "b.epub", originalName: "b.epub",
+                   progress: progress, lastOpenedAt: opened ? Date() : nil)
+        }
         #expect(ShelfListRow.statusTitle(book()) == "Хочу")
         #expect(ShelfListRow.statusTitle(book(progress: 0.3, opened: true)) == "Читаю")
         #expect(ShelfListRow.statusTitle(book(progress: 1, opened: true)) == "Прочитано")
