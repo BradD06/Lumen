@@ -21,14 +21,14 @@ struct BookShelfTests {
         #expect(first.width >= 30)
     }
 
-    @Test func someBooksLeanOrLieButMostStandUpright() {
+    @Test func someBooksLeanButMostStandUpright() {
         let styles = (0..<400).map { _ in BookSpineStyle(source: book()) }
         let counts = Dictionary(grouping: styles, by: \.pose).mapValues(\.count)
-        #expect(Set(counts.keys) == Set(BookSpineStyle.Pose.allCases), "на полке есть и наклонённые, и лежащие")
+        #expect(Set(counts.keys) == Set(BookSpineStyle.Pose.allCases), "на полке есть и ровные, и наклонённые")
         #expect((counts[.upright] ?? 0) > styles.count / 2, "большинство стоит ровно")
     }
 
-    @Test func leaningAndLyingBooksTakeTheirRoom() {
+    @Test func leaningBooksTakeTheirRoom() {
         var style = BookSpineStyle(source: book())
         style.pose = .upright
         #expect(style.slotWidth == style.width)
@@ -36,9 +36,7 @@ struct BookShelfTests {
         style.pose = .leanRight
         #expect(style.slotWidth > style.width, "место под наклон")
         #expect(style.slotWidth < style.width + 30)
-        style.pose = .lying
-        #expect(style.slotWidth == style.height, "лежащая книга занимает свою длину")
-        #expect(style.slotHeight == style.width)
+        #expect(style.slotHeight == style.height)
     }
 
     private func style(_ pose: BookSpineStyle.Pose, height: CGFloat) -> BookSpineStyle {
@@ -65,9 +63,9 @@ struct BookShelfTests {
     @Test func bookLeansOnlyWhenThereIsSomethingToLeanOn() {
         let lean = style(.leanRight, height: 150)
         let upright = style(.upright, height: 150)
-        let lying = style(.lying, height: 150)
-        // Справа лежащая книга: опереться не на что, книга стоит ровно.
-        #expect(BookSpineStyle.leanAngles([lean, lying], standing: [true, true])[0] == 0)
+        let other = style(.leanLeft, height: 150)
+        // Справа наклонённая книга: опереться не на что, книга стоит ровно.
+        #expect(BookSpineStyle.leanAngles([lean, other], standing: [true, true])[0] == 0)
         // Справа ровная книга: наклон есть.
         #expect(BookSpineStyle.leanAngles([lean, upright], standing: [true, true])[0] > 0)
         // Соседку вынули с полки: книга выпрямляется.
@@ -79,7 +77,6 @@ struct BookShelfTests {
         let left = style(.leanLeft, height: 150)
         #expect(BookSpineStyle.leanAngles([upright, left], standing: [true, true])[1] < 0)
         #expect(BookSpineStyle.leanAngles([left, upright], standing: [true, true])[0] == 0)
-        #expect(BookSpineStyle.leanAngles([lying], standing: [true]) == [90])
     }
 
     @Test func deskShelfShowsRecentlyReadNewestFirst() {
