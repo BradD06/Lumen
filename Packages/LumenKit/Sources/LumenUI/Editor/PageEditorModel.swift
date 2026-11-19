@@ -402,8 +402,11 @@ final class PageEditorModel {
     }
 
     func setCover(_ cover: PageCover?) {
+        // Высоту читаем заранее: `page?.x = …page…` читает `page`, пока он уже
+        // открыт на запись, и Swift останавливает приложение (exclusive access).
         if let current = page?.pageCover, current != cover {
-            page?.pageCoverCrop = CoverCrop(height: page?.pageCoverCrop.height ?? .medium)
+            let height = page?.pageCoverCrop.height ?? .medium
+            page?.pageCoverCrop = CoverCrop(height: height)
         }
         page?.pageCover = cover
         Task {
