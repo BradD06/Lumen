@@ -779,7 +779,7 @@ struct BookShelf: View {
     }
 
     private var spineWidths: [UUID: CGFloat] {
-        // Место книги на полке: наклонённой и лежащей нужно больше, чем стоящей ровно.
+        // Место книги на полке: наклонённой нужно больше, чем стоящей ровно.
         Dictionary(snapshot.books.map { ($0.id, BookSpineStyle(source: $0).slotWidth) }, uniquingKeysWith: { first, _ in first })
     }
 
@@ -949,7 +949,7 @@ struct BookShelf: View {
 
 /// Книга на полке: корешок, а взятая в руки (`isPulled`) выдвигается вверх
 /// и поворачивается обложкой к читателю, как будто её сняли с полки.
-/// Одни книги стоят ровно, другие наклонились или лежат (`BookSpineStyle.Pose`);
+/// Одни книги стоят ровно, другие наклонились (`BookSpineStyle.Pose`);
 /// взятая в руки книга сначала выпрямляется.
 struct ShelfBook: View {
     let source: Source
@@ -981,8 +981,8 @@ struct ShelfBook: View {
         }
         .frame(width: isPulled ? coverWidth : style.width, height: style.height)
         .rotationEffect(.degrees(isPulled ? 0 : angle), anchor: pose.anchor)
-        // Вынутая книга не уже своего места: иначе лежащая книга, вставая, сужается, мышь
-        // оказывается над соседкой, та выдвигается, эта ложится обратно, и так по кругу.
+        // Вынутая книга не уже своего места: иначе мышь окажется над соседкой,
+        // та выдвинется, эта встанет обратно, и так по кругу.
         .frame(
             width: isPulled ? max(coverWidth, style.slotWidth) : style.slotWidth,
             height: isPulled ? style.height : style.slotHeight,
@@ -1258,27 +1258,25 @@ struct BookSpineStyle: Equatable {
         case leather, cloth, paperback
     }
 
-    /// Как книга стоит: ровно, наклонилась вправо или влево, лежит.
+    /// Как книга стоит: ровно или наклонилась вправо, влево. Лежащих на боку книг нет.
     enum Pose: Equatable, CaseIterable {
-        case upright, leanRight, leanLeft, lying
+        case upright, leanRight, leanLeft
 
-        /// Наклон в градусах: лежащая книга повёрнута на бок.
+        /// Наклон в градусах.
         var angle: Double {
             switch self {
             case .upright: 0
             case .leanRight: BookSpineStyle.leanAngle
             case .leanLeft: -BookSpineStyle.leanAngle
-            case .lying: 90
             }
         }
 
-        /// Наклонённая книга опирается на нижний угол, лежащая поворачивается вокруг середины.
+        /// Наклонённая книга опирается на нижний угол.
         var anchor: UnitPoint {
             switch self {
             case .upright: .bottom
             case .leanRight: .bottomTrailing
             case .leanLeft: .bottomLeading
-            case .lying: .center
             }
         }
 
@@ -1286,7 +1284,6 @@ struct BookSpineStyle: Equatable {
         var alignment: Alignment {
             switch self {
             case .leanLeft: .bottomTrailing
-            case .lying: .center
             case .upright, .leanRight: .bottomLeading
             }
         }
@@ -1325,23 +1322,21 @@ struct BookSpineStyle: Equatable {
         }
     }
 
-    /// Примерно две книги из трёх стоят ровно, остальные наклонились или лежат.
+    /// Большинство книг стоит ровно, остальные наклонились.
     static func pose(seed: Int) -> Pose {
         switch seed / 7 % 11 {
         case 0, 1: .leanRight
         case 2: .leanLeft
-        case 3: .lying
         default: .upright
         }
     }
 
-    /// Место книги на полке по ширине. Наклонённой нужно место под наклон, лежащая занимает свою длину.
+    /// Место книги на полке по ширине. Наклонённой нужно место под наклон.
     /// От этой ширины считается, куда встанет перетаскиваемая книга.
     var slotWidth: CGFloat {
         switch pose {
         case .upright: width
         case .leanRight, .leanLeft: width + (height * CGFloat(sin(Self.leanAngle * .pi / 180))).rounded(.up)
-        case .lying: height
         }
     }
 
@@ -1361,14 +1356,14 @@ struct BookSpineStyle: Equatable {
     }
 
     /// Наклоны книг, стоящих рядом в этом порядке (градусы для `rotationEffect`). Книга наклоняется,
-    /// только если в ту сторону стоит ровная книга, которая сейчас на месте (`standing`): лежащая,
+    /// только если в ту сторону стоит ровная книга, которая сейчас на месте (`standing`):
     /// наклонённая, вынутая книга или пустое место не опора, и тогда книга стоит ровно.
     static func leanAngles(_ styles: [BookSpineStyle], standing: [Bool]) -> [Double] {
         styles.indices.map { index -> Double in
             let style = styles[index]
             let neighbor: Int
             switch style.pose {
-            case .upright, .lying: return style.pose.angle
+            case .upright: return style.pose.angle
             case .leanRight: neighbor = index + 1
             case .leanLeft: neighbor = index - 1
             }
@@ -1380,8 +1375,8 @@ struct BookSpineStyle: Equatable {
         }
     }
 
-    /// Высота места: лежащая книга поднимается над полкой на свою толщину.
-    var slotHeight: CGFloat { pose == .lying ? width : height }
+    /// Высота места на полке.
+    var slotHeight: CGFloat { height }
 
     /// Ширина обложки, когда книгу повернули лицом: пропорции обычной книги.
     var coverWidth: CGFloat { (height * 0.68).rounded() }
