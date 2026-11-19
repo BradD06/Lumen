@@ -219,4 +219,22 @@ struct PageEditorHistoryTests {
         #expect(model.blocks.map(\.type) == [.page, .paragraph])
         #expect(model.blocks[0].id == blockId)
     }
+
+    /// Смена обложки на заметке, где обложка уже стоит, раньше роняла приложение
+    /// (одновременный доступ к `page`). Ракурс сбрасывается, высота остаётся.
+    @Test func replacingExistingCoverKeepsHeightAndResetsAngle() async throws {
+        let page = try await db.createPage(inInbox: true)
+        let model = PageEditorModel(database: db, pageId: page.id)
+        await model.load()
+
+        model.setCover(.gradient(0))
+        model.setCoverCrop(CoverCrop(focusX: 0.1, focusY: 0.9, zoom: 2, height: .high))
+        model.setCover(.gradient(1))
+
+        #expect(model.page?.pageCover == .gradient(1))
+        #expect(model.page?.pageCoverCrop == CoverCrop(height: .high))
+
+        model.setCover(.gradient(1))
+        #expect(model.page?.pageCoverCrop == CoverCrop(height: .high), "Та же обложка ракурс не трогает")
+    }
 }
