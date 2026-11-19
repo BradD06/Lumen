@@ -981,10 +981,12 @@ struct ShelfBook: View {
         }
         .frame(width: isPulled ? coverWidth : style.width, height: style.height)
         .rotationEffect(.degrees(isPulled ? 0 : angle), anchor: pose.anchor)
+        // Вынутая книга не уже своего места: иначе лежащая книга, вставая, сужается, мышь
+        // оказывается над соседкой, та выдвигается, эта ложится обратно, и так по кругу.
         .frame(
-            width: isPulled ? coverWidth : style.slotWidth,
+            width: isPulled ? max(coverWidth, style.slotWidth) : style.slotWidth,
             height: isPulled ? style.height : style.slotHeight,
-            alignment: pose.alignment
+            alignment: isPulled ? .bottom : pose.alignment
         )
         .offset(y: isPulled ? -20 : 0)
         .scaleEffect(isPulled ? 1.04 : 1, anchor: .bottom)
