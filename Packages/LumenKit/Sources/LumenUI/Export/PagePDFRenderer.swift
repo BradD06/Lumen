@@ -426,9 +426,7 @@ enum PagePDFRenderer {
         attachment.bounds = CGRect(x: 0, y: -rendered.descent * scale, width: imageSize.width, height: imageSize.height)
         #else
         rendered.image.size = imageSize
-        let cell = BaselineImageCell(imageCell: rendered.image)
-        cell.descent = rendered.descent * scale
-        attachment.attachmentCell = cell
+        attachment.attachmentCell = BaselineImageCell(image: rendered.image, descent: rendered.descent * scale)
         #endif
         return attachment
     }
@@ -515,7 +513,17 @@ enum PagePDFRenderer {
 #if os(macOS)
 /// Картинка в тексте PDF, опущенная под линию строки: хвосты формулы (дроби, индексы) уходят вниз, как у букв.
 private final class BaselineImageCell: NSTextAttachmentCell {
-    var descent: CGFloat = 0
+    /// Постоянная: её читает вёрстка текста не с главного потока.
+    private let descent: CGFloat
+
+    init(image: NSImage, descent: CGFloat) {
+        self.descent = descent
+        super.init(imageCell: image)
+    }
+
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) не используется")
+    }
 
     override func cellBaselineOffset() -> NSPoint {
         NSPoint(x: 0, y: -descent)
