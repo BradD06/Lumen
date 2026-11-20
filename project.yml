@@ -121,7 +121,8 @@ targets:
         # Задаётся в Config/Local.xcconfig, см. README, раздел про iCloud.
         LumenCloudKitContainer: $(LUMEN_CLOUDKIT_CONTAINER)
         # CloudKit будит приложение тихим push, когда на другом устройстве что-то поменяли.
-        UIBackgroundModes: [remote-notification]
+        # audio: книга, которую читает голос, звучит и в фоне, и на заблокированном экране.
+        UIBackgroundModes: [remote-notification, audio]
     dependencies:
       - package: LumenKit
         product: LumenStorage

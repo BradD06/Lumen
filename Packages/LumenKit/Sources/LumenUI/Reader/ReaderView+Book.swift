@@ -90,7 +90,13 @@ extension ReaderView {
                 }
             }
             if isCompact {
-                dock
+                // Книга звучит: вместо нижней панели мини-плеер.
+                if isListening {
+                    PhoneMiniPlayer()
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else {
+                    dock
+                }
             }
         }
     }

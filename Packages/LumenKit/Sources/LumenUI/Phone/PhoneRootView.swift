@@ -104,17 +104,25 @@ struct PhoneRootView: View {
         // Место под неё экраны оставляют сами (`capsuleRoom`).
         .overlay(alignment: .bottom) {
             if showsTabCapsule {
-                PhoneTabCapsule(
-                    database: database,
-                    selection: tab,
-                    onSelect: select,
-                    onSearch: { select(.search) },
-                    onCreate: { isCreating = true }
-                )
+                VStack(spacing: 0) {
+                    // Книга звучит: мини-плеер над капсулой разделов.
+                    if ReadAloud.shared.isActive {
+                        PhoneMiniPlayer()
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    PhoneTabCapsule(
+                        database: database,
+                        selection: tab,
+                        onSelect: select,
+                        onSearch: { select(.search) },
+                        onCreate: { isCreating = true }
+                    )
+                }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(LumenMotion.standard, value: showsTabCapsule)
+        .animation(LumenMotion.standard, value: ReadAloud.shared.isActive)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             isKeyboardShown = true
         }
@@ -178,7 +186,8 @@ struct PhoneRootView: View {
 
     /// Пустое место внизу экрана раздела, чтобы конец списка не прятался под капсулой.
     private func capsuleRoom(_ shows: Bool) -> some View {
-        Color.clear.frame(height: shows && !isKeyboardShown ? PhoneTabCapsule.footprint : 0)
+        let player = ReadAloud.shared.isActive ? PhoneMiniPlayer.height + 6 : 0
+        return Color.clear.frame(height: shows && !isKeyboardShown ? PhoneTabCapsule.footprint + player : 0)
     }
 
     /// Повторное касание открытого раздела возвращает к его началу, как у системных вкладок.

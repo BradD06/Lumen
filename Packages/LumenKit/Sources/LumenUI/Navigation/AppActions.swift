@@ -457,6 +457,7 @@ struct SettingsSheet: View {
                 }
                 AppearanceSection()
                 ScreenOptionsSection()
+                ReadAloudSettingsSection()
                 Section {
                     Toggle("Звуки кабинета", isOn: $soundsEnabled)
                         .keyHint("Звуки") { soundsEnabled.toggle() }

@@ -154,6 +154,44 @@ public final class WebReaderController: NSObject {
         return headings.map { TocEntry(title: $0.title, section: section, anchor: $0.id, level: $0.level) }
     }
 
+    // MARK: Чтение вслух
+
+    /// Глава загружена и скрипт готов: можно брать текст для голоса.
+    public var isChapterReady: Bool { isReady }
+
+    /// Текст открытой главы кусками, с местами в символах главы.
+    public func speechBlocks() async -> [SpeechBlock] {
+        guard isReady else { return [] }
+        let json: String? = await withCheckedContinuation { continuation in
+            webView.evaluateJavaScript("window.lumen && window.lumen.speechBlocks ? window.lumen.speechBlocks() : '[]'") { result, _ in
+                continuation.resume(returning: result as? String)
+            }
+        }
+        guard let data = json?.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([SpeechBlock].self, from: data)) ?? []
+    }
+
+    /// Подсвечивает звучащую фразу; `follow` прокручивает к ней, если она ушла с экрана.
+    public func markSpoken(start: Int, end: Int, follow: Bool) {
+        guard isReady else { return }
+        webView.evaluateJavaScript("window.lumen && window.lumen.speak && window.lumen.speak(\(start), \(end), \(follow))")
+    }
+
+    public func clearSpoken() {
+        guard isReady else { return }
+        webView.evaluateJavaScript("window.lumen && window.lumen.unspeak && window.lumen.unspeak()")
+    }
+
+    /// Место первой строки вверху экрана, в символах главы.
+    public func topOffset() async -> Int? {
+        guard isReady else { return nil }
+        return await withCheckedContinuation { continuation in
+            webView.evaluateJavaScript("window.lumen && window.lumen.topOffset ? window.lumen.topOffset() : null") { result, _ in
+                continuation.resume(returning: (result as? NSNumber)?.intValue)
+            }
+        }
+    }
+
     public func clearSelection() {
         webView.evaluateJavaScript("window.lumen && window.lumen.clearSelection()")
     }
