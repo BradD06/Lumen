@@ -210,18 +210,7 @@ struct WorkspaceTabStrip: View {
             withAnimation(LumenMotion.standard) { workspace.moveTab(id, before: tab.id) }
             return true
         }
-        .contextMenu {
-            Button("Новая вкладка рядом") { workspace.newTab() }
-            Button("Дублировать вкладку") {
-                workspace.select(tab: tab.id)
-                workspace.newTab(tab.current)
-            }
-            Divider()
-            Button("Закрыть вкладку") { workspace.closeTab(tab.id) }
-                .disabled(workspace.tabs.count < 2)
-            Button("Закрыть другие вкладки") { workspace.closeOtherTabs(tab.id) }
-                .disabled(workspace.tabs.count < 2)
-        }
+        .contextMenu { TabContextMenu(workspace: workspace, tab: tab) }
     }
 }
 

@@ -21,8 +21,9 @@ enum ScreenOptions {
     static let windowButtonsDefault = true
 }
 
-/// Когда видна строка вкладок.
+/// Где видны вкладки: кружками у острова (по умолчанию), полоской сверху или нигде.
 enum TabStripMode: String, CaseIterable, Identifiable, Sendable {
+    case island
     case always
     case multiple
     case never
@@ -31,18 +32,25 @@ enum TabStripMode: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .always: "Всегда"
-        case .multiple: "Когда их больше одной"
-        case .never: "Никогда"
+        case .island: "Кружками у острова"
+        case .always: "Сверху, всегда"
+        case .multiple: "Сверху, когда их больше одной"
+        case .never: "Не показывать"
         }
     }
 
+    /// Полоска вкладок сверху.
     nonisolated func shows(tabCount: Int) -> Bool {
         switch self {
         case .always: true
         case .multiple: tabCount > 1
-        case .never: false
+        case .island, .never: false
         }
+    }
+
+    /// Кружки слева от острова: только когда вкладок больше одной.
+    nonisolated func showsCircles(tabCount: Int) -> Bool {
+        self == .island && tabCount > 1
     }
 }
 
@@ -99,7 +107,7 @@ enum ReaderProgressMode: String, CaseIterable, Identifiable, Sendable {
 
 /// Раздел настроек: что показывать на экране.
 struct ScreenOptionsSection: View {
-    @Setting(ScreenOptions.tabStripKey) private var tabStrip = TabStripMode.multiple
+    @Setting(ScreenOptions.tabStripKey) private var tabStrip = TabStripMode.island
     @Setting(ScreenOptions.windowButtonsKey) private var windowButtons = ScreenOptions.windowButtonsDefault
     @Setting(ScreenOptions.saveStatusKey) private var saveStatus = SaveStatusMode.briefly
     @Setting(ScreenOptions.wordCountKey) private var wordCount = false

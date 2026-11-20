@@ -10,6 +10,11 @@ struct ScreenOptionsTests {
         #expect(!TabStripMode.multiple.shows(tabCount: 1))
         #expect(TabStripMode.multiple.shows(tabCount: 2))
         #expect(!TabStripMode.never.shows(tabCount: 5))
+        // Кружки у острова вместо полоски сверху, и только когда вкладок больше одной.
+        #expect(!TabStripMode.island.shows(tabCount: 5))
+        #expect(!TabStripMode.island.showsCircles(tabCount: 1))
+        #expect(TabStripMode.island.showsCircles(tabCount: 2))
+        #expect(!TabStripMode.multiple.showsCircles(tabCount: 3))
     }
 
     @Test func readerProgressHidesOnlyUnderAMouse() {
