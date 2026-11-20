@@ -9,6 +9,7 @@ Lumen is a native notes app for Mac, iPhone and iPad (Swift 6, SwiftUI, iOS 18+ 
 - `AGENTS.md` in the repo root is a symlink to this file, so Codex and other agents read the same rules. Edit only this file.
 - **Before starting any work, read `docs/CODE_MAP.md`**: where every screen, model, table, migration and flow lives in the code, so you don't search the codebase from scratch. When your PR adds, moves, renames or deletes a file, module, screen, table or migration, update the map in the same PR.
 - **Before planning any feature, read `docs/FEATURES.md`**: the list of what already exists in the app, checked against the code, with platform and file for each. Don't rebuild what is there; when your PR adds a user-visible feature, add its line there too.
+- **Read each file once.** Don't re-read a file that is already in your context; use what you read. For a large file, or to check a spot after an edit, read only the line range you need.
 - **Talk to the owner in Russian, simply.** They are new to git and PRs: say what changed for them in the app, not in git terms, and give exact steps when they have to do something.
 - **Nothing goes to `main` without the owner.** Work on your own branch, open a PR, let the owner merge it.
 - **Commits and PRs carry no AI attribution** (the repo is public). Commit as the owner:
