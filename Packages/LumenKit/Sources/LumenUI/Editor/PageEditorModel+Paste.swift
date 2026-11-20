@@ -8,7 +8,7 @@ extension PageEditorModel {
     /// Возвращает true, если в ней нашёлся Markdown и она разложена по блокам.
     /// Простые строки без Markdown обрабатывает обычное деление блока по строкам.
     func pasteMarkdown(_ id: UUID, old: String, new: String) -> Bool {
-        guard let block = findBlock(id), block.type != .code else { return false }
+        guard let block = findBlock(id), !block.type.isPlainText else { return false }
         let change = MarkdownPaste.difference(old: old, new: new)
         guard change.inserted.count > 1, change.inserted.contains("\n") else { return false }
         let parsed = MarkdownPaste.blocks(from: change.inserted)
@@ -45,7 +45,7 @@ extension PageEditorModel {
                 $0.content.isChecked = content.isChecked
                 $0.content.table = content.table
             }
-        } else if first.type.hasText, first.type != .code {
+        } else if first.type.hasText, !first.type.isPlainText {
             pending.removeFirst()
             update(id) { $0.content.runs = InlineMarkup.runs(from: prefix + first.source) }
         } else {
@@ -66,7 +66,7 @@ extension PageEditorModel {
 
         // Текст, что стоял за курсором, дописывается к концу вставки.
         if !suffix.isEmpty, let last = findBlock(lastId) {
-            if last.type.hasText, last.type != .code, !suffixOnNewLine {
+            if last.type.hasText, !last.type.isPlainText, !suffixOnNewLine {
                 update(lastId) { $0.content.runs = InlineMarkup.runs(from: InlineMarkup.source($0.content.runs) + suffix) }
             } else {
                 lastId = insertBlock(after: lastId, type: .paragraph, content: BlockContent(runs: InlineMarkup.runs(from: suffix))).id

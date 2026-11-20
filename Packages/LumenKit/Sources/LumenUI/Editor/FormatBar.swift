@@ -29,7 +29,7 @@ struct FormatBar: View {
         let active = selection.map(model.marks(in:)) ?? []
         let link = selection.flatMap(model.link(in:))
         HStack(spacing: 2) {
-            ForEach([FormatAction.bold, .italic, .underline, .strikethrough, .code]) { action in
+            ForEach([FormatAction.bold, .italic, .underline, .strikethrough, .code, .math]) { action in
                 button(action.systemImage, title: action.title, shortcut: action.shortcut, isOn: action.mark.map(active.contains) ?? false) {
                     TextFormatting.perform(action, model: model, blockId: blockId)
                 }
@@ -287,6 +287,32 @@ final class FormatBarMenuItem: NSMenuItem {
 enum RichTextRendering {
     private typealias SwiftUIAttributes = AttributeScopes.SwiftUIAttributes
 
+    /// Фрагменты блока для показа вне редактирования. Формулы $$…$$ встают в строку картинками,
+    /// поэтому это `Text`, собранный по кускам, а не одна строка с атрибутами.
+    @MainActor
+    static func text(_ runs: [TextRun], linkColor: Color, mathSize: CGFloat) -> Text {
+        guard runs.contains(where: { $0.marks.contains(.math) }) else {
+            return Text(attributed(runs, linkColor: linkColor))
+        }
+        var result = Text(verbatim: "")
+        var plain: [TextRun] = []
+        for run in runs {
+            if run.marks.contains(.math) {
+                if !plain.isEmpty {
+                    result = Text("\(result)\(Text(attributed(plain, linkColor: linkColor)))")
+                    plain = []
+                }
+                result = Text("\(result)\(MathRenderer.inlineText(run.text, fontSize: mathSize))")
+            } else {
+                plain.append(run)
+            }
+        }
+        if !plain.isEmpty {
+            result = Text("\(result)\(Text(attributed(plain, linkColor: linkColor)))")
+        }
+        return result
+    }
+
     /// Фрагменты блока как оформленный текст для показа вне редактирования.
     static func attributed(_ runs: [TextRun], linkColor: Color) -> AttributedString {
         var result = AttributedString()
@@ -492,7 +518,7 @@ enum TextFormatMenu {
         TextFormatting.perform(action, model: editor, blockId: id)
     }
 
-    static let actions: [FormatAction] = [.bold, .italic, .underline, .strikethrough, .code, .clear]
+    static let actions: [FormatAction] = [.bold, .italic, .underline, .strikethrough, .code, .math, .clear]
 }
 
 #if os(macOS)

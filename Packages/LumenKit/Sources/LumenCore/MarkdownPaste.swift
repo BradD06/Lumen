@@ -20,7 +20,7 @@ public struct MarkdownBlock: Equatable, Sendable {
 
     /// Содержимое нового блока.
     public var content: BlockContent {
-        var content = BlockContent(runs: type == .code ? (source.isEmpty ? [] : [TextRun(source)]) : InlineMarkup.runs(from: source))
+        var content = BlockContent(runs: type.isPlainText ? (source.isEmpty ? [] : [TextRun(source)]) : InlineMarkup.runs(from: source))
         content.isChecked = isChecked
         content.table = table
         return content
@@ -101,6 +101,13 @@ public enum MarkdownPaste {
                 }
                 let level = depth(for: indent)
                 result.append(MarkdownBlock(type: .code, source: code.joined(separator: "\n"), depth: level))
+                continue
+            }
+
+            // Формула: строка `$$x^2$$` или строки между `$$` и `$$`.
+            if trimmed.hasPrefix("$$"), let tex = equation(startingWith: trimmed, lines: lines, index: &index) {
+                let level = depth(for: indent)
+                result.append(MarkdownBlock(type: .equation, source: tex, depth: level))
                 continue
             }
 
@@ -238,6 +245,35 @@ public enum MarkdownPaste {
                 .replacingOccurrences(of: "<br/>", with: "\n")
                 .replacingOccurrences(of: "<br />", with: "\n"))
         }
+    }
+
+    // MARK: Формула
+
+    /// Формула TeX: `$$x^2$$` в одной строке или строки между `$$` и `$$`.
+    /// Без закрывающих `$$` это не формула, а обычный текст. `index` уходит за последнюю строку формулы.
+    static func equation(startingWith first: String, lines: [String], index: inout Int) -> String? {
+        let rest = String(first.dropFirst(2))
+        if let close = rest.range(of: "$$") {
+            // Всё в одной строке, и после закрывающих `$$` ничего нет.
+            let tex = rest[..<close.lowerBound].trimmingCharacters(in: .whitespaces)
+            guard !tex.isEmpty, rest[close.upperBound...].trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+            return tex
+        }
+        var parts = rest.trimmingCharacters(in: .whitespaces).isEmpty ? [] : [rest.trimmingCharacters(in: .whitespaces)]
+        var next = index
+        while next < lines.count {
+            let line = lines[next].trimmingCharacters(in: .whitespaces)
+            next += 1
+            if let close = line.range(of: "$$") {
+                let last = line[..<close.lowerBound].trimmingCharacters(in: .whitespaces)
+                if !last.isEmpty { parts.append(last) }
+                guard !parts.isEmpty else { return nil }
+                index = next
+                return parts.joined(separator: "\n")
+            }
+            parts.append(line)
+        }
+        return nil
     }
 
     /// Ширина отступа строки: табуляция за четыре пробела.

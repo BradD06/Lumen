@@ -1,7 +1,7 @@
 import Foundation
 
 /// Разметка текста блока на время правки: **жирный**, *курсив*, ++подчёркнутый++, ~~зачёркнутый~~,
-/// `код` и [ссылка](адрес). В поле ввода видна сама разметка, а когда курсор уходит из блока,
+/// `код`, формула $$x^2$$ и [ссылка](адрес). В поле ввода видна сама разметка, а когда курсор уходит из блока,
 /// текст рисуется уже оформленным. В базе хранятся фрагменты `TextRun`, разметка из них
 /// собирается заново, поэтому старые блоки без оформления выглядят в поле как раньше.
 public enum InlineMarkup {
@@ -65,7 +65,7 @@ public enum InlineMarkup {
     }
 
     /// Символы, которые снимают с себя смысл обратной косой чертой.
-    private static let escapable: Set<Character> = ["*", "~", "+", "`", "[", "]", "(", ")", "\\"]
+    private static let escapable: Set<Character> = ["*", "~", "+", "`", "[", "]", "(", ")", "$", "\\"]
 
     private static func parse(
         _ c: [Character], _ start: Int, _ end: Int,
@@ -79,7 +79,16 @@ public enum InlineMarkup {
                 i += 2
                 continue
             }
-            if character == "`", !marks.contains(.code),
+            // Формула $$…$$: внутри исходник TeX как есть, без разметки и без обратных косых.
+            if character == "$", i + 1 < end, c[i + 1] == "$", !marks.contains(.code), !marks.contains(.math),
+               let close = pairIndex(of: "$", in: c, from: i + 2, to: end), close > i + 2 {
+                for k in (i + 2)..<close {
+                    builder.append(c[k], at: k, marks: marks.union([.math]), link: link)
+                }
+                i = close + 2
+                continue
+            }
+            if character == "`", !marks.contains(.code), !marks.contains(.math),
                let close = firstIndex(of: "`", in: c, from: i + 1, to: end), close > i + 1 {
                 for k in (i + 1)..<close {
                     builder.append(c[k], at: k, marks: marks.union([.code]), link: link)
@@ -113,6 +122,16 @@ public enum InlineMarkup {
         return nil
     }
 
+    /// Первое место, где символ стоит два раза подряд.
+    private static func pairIndex(of character: Character, in c: [Character], from start: Int, to end: Int) -> Int? {
+        var j = start
+        while j + 1 < end {
+            if c[j] == character, c[j + 1] == character { return j }
+            j += 1
+        }
+        return nil
+    }
+
     /// Открывающий значок оформления в этом месте и его длина.
     private static func delimiter(_ c: [Character], _ i: Int, _ end: Int) -> (TextMark, Int)? {
         let next: Character? = i + 1 < end ? c[i + 1] : nil
@@ -141,7 +160,7 @@ public enum InlineMarkup {
                 guard c[j] == "~", c[j + 1] == "~", j + 2 >= end || c[j + 2] != "~" else { continue }
             case .underline:
                 guard c[j] == "+", c[j + 1] == "+", j + 2 >= end || c[j + 2] != "+" else { continue }
-            case .code:
+            case .code, .math:
                 continue
             }
             return j
@@ -213,11 +232,12 @@ public enum InlineMarkup {
         case .underline: "++"
         case .strikethrough: "~~"
         case .code: "`"
+        case .math: "$$"
         }
     }
 
-    /// Порядок вложенности: ссылка снаружи, код внутри.
-    private static let markOrder: [TextMark] = [.strikethrough, .underline, .bold, .italic, .code]
+    /// Порядок вложенности: ссылка снаружи, код и формула внутри.
+    private static let markOrder: [TextMark] = [.strikethrough, .underline, .bold, .italic, .code, .math]
 
     private static func tokens(for run: TextRun) -> [Token] {
         var result: [Token] = []
@@ -236,7 +256,7 @@ public enum InlineMarkup {
             for token in open[common...].reversed() { output += token.close }
             for token in wanted[common...] { output += token.open }
             open = wanted
-            if run.marks.contains(.code) || !escaping {
+            if run.marks.contains(.code) || run.marks.contains(.math) || !escaping {
                 output += run.text
             } else {
                 for character in run.text {
@@ -253,7 +273,7 @@ public enum InlineMarkup {
     private static func trimmingEdges(_ runs: [TextRun]) -> [TextRun] {
         var result: [TextRun] = []
         for run in runs {
-            guard !run.marks.isEmpty, !run.marks.contains(.code) else {
+            guard !run.marks.isEmpty, !run.marks.contains(.code), !run.marks.contains(.math) else {
                 result.append(run)
                 continue
             }
@@ -329,6 +349,9 @@ public enum InlineMarkup {
                 all[index].marks.remove(mark)
             } else {
                 all[index].marks.insert(mark)
+                // Код и формула не смешиваются: внутри обоих текст берётся как есть.
+                if mark == .math { all[index].marks.remove(.code) }
+                if mark == .code { all[index].marks.remove(.math) }
             }
         }
         return self.runs(all)

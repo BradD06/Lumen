@@ -111,6 +111,19 @@ enum PagePDFRenderer {
                     .backgroundColor: codeBackground,
                 ]))
                 text.append(newline(paragraph(indent: indent + 6, after: 8)))
+            case .equation:
+                // Формула картинкой по центру. Если TeX не читается, в PDF идёт его исходник.
+                if let attachment = mathAttachment(block.text, size: 15, display: true) {
+                    text.append(NSAttributedString(attachment: attachment))
+                } else {
+                    text.append(NSAttributedString(string: block.text, attributes: [
+                        .font: font(size: 10, monospaced: true),
+                        .foregroundColor: ink,
+                    ]))
+                }
+                let style = paragraph(indent: indent, before: 4, after: 10)
+                style.alignment = .center
+                text.append(newline(style))
             case .divider:
                 text.append(NSAttributedString(attachment: lineAttachment()))
                 text.append(newline(paragraph(indent: indent, before: 4, after: 10)))
@@ -198,6 +211,10 @@ enum PagePDFRenderer {
     private static func runs(_ runs: [TextRun], size: CGFloat, bold: Bool = false, italic: Bool = false) -> NSAttributedString {
         let result = NSMutableAttributedString()
         for run in runs {
+            if run.marks.contains(.math), let attachment = mathAttachment(run.text, size: size, display: false) {
+                result.append(NSAttributedString(attachment: attachment))
+                continue
+            }
             var attributes: [NSAttributedString.Key: Any] = [
                 .font: font(
                     size: size,
@@ -408,6 +425,23 @@ enum PagePDFRenderer {
         return attachment(image, size: size)
     }
 
+    /// Формула TeX тёмными чернилами. Картинка стоит на линии строки, как буквы. `nil`: TeX не читается.
+    private static func mathAttachment(_ latex: String, size: CGFloat, display: Bool) -> NSTextAttachment? {
+        guard let rendered = MathRenderer.exportImage(latex, fontSize: size, display: display, color: ink) else { return nil }
+        // Широкая формула уменьшается до ширины листа.
+        let scale = min(1, contentSize.width / rendered.size.width)
+        let imageSize = CGSize(width: rendered.size.width * scale, height: rendered.size.height * scale)
+        let attachment = NSTextAttachment()
+        #if canImport(UIKit)
+        attachment.image = rendered.image
+        attachment.bounds = CGRect(x: 0, y: -rendered.descent * scale, width: imageSize.width, height: imageSize.height)
+        #else
+        rendered.image.size = imageSize
+        attachment.attachmentCell = BaselineImageCell(image: rendered.image, descent: rendered.descent * scale)
+        #endif
+        return attachment
+    }
+
     private static func attachment(_ image: PlatformImage, size: CGSize) -> NSTextAttachment {
         let attachment = NSTextAttachment()
         #if canImport(UIKit)
@@ -486,3 +520,24 @@ enum PagePDFRenderer {
         #endif
     }
 }
+
+#if os(macOS)
+/// Картинка в тексте PDF, опущенная под линию строки: хвосты формулы (дроби, индексы) уходят вниз, как у букв.
+private final class BaselineImageCell: NSTextAttachmentCell {
+    /// Постоянная: её читает вёрстка текста не с главного потока.
+    private let descent: CGFloat
+
+    init(image: NSImage, descent: CGFloat) {
+        self.descent = descent
+        super.init(imageCell: image)
+    }
+
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) не используется")
+    }
+
+    override func cellBaselineOffset() -> NSPoint {
+        NSPoint(x: 0, y: -descent)
+    }
+}
+#endif

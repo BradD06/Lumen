@@ -190,7 +190,7 @@ private struct TableCellField: View {
             }
             .overlay(alignment: .topLeading) {
                 if showsRendered {
-                    Text(RichTextRendering.attributed(InlineMarkup.normalized(cell.runs), linkColor: theme.accent))
+                    RichTextRendering.text(InlineMarkup.normalized(cell.runs), linkColor: theme.accent, mathSize: 15)
                         .font(font)
                         .foregroundStyle(theme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)

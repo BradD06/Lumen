@@ -206,7 +206,7 @@ struct VersionPreview: View {
 
     @ViewBuilder
     private func line(_ block: Block) -> some View {
-        let text = Text(RichTextRendering.attributed(InlineMarkup.normalized(block.content.runs), linkColor: theme.accent))
+        let text = RichTextRendering.text(InlineMarkup.normalized(block.content.runs), linkColor: theme.accent, mathSize: 15)
         switch block.type {
         case .heading1:
             text.font(.title3.bold()).foregroundStyle(theme.textPrimary)
@@ -230,6 +230,8 @@ struct VersionPreview: View {
             marked("💡", text)
         case .code:
             Text(block.text).font(.callout.monospaced()).foregroundStyle(theme.textPrimary)
+        case .equation:
+            MathFormula(latex: block.text, fontSize: 17)
         case .toggle:
             marked("▸", text)
         case .divider, .sheetBreak:

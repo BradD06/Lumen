@@ -15,6 +15,8 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
         .package(url: "https://github.com/weichsel/ZIPFoundation.git", from: "0.9.19"),
+        // Формулы TeX в заметках: вёрстка как в TeX, своими шрифтами, без веб-движка.
+        .package(url: "https://github.com/mgriebling/SwiftMath.git", from: "1.7.3"),
     ],
     targets: [
         // Модели и чистая логика без зависимостей: страницы, блоки, порядок, markdown-сокращения.
@@ -60,6 +62,7 @@ let package = Package(
                 "LumenReader",
                 "LumenSync",
                 .product(name: "GRDB", package: "GRDB.swift"),
+                .product(name: "SwiftMath", package: "SwiftMath"),
             ]
         ),
         .testTarget(name: "LumenCoreTests", dependencies: ["LumenCore"]),

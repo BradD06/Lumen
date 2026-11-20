@@ -490,7 +490,7 @@ struct PageEditorView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 // В блоке есть текст: над клавиатурой панель оформления, она берёт выделение из поля.
                 // В пустом блоке на iPhone вместо неё ряд типов блока.
-                if case .block(let id) = focus, let block = model.findBlock(id), block.type.hasText, block.type != .code,
+                if case .block(let id) = focus, let block = model.findBlock(id), block.type.hasText, !block.type.isPlainText,
                    !block.text.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         FormatBar(model: model, blockId: id)

@@ -18,6 +18,7 @@ public enum MarkdownShortcut {
         Rule(trigger: "[ ] ", type: .todo, exact: false),
         Rule(trigger: "> ", type: .quote, exact: false),
         Rule(trigger: "```", type: .code, exact: true),
+        Rule(trigger: "$$ ", type: .equation, exact: false),
         Rule(trigger: "---", type: .divider, exact: true),
     ]
 

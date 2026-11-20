@@ -89,6 +89,9 @@ public enum NoteSheets {
             own = textHeight(block.text, size: 17, width: width - 56) + 28
         case .code:
             own = textHeight(block.text, size: 14, width: width - 24, charShare: 0.6, lineShare: 1.35) + 28
+        case .equation:
+            // Формула обычно в одну строку, дробь или сумма чуть выше.
+            own = 72
         case .divider:
             own = 22
         case .page:

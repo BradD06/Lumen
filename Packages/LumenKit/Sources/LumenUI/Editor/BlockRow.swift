@@ -485,7 +485,7 @@ struct BlockRow: View {
 
     /// `[[` или `@` в конце текста открывает меню ссылок на страницы.
     private var mention: MentionTrigger.Match? {
-        guard block.type.hasText, block.type != .code else { return nil }
+        guard block.type.hasText, !block.type.isPlainText else { return nil }
         return MentionTrigger.match(block.text)
     }
 
@@ -589,6 +589,11 @@ struct BlockRow: View {
 
         case .code:
             CodeBlockBody(code: block.text, isEditing: isFocused, font: font) {
+                field
+            }
+
+        case .equation:
+            EquationBlockBody(latex: block.text, isEditing: isFocused, onTap: { focus.wrappedValue = .block(block.id) }) {
                 field
             }
 
@@ -710,14 +715,15 @@ struct BlockRow: View {
             return .handled
         }
         // ⌘B, ⌘I, ⌘U, ⇧⌘X и ⌘E: оформление выделенного текста.
-        .onKeyPress(keys: ["b", "i", "u", "x", "X", "e"]) { press in
+        .onKeyPress(keys: ["b", "i", "u", "x", "X", "e", "E"]) { press in
             guard isRichText, press.modifiers.contains(.command), !press.modifiers.contains(.option) else { return .ignored }
             let action: FormatAction
             switch press.key.character {
             case "b": action = .bold
             case "i": action = .italic
             case "u": action = .underline
-            case "e": action = .code
+            // ⇧⌘E: формула в строке, как в Notion.
+            case "e", "E": action = press.modifiers.contains(.shift) ? .math : .code
             case "x", "X":
                 guard press.modifiers.contains(.shift) else { return .ignored }
                 action = .strikethrough
@@ -728,7 +734,8 @@ struct BlockRow: View {
         }
         .overlay(alignment: .topLeading) {
             if showsRenderedText {
-                Text(RichTextRendering.attributed(InlineMarkup.normalized(block.content.runs), linkColor: theme.accent))
+                let size = MathRenderer.inlineSize(for: block.type)
+                RichTextRendering.text(InlineMarkup.normalized(block.content.runs), linkColor: theme.accent, mathSize: size)
                     .font(font)
                     .foregroundStyle(block.content.textColor.map(\.textColor) ?? theme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -783,7 +790,7 @@ struct BlockRow: View {
 
     /// Обычный текст с оформлением. В коде оформления нет: там разметка была бы самим кодом.
     private var isRichText: Bool {
-        block.type.hasText && block.type != .code
+        block.type.hasText && !block.type.isPlainText
     }
 
     private var markupSource: String {
@@ -860,6 +867,7 @@ struct BlockRow: View {
         case .quote: "Цитата"
         case .callout: "Выноска"
         case .code: "Код"
+        case .equation: "Формула TeX"
         case .toggle: "Сворачиваемый блок"
         case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak, .table, .database,
              .file, .pdf, .video, .audio, .bookmark, .synced: ""
@@ -872,6 +880,7 @@ struct BlockRow: View {
         case .heading2: .system(size: 24, weight: .semibold)
         case .heading3: .system(size: 19, weight: .semibold)
         case .code: .system(.callout, design: .monospaced)
+        case .equation: .system(.callout, design: .monospaced)
         default: .system(size: 17)
         }
     }

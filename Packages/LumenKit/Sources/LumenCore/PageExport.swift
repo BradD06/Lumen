@@ -155,6 +155,11 @@ extension PageExport {
                 let fence = code.contains("```") ? "~~~~" : "```"
                 line = ([fence] + code.components(separatedBy: "\n") + [fence])
                     .joined(separator: "\n" + indent)
+            case .equation:
+                // Формула на отдельной строке, как её понимают Obsidian, Typora и GitHub.
+                let tex = block.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !tex.isEmpty else { continue }
+                line = (["$$"] + tex.components(separatedBy: "\n") + ["$$"]).joined(separator: "\n" + indent)
             case .divider:
                 line = "---"
             case .page:
@@ -216,6 +221,8 @@ extension PageExport {
     /// Фрагменты текста с жирным, курсивом, кодом и ссылками.
     static func inline(_ runs: [TextRun], continuation: String) -> String {
         let text = runs.map { run -> String in
+            // Формула в строке: $x^2$, как в Obsidian и GitHub.
+            if run.marks.contains(.math) { return "$\(run.text)$" }
             var body = run.marks.contains(.code) ? Self.codeSpan(run.text) : Self.escape(run.text)
             // Пробелы по краям выносятся за знаки разметки, иначе Markdown её не узнает.
             let leading = String(body.prefix { $0 == " " })

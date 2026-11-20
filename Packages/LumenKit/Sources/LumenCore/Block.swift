@@ -251,4 +251,6 @@ public struct TextRun: Hashable, Codable, Sendable {
 
 public enum TextMark: String, Hashable, Codable, Sendable, CaseIterable {
     case bold, italic, underline, strikethrough, code
+    /// Формула TeX прямо в строке: текст фрагмента это исходник формулы.
+    case math
 }
