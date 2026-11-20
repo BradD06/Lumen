@@ -763,11 +763,79 @@ final class ReaderModel {
         }
     }
 
+    // MARK: Чтение вслух
+
+    /// Название главы, где читатель: для плеера и экрана блокировки.
+    var currentChapterTitle: String {
+        currentTocEntry?.title ?? (currentChapterIndex.map { chapters[$0].title } ?? "")
+    }
+
+    /// Глава в веб-виде загрузилась: голос ждёт этого, чтобы взять её текст.
+    @ObservationIgnored var onChapterReady: (() -> Void)?
+
+    /// Можно ли читать книгу вслух: нужен текст. PDF для этого переходит в вид «Текст».
+    var canReadAloud: Bool {
+        switch content {
+        case .web: true
+        case .pdf: true
+        default: false
+        }
+    }
+
+    /// Глава с текстом готова для голоса. PDF в оригинале переключается на «Текст»
+    /// (место переходит как есть), и голос дождётся `onChapterReady`.
+    var isTextReady: Bool {
+        if case .web = content { return web.isChapterReady && loadedSection == section }
+        return false
+    }
+
+    func switchToTextForSpeech() {
+        if case .pdf = content { documentMode = .text }
+    }
+
+    /// Откуда начать читать вслух: с выделенного текста, иначе с первой строки на экране.
+    func speechStartOffset() async -> Int {
+        if let selection, pdfText == nil, selection.locator.section == section, let offset = selection.locator.textOffset {
+            return offset
+        }
+        if let offset = await web.topOffset() { return offset }
+        return sectionTextOffset ?? 0
+    }
+
+    /// Голос дошёл до этой части: место чтения и время чтения идут за ним.
+    func listened(to part: SpeechPart) {
+        sectionTextOffset = part.start
+        scheduleSave()
+    }
+
+    /// Следующая глава для голоса, без звука листания. `false`, если глав больше нет.
+    func openNextSectionForSpeech() -> Bool {
+        guard case .web(let prepared) = content, prepared.document.sections.indices.contains(section + 1) else { return false }
+        loadSection(section + 1, in: prepared, progression: 0)
+        scheduleSave()
+        return true
+    }
+
+    /// Звучащая фраза уходит в заметки выпиской со ссылкой на это место.
+    func excerptSpoken(_ part: SpeechPart) async {
+        if let index = pdfText {
+            selection = pdfTextSelection(text: part.spoken, raw: part.raw, offset: part.start, index: index)
+        } else {
+            selection = Selection(
+                text: part.spoken,
+                locator: SourceLocator(section: section, progression: sectionProgression, text: part.raw, textOffset: part.start),
+                label: webLabel(progression: sectionProgression)
+            )
+        }
+        await excerptSelection()
+    }
+
     // MARK: События читалки
 
     private func handle(_ event: WebReaderEvent) {
         switch event {
         case .ready:
+            onChapterReady?()
             // Своего оглавления нет: собираем его из заголовков документа.
             if case .web(let prepared) = content, prepared.document.toc.isEmpty, prepared.document.sections.count == 1 {
                 let section = section

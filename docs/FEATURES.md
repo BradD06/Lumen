@@ -96,6 +96,7 @@
 | Панель книги: время, «Осталось» и «Дочитаешь», серия, календарь дней, сеансы | все | `Reader/SourceDashboardView.swift`, `LumenCore/ReadingInsights.swift` (`ReadingForecast`) |
 | Экран «Чтение» по всем книгам: цель на день, неделя/месяц/год, рекорд, прочитанные за год | все | `Reader/ReadingOverviewView.swift`, `ReadingWidgets.swift`, `LumenCore/ReadingInsights.swift` (`ReadingOverview`) |
 | Заметки к книге лежат в папке книги и создаются, когда их начинают | все | `ReaderModel.ensureNotes()` |
+| **Чтение вслух** голосом Apple (⌥⌘S, наушники): с места на экране, по предложениям с подсветкой, книга листается за голосом, следующая глава сама; на Mac/iPad остров в читалке становится плеером (фраза назад/вперёд, скорость 0.5–3×, голос, таймер сна, «В заметки»), на других экранах кружок с обложкой; на iPhone мини-плеер и полный плеер; фон, экран блокировки, наушники; Настройки → «Озвучка книг» | все | `LumenReader/SpeechText.swift`, `SpeechVoice.swift`, `Reader/ReadAloud.swift`, `ReadAloudViews.swift` |
 | Одна книга, добавленная на двух устройствах, сливается в одну | все | `LumenCore/BookDuplicates.swift`, `LumenStorage/BookDuplicatesRepository.swift` |
 
 ## Библиотека и полки

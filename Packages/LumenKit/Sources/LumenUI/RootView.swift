@@ -490,23 +490,55 @@ public struct RootView: View {
     }
 
     /// Остров с разделами внизу по центру. В режиме фокуса он уходит.
+    /// Пока книга звучит, остров в её читалке становится плеером, а на других экранах
+    /// у острова справа кружок с обложкой.
     @ViewBuilder
     private var island: some View {
         if !focusMode.isOn {
-            NavigationIsland(
-                database: database,
-                selection: selection,
-                onSelect: { selection = $0 },
-                onSearch: { isSearchPresented = true },
-                onSettings: { isSettingsPresented = true },
-                onCreate: { create($0) },
-                onQuickNote: { newQuickNote() }
-            )
+            Group {
+                if Self.showsPlayerIsland(selection: selection) {
+                    ReadAloudBar { withAnimation(LumenMotion.standard) { ReadAloud.shared.showsRooms = true } }
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                } else {
+                    HStack(spacing: 12) {
+                        NavigationIsland(
+                            database: database,
+                            selection: selection,
+                            onSelect: { selection = $0 },
+                            onSearch: { isSearchPresented = true },
+                            onSettings: { isSettingsPresented = true },
+                            onCreate: { create($0) },
+                            onQuickNote: { newQuickNote() }
+                        )
+                        if let sourceId = ReadAloud.shared.sourceId {
+                            ReadAloudRing { openListenedBook(sourceId) }
+                                .padding(.top, BubbleMetrics.lift)
+                                .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                }
+            }
+            .animation(LumenMotion.standard, value: ReadAloud.shared.sourceId)
             .padding(.top, 8)
             .padding(.bottom, 16)
             .frame(maxWidth: .infinity)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
+    }
+
+    /// Остров сейчас плеер: в активной панели открыта звучащая книга и не нажаты «Разделы».
+    static func showsPlayerIsland(selection: SidebarItem?) -> Bool {
+        let readAloud = ReadAloud.shared
+        guard let sourceId = readAloud.sourceId, !readAloud.showsRooms,
+              case .source(let id, _) = selection else { return false }
+        return id == sourceId
+    }
+
+    /// Кружок звучащей книги: открыть её (или вернуть плеер, если она уже открыта).
+    private func openListenedBook(_ sourceId: UUID) {
+        withAnimation(LumenMotion.standard) { ReadAloud.shared.showsRooms = false }
+        if case .source(let id, _) = selection, id == sourceId { return }
+        selection = .source(sourceId, highlight: nil)
     }
 
     /// Открыть в панели `pane` (или в активной, если `nil`).

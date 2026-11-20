@@ -14,11 +14,14 @@ public struct SpeechBlock: Codable, Hashable, Sendable {
 
     public var kind: Kind
     public var text: String
+    /// Текст как в книге, со сносками (той же длины, что `text`): по нему выписка находит место.
+    public var raw: String?
     public var start: Int
 
-    public init(kind: Kind = .text, text: String, start: Int) {
+    public init(kind: Kind = .text, text: String, raw: String? = nil, start: Int) {
         self.kind = kind
         self.text = text
+        self.raw = raw
         self.start = start
     }
 }
@@ -27,6 +30,8 @@ public struct SpeechBlock: Codable, Hashable, Sendable {
 public struct SpeechPart: Hashable, Sendable {
     /// Что сказать: без переносов, лишних пробелов и номеров сносок.
     public var spoken: String
+    /// Тот же кусок, как он стоит в тексте главы: по нему выписка находит место в книге.
+    public var raw: String
     /// Где часть в главе и сколько символов главы подсветить.
     public var start: Int
     public var length: Int
@@ -34,8 +39,9 @@ public struct SpeechPart: Hashable, Sendable {
 
     public var end: Int { start + length }
 
-    public init(spoken: String, start: Int, length: Int, isHeading: Bool = false) {
+    public init(spoken: String, raw: String? = nil, start: Int, length: Int, isHeading: Bool = false) {
         self.spoken = spoken
+        self.raw = raw ?? spoken
         self.start = start
         self.length = length
         self.isHeading = isHeading
@@ -171,7 +177,13 @@ public enum SpeechText {
         let text = block.text
         let start = block.start + text.utf16.distance(from: text.startIndex, to: range.lowerBound)
         let length = text.utf16.distance(from: range.lowerBound, to: range.upperBound)
-        return SpeechPart(spoken: clean(String(text[range])), start: start, length: length, isHeading: isHeading)
+        let offset = text.utf16.distance(from: text.startIndex, to: range.lowerBound)
+        let raw = block.raw.flatMap { full -> String? in
+            let units = Array(full.utf16)
+            guard offset + length <= units.count else { return nil }
+            return String(decoding: units[offset..<offset + length], as: UTF16.self)
+        } ?? String(text[range])
+        return SpeechPart(spoken: clean(raw), raw: raw, start: start, length: length, isHeading: isHeading)
     }
 
     /// Мягкие переносы, сноски вида [12] и лишние пробелы голосу не нужны.

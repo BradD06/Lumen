@@ -212,6 +212,8 @@ LumenUI ─┬─> LumenReader ─> LumenCore
 | `PDFPageLayout.swift` | поля и колонки: `PDFLayoutAnalyzer` (кэш в Caches/LumenReader/pdf-layout), `PDFLayoutPlan` |
 | `PDFTextConverter.swift`, `PDFTextLayout.swift` | режим «Текст» для PDF: `PDFTextIndex`, `PDFTextFinder` |
 | `QuickLookView.swift` | остальные файлы через системный просмотр |
+| `SpeechText.swift` | чтение вслух: куски главы из `ReaderScript.speechBlocks` → части-предложения (`SpeechPart`) с местом в символах главы (UTF-16, как `textOffset`); код → «пример кода пропущен», сноски и номера страниц выкидываются |
+| `SpeechVoice.swift` | голоса Apple (`SpeechVoices`), `SpeechVoicePlayer` поверх `AVSpeechSynthesizer` (очередь на 2 части вперёд, скорость 0.5–3×) |
 
 ### 6.4 LumenThemes
 
@@ -293,6 +295,8 @@ LumenUI ─┬─> LumenReader ─> LumenCore
 | `SidePagePicker.swift`, `ReaderLayoutStore.swift` | какая страница рядом с книгой, где панель заметок |
 | `ExcerptDrag.swift` | перетащить выписку в заметку |
 | `ReaderKeys.swift` | стрелки на Mac |
+| `ReadAloud.swift` | чтение вслух на всё приложение (`ReadAloud.shared`): держит `ReaderModel` звучащей книги, подсветка через `WebReaderController.markSpoken`, место чтения за голосом (`ReaderModel.listened`), следующая глава, таймер сна, экран блокировки (`MPNowPlayingInfoCenter`, `MPRemoteCommandCenter`); открыли книгу снова → `adopt` |
+| `ReadAloudViews.swift` | `ReadAloudBar` (остров-плеер в читалке, `RootView.showsPlayerIsland`), `ReadAloudRing` (кружок у острова), `ReadAloudPanel` (голос, скорость, таймер), `PhoneMiniPlayer`, `PhoneFullPlayer`, `ReadAloudSettingsSection` |
 | `SourceImporter.swift` | добавление книг из файлов |
 | `SourceDashboardView.swift`, `ReadingOverviewView.swift`, `ReadingWidgets.swift` | дашборд книги, экран «Чтение», цель, тепловая карта |
 

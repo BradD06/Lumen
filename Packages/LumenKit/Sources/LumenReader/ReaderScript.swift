@@ -331,20 +331,31 @@ enum ReaderScript {
           const parent = node.parentElement;
           const skipped = !parent || parent.closest(skipSelector) !== null || (parent.closest('[aria-hidden="true"]') !== null);
           const block = parent ? (parent.closest(blockSelector) || document.body) : document.body;
-          if (!skipped && /\S/.test(node.data)) {
+          if (current && current.element === block && skipped) {
+            // Сноска внутри абзаца: голосу пробелы, выписке настоящий текст.
+            current.text += ' '.repeat(length);
+            current.raw += node.data;
+          } else if (!skipped && /\S/.test(node.data)) {
             if (!current || current.element !== block) {
               const tag = block.tagName ? block.tagName.toLowerCase() : '';
               const kind = /^h[1-6]$/.test(tag) ? 'heading' : (tag === 'pre' || block.closest('pre') ? 'code' : 'text');
-              current = { element: block, kind: kind, start: position, text: '' };
+              current = { element: block, kind: kind, start: position, text: '', raw: '' };
               blocks.push(current);
             }
             const gap = position - (current.start + current.text.length);
-            if (gap > 0) { current.text += ' '.repeat(gap); }
+            if (gap > 0) {
+              current.text += ' '.repeat(gap);
+              current.raw += ' '.repeat(gap);
+            }
             current.text += node.data;
+            current.raw += node.data;
+          } else if (current && current.element === block) {
+            current.text += node.data;
+            current.raw += node.data;
           }
           position += length;
         }
-        return JSON.stringify(blocks.map((b) => ({ kind: b.kind, text: b.text, start: b.start })));
+        return JSON.stringify(blocks.map((b) => ({ kind: b.kind, text: b.text, raw: b.raw, start: b.start })));
       }
 
       function rangeOf(start, end) {

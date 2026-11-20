@@ -179,7 +179,11 @@ struct ReaderView: View {
             await model.load()
         }
         .task { await model.observeHighlights() }
-        .onAppear { OpenReaders.shared.register(model, id: model.sourceId) }
+        .onAppear {
+            OpenReaders.shared.register(model, id: model.sourceId)
+            // Эта книга звучит с прошлого экрана: подсветка и главы теперь здесь.
+            ReadAloud.shared.adopt(model)
+        }
         #if os(macOS)
         .onAppear { keys.install(model: model) }
         .onDisappear { keys.remove() }
@@ -363,6 +367,15 @@ struct ReaderView: View {
                 .help(notesAxis == .stacked ? "Заметки под книгой (⌥⌘N)" : "Заметки рядом с книгой (⌥⌘N)")
             }
             Button {
+                listen()
+            } label: {
+                Label(isListening ? "Пауза чтения вслух" : "Слушать", systemImage: isListening ? "headphones.circle.fill" : "headphones")
+            }
+            .keyboardShortcut("s", modifiers: [.command, .option])
+            .help(isListening ? "Пауза или продолжить чтение вслух (⌥⌘S)" : "Слушать книгу с этого места (⌥⌘S)")
+            .disabled(!model.canReadAloud)
+            .accessibilityIdentifier("reader.listen")
+            Button {
                 Task {
                     await model.flush()
                     onShowInfo()
@@ -372,6 +385,21 @@ struct ReaderView: View {
             }
             .keyboardShortcut("i", modifiers: [.command, .option])
             .help("Прогресс, время чтения и все заметки по книге (⌥⌘I)")
+        }
+    }
+
+    /// Эта книга сейчас звучит.
+    var isListening: Bool { ReadAloud.shared.sourceId == model.sourceId }
+
+    /// «Слушать»: эта книга уже звучит — пауза или продолжить, иначе читать с места на экране.
+    func listen() {
+        let readAloud = ReadAloud.shared
+        if isListening {
+            readAloud.showsRooms = false
+            readAloud.togglePause()
+        } else {
+            LumenSounds.play(.toggle)
+            Task { await readAloud.start(model) }
         }
     }
 
