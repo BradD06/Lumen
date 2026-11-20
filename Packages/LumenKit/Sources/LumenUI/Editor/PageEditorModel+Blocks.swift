@@ -76,6 +76,7 @@ extension PageEditorModel {
     /// сохраняется при наборе. Текст без оформления идёт обычным путём с Markdown-сокращениями.
     func updateMarkup(_ id: UUID, to source: String) {
         guard let block = findBlock(id) else { return }
+        if pasteVideoLink(id, to: source) { return }
         if source.contains("\n"), block.type != .code,
            pasteMarkdown(id, old: InlineMarkup.source(block.content.runs), new: source) {
             return

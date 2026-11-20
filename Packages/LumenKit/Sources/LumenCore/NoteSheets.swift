@@ -97,7 +97,8 @@ public enum NoteSheets {
         case .pdf:
             own = 500
         case .video:
-            own = width * 9 / 16 + 8
+            // У ролика YouTube под кадром подпись с названием.
+            own = width * 9 / 16 + (block.content.bookmark == nil ? 8 : 48)
         case .audio:
             own = 72
         case .bookmark:

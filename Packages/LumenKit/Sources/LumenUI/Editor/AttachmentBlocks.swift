@@ -7,7 +7,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Блоки «Файл», «PDF», «Видео» и «Аудио». Пока файла нет, блок предлагает выбрать его
-/// или перетащить. Файл копируется во вложения и ездит между устройствами вместе с заметкой.
+/// или перетащить (видео ещё можно дать ссылкой на YouTube, см. `YouTubeBlock`). Файл копируется во вложения и ездит между устройствами вместе с заметкой.
 struct FileBlock: View {
     let block: Block
     let model: PageEditorModel
@@ -19,7 +19,10 @@ struct FileBlock: View {
 
     var body: some View {
         Group {
-            if let file = block.content.file, block.content.attachment != nil {
+            if block.type == .video, block.content.attachment == nil,
+               let link = block.content.bookmark.flatMap({ YouTubeLink(string: $0.url) }) {
+                YouTubeBlock(block: block, link: link, model: model)
+            } else if let file = block.content.file, block.content.attachment != nil {
                 if let url = model.attachmentURL(of: block) {
                     content(file: file, url: url)
                 } else {
@@ -77,20 +80,25 @@ struct FileBlock: View {
     }
 
     private var picker: some View {
-        HStack(spacing: 12) {
-            Image(systemName: block.type.symbolName)
-                .font(.title2)
-                .foregroundStyle(theme.textSecondary)
-            Button {
-                isImporting = true
-            } label: {
-                Label(pickerTitle, systemImage: "folder")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: block.type.symbolName)
+                    .font(.title2)
+                    .foregroundStyle(theme.textSecondary)
+                Button {
+                    isImporting = true
+                } label: {
+                    Label(pickerTitle, systemImage: "folder")
+                }
+                .buttonStyle(.bordered)
+                Text("или перетащите сюда")
+                    .font(.subheadline)
+                    .foregroundStyle(theme.textSecondary)
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.bordered)
-            Text("или перетащите сюда")
-                .font(.subheadline)
-                .foregroundStyle(theme.textSecondary)
-            Spacer(minLength: 0)
+            if block.type == .video {
+                YouTubeAddressField(blockId: block.id, model: model)
+            }
         }
         .lumenCard(padding: 14)
         .overlay {

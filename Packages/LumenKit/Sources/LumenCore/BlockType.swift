@@ -38,7 +38,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     case file
     /// PDF прямо на странице, листается в блоке.
     case pdf
-    /// Видео со своим проигрывателем.
+    /// Видео со своим проигрывателем: файл (`content.attachment`) или ролик YouTube (`content.bookmark`).
     case video
     /// Аудио: кнопка, полоса и время.
     case audio
@@ -138,7 +138,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .database: ["database", "board", "kanban", "calendar", "tasks", "база", "доска", "календарь", "задачи", "трекер"]
         case .file: ["file", "attachment", "upload", "файл", "вложение", "документ"]
         case .pdf: ["pdf", "document", "документ", "пдф"]
-        case .video: ["video", "movie", "видео", "ролик", "фильм"]
+        case .video: ["video", "movie", "youtube", "видео", "ролик", "фильм", "ютуб"]
         case .audio: ["audio", "sound", "music", "voice", "аудио", "звук", "музыка", "запись", "голос"]
         case .bookmark: ["bookmark", "link", "web", "url", "embed", "закладка", "ссылка", "сайт"]
         case .synced: ["synced", "sync", "mirror", "reuse", "синхронный", "синхрон", "общий", "повтор"]
