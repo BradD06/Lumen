@@ -130,6 +130,13 @@ extension PageExport {
                 line = "### \(text)"
             case .heading3:
                 line = "#### \(text)"
+            case .tableOfContents:
+                // Оглавление в Markdown: вложенный список заголовков страницы.
+                let entries = TableOfContents.entries(items.map(\.block))
+                guard !entries.isEmpty else { continue }
+                line = entries
+                    .map { String(repeating: "    ", count: $0.indent) + "- " + Self.escape($0.title) }
+                    .joined(separator: "\n" + indent)
             case .bulletedList, .toggle:
                 line = "- \(text)"
                 isListItem = true

@@ -643,6 +643,9 @@ struct BlockRow: View {
         case .columnList, .column, .sheetBreak:
             EmptyView()
 
+        case .tableOfContents:
+            TableOfContentsBlock(model: model)
+
         case .paragraph, .heading1, .heading2, .heading3:
             field
         }
@@ -839,6 +842,7 @@ struct BlockRow: View {
         case .heading1: "Заголовок 1"
         case .heading2: "Заголовок 2"
         case .heading3: "Заголовок 3"
+        case .tableOfContents: ""
         case .bulletedList, .numberedList: "Пункт списка"
         case .todo: "Задача"
         case .quote: "Цитата"

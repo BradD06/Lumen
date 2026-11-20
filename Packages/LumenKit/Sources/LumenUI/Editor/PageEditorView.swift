@@ -444,6 +444,11 @@ struct PageEditorView: View {
                 model.sheetScrollRequest = nil
                 scrollToSheet(request, proxy: proxy)
             }
+            .onChange(of: model.headingScrollRequest) { _, anchorId in
+                guard let anchorId else { return }
+                model.headingScrollRequest = nil
+                scrollToBlock(anchorId, proxy: proxy)
+            }
             .overlay(alignment: .topLeading) {
                 if showsSheetRail {
                     LiveSheetRail(
@@ -503,17 +508,7 @@ struct PageEditorView: View {
                 if showsOutline, !showsSubpages {
                     LiveOutline(model: model, visibility: visibility) { item in
                         LumenSounds.play(.navigate)
-                        // Лист мог ещё не построиться: сначала к листу, потом к заголовку.
-                        if let sheet = model.sheets.first(where: { $0.blocks.contains { $0.id == item.anchorId } }) {
-                            sheetLoader.reveal(sheet.index)
-                            proxy.scrollTo(sheetAnchor(sheet), anchor: .top)
-                        }
-                        Task { @MainActor in
-                            try? await Task.sleep(for: .milliseconds(30))
-                            withAnimation(.easeInOut(duration: 0.35)) {
-                                proxy.scrollTo(item.anchorId, anchor: .top)
-                            }
-                        }
+                        scrollToBlock(item.anchorId, proxy: proxy)
                     }
                     .padding(.trailing, 6)
                 }
@@ -926,6 +921,21 @@ struct PageEditorView: View {
         }
         guard let top else { return nil }
         return model.sheets.first { sheet in sheet.blocks.contains { $0.id == top.id } }?.index
+    }
+
+    /// Прокрутка к блоку верхнего уровня (заголовок из карты документа или оглавления).
+    /// Лист мог ещё не построиться: сначала к листу, потом к блоку.
+    private func scrollToBlock(_ anchorId: UUID, proxy: ScrollViewProxy) {
+        if let sheet = model.sheets.first(where: { $0.blocks.contains { $0.id == anchorId } }) {
+            sheetLoader.reveal(sheet.index)
+            proxy.scrollTo(sheetAnchor(sheet), anchor: .top)
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(30))
+            withAnimation(.easeInOut(duration: 0.35)) {
+                proxy.scrollTo(anchorId, anchor: .top)
+            }
+        }
     }
 
     private func scrollToSheet(_ index: Int, proxy: ScrollViewProxy) {

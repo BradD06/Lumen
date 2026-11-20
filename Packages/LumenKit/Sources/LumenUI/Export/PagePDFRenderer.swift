@@ -64,6 +64,17 @@ enum PagePDFRenderer {
                 let size: CGFloat = block.type == .heading1 ? 19 : block.type == .heading2 ? 15.5 : 13
                 text.append(runs(block.content.runs, size: size, bold: true))
                 text.append(newline(paragraph(indent: indent, before: size * 0.7, after: 4)))
+            case .tableOfContents:
+                let entries = TableOfContents.entries(export.items.map(\.block))
+                guard !entries.isEmpty else { continue }
+                for (index, entry) in entries.enumerated() {
+                    text.append(NSAttributedString(string: entry.title, attributes: [
+                        .font: font(size: bodySize, bold: entry.indent == 0),
+                        .foregroundColor: secondary,
+                    ]))
+                    let step = indent + CGFloat(entry.indent) * 14
+                    text.append(newline(paragraph(indent: step, after: index == entries.count - 1 ? 10 : 2)))
+                }
             case .bulletedList, .numberedList, .todo, .toggle:
                 let marker: String = switch block.type {
                 case .numberedList: "\(item.number ?? 1)."
