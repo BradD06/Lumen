@@ -30,6 +30,8 @@ struct HomeView: View {
     @Setting(ScreenOptions.homeRecentKey) private var showsRecent = true
 
     private static let deskHeight: CGFloat = 370
+    /// Ширина колонки «Стола». Полка берёт ту же, чтобы экраны были одного размера.
+    static let contentMaxWidth: CGFloat = 1180
 
     var body: some View {
         ScrollView {
@@ -45,7 +47,7 @@ struct HomeView: View {
             }
             .padding(.horizontal, isWide ? 28 : 16)
             .padding(.vertical, 20)
-            .frame(maxWidth: 1180, alignment: .leading)
+            .frame(maxWidth: Self.contentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity)
             .onGeometryChange(for: Bool.self) { $0.size.width >= 760 } action: { isWide = $0 }
         }

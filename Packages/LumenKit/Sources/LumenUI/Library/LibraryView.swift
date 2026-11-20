@@ -122,6 +122,9 @@ struct LibraryView: View {
                 canvas
             }
         }
+        // Колонка той же ширины, что на «Столе»: на широком окне полка не растягивается до краёв.
+        .frame(maxWidth: usesList ? .infinity : HomeView.contentMaxWidth)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ThemedBackground())
         .bookShowcaseHost(database: database, onOpenBook: onOpenSource)
         .navigationTitle(snapshot.folder?.displayName ?? "Библиотека")
@@ -277,7 +280,8 @@ struct LibraryView: View {
                 VStack(alignment: .leading, spacing: 0) {
                 if showsShelf {
                     bookShelf
-                        .padding(.horizontal, 20)
+                        // 14 + 14 у холста = 28, как отступ шапки и «Стола».
+                        .padding(.horizontal, 14)
                         .padding(.bottom, 12)
                         // Холст прокручивается во все стороны, а полка шириной с окно: книги листаются внутри неё.
                         .frame(width: geometry.size.width, alignment: .leading)
