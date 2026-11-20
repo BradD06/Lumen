@@ -92,6 +92,10 @@ final class ReadAloud {
     @ObservationIgnored private var sleepTask: Task<Void, Never>?
     @ObservationIgnored private var remoteCommandsInstalled = false
     @ObservationIgnored private var artwork: MPMediaItemArtwork?
+    /// Голос ждёт, пока PDF перейдёт в «Текст», и начнёт с места на экране, а не с начала главы.
+    @ObservationIgnored private var startsAtPlace = false
+    /// Глава, текст которой звучит. Если читатель сам ушёл в другую, подсветка и место не трогаются.
+    @ObservationIgnored private var chapterSection: Int?
 
     private static var storedRate: Double {
         let value = UserDefaults.standard.double(forKey: rateKey)
@@ -120,13 +124,12 @@ final class ReadAloud {
         showsRooms = false
         artwork = nil
         installRemoteCommands()
-        reader.onChapterReady = { [weak self, weak reader] in
-            guard let self, let reader, self.reader === reader, self.isPreparing else { return }
-            Task { await self.loadChapter(from: 0) }
-        }
+        listenChapters(of: reader)
         if !reader.isTextReady {
-            // PDF в оригинале: сначала переходим в «Текст», глава сама сообщит о готовности.
+            // PDF в оригинале: сначала переходим в «Текст», глава сама сообщит о готовности,
+            // и голос начнёт с того же места.
             isPreparing = true
+            startsAtPlace = true
             reader.switchToTextForSpeech()
             return
         }
@@ -157,7 +160,7 @@ final class ReadAloud {
         updateNowPlaying()
     }
 
-    /// Фраза назад: если текущая звучит больше пары секунд, она начинается заново.
+    /// Фраза назад.
     func previous() {
         guard isActive, !parts.isEmpty else { return }
         jump(to: max(index - 1, 0))
@@ -220,12 +223,22 @@ final class ReadAloud {
         guard reader.sourceId == sourceId, reader !== self.reader else { return }
         self.reader?.onChapterReady = nil
         self.reader = reader
+        listenChapters(of: reader)
+    }
+
+    /// Глава в читалке загрузилась: голос берёт её текст (следующая глава или PDF перешёл
+    /// в «Текст»), а если голос уже читает её, подсветка встаёт на звучащую фразу.
+    private func listenChapters(of reader: ReaderModel) {
         reader.onChapterReady = { [weak self, weak reader] in
             guard let self, let reader, self.reader === reader else { return }
             if self.isPreparing {
-                Task { await self.loadChapter(from: 0) }
+                let atPlace = self.startsAtPlace
+                self.startsAtPlace = false
+                Task {
+                    let offset = atPlace ? await reader.speechStartOffset() : 0
+                    await self.loadChapter(from: offset)
+                }
             } else if let part = self.current {
-                // Новый экран открыл книгу на месте голоса: подсветка встаёт туда же.
                 self.mark(part, follow: true)
             }
         }
@@ -251,6 +264,7 @@ final class ReadAloud {
         let blocks = await reader.web.speechBlocks()
         guard self.reader === reader else { return }
         isPreparing = false
+        chapterSection = reader.section
         parts = SpeechText.parts(from: blocks)
         language = SpeechText.language(of: parts)
         player.language = language
@@ -274,12 +288,12 @@ final class ReadAloud {
         index = number
         let part = parts[number]
         mark(part, follow: UserDefaults.standard.object(forKey: Self.followKey) as? Bool ?? true)
-        reader?.listened(to: part)
+        if let reader, reader.section == chapterSection { reader.listened(to: part) }
         updateNowPlaying()
     }
 
     private func mark(_ part: SpeechPart, follow: Bool) {
-        guard let reader else { return }
+        guard let reader, reader.section == chapterSection else { return }
         if UserDefaults.standard.object(forKey: Self.highlightKey) as? Bool ?? true {
             reader.web.markSpoken(start: part.start, end: part.end, follow: follow)
         } else if follow {
