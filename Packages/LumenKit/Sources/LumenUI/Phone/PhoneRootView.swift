@@ -105,6 +105,7 @@ struct PhoneRootView: View {
         .overlay(alignment: .bottom) {
             if showsTabCapsule {
                 PhoneTabCapsule(
+                    database: database,
                     selection: tab,
                     onSelect: select,
                     onSearch: { select(.search) },
@@ -177,7 +178,7 @@ struct PhoneRootView: View {
 
     /// Пустое место внизу экрана раздела, чтобы конец списка не прятался под капсулой.
     private func capsuleRoom(_ shows: Bool) -> some View {
-        Color.clear.frame(height: shows && !isKeyboardShown ? PhoneTabCapsule.height + 10 : 0)
+        Color.clear.frame(height: shows && !isKeyboardShown ? PhoneTabCapsule.footprint : 0)
     }
 
     /// Повторное касание открытого раздела возвращает к его началу, как у системных вкладок.
@@ -362,19 +363,30 @@ struct PhoneRootView: View {
     }
 }
 
-/// Низ экрана iPhone: слева стеклянная капсула с разделами, справа круглый поиск и «+».
+/// Низ экрана iPhone: одна стеклянная капсула во всю ширину. Четыре раздела, «Поиск» и «Создать»,
+/// у каждой кнопки значок и подпись. Открытый раздел (и поиск) выпрыгивает кружком над капсулой,
+/// под ним вырез, как в острове на Mac и iPad.
 private struct PhoneTabCapsule: View {
+    let database: AppDatabase
     let selection: PhoneTab
     var onSelect: (PhoneTab) -> Void
     var onSearch: () -> Void
     var onCreate: () -> Void
 
     @Environment(\.lumenTheme) private var theme
-    @Namespace private var markSpace
+    /// Ширина капсулы: от неё ширина кнопок и место кружка. Меняется только при повороте.
+    @State private var width: CGFloat = 0
+    /// Неразобранные записки: число на «Записках», как в острове.
+    @State private var inboxCount = 0
 
-    static let height: CGFloat = 60
+    static let height: CGFloat = 62
+    /// Сколько места капсула занимает над краем экрана вместе с кружком.
+    static let footprint: CGFloat = height + BubbleMetrics.lift + 10
+    private static let padding: CGFloat = 6
 
-    private static let tabs: [PhoneTab] = [.home, .inbox, .tasks, .library]
+    private static let tabs: [PhoneTab] = [.home, .inbox, .tasks, .library, .search]
+    /// Кнопок шесть: пять вкладок и «Создать».
+    private static let slots: CGFloat = 6
 
     /// Названия и значки те же, что у разделов острова на Mac и iPad.
     private static func room(_ tab: PhoneTab) -> StudyRoom {
@@ -386,65 +398,86 @@ private struct PhoneTabCapsule: View {
         }
     }
 
+    private static func title(_ tab: PhoneTab) -> String {
+        tab == .search ? "Поиск" : room(tab).title
+    }
+
+    private static func systemImage(_ tab: PhoneTab) -> String {
+        tab == .search ? "magnifyingglass" : room(tab).systemImage
+    }
+
+    private var bubbleX: CGFloat? {
+        guard width > 0, let index = Self.tabs.firstIndex(of: selection) else { return nil }
+        let slot = (width - Self.padding * 2) / Self.slots
+        return Self.padding + (CGFloat(index) + 0.5) * slot
+    }
+
     var body: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 2) {
+        BubbleBar(
+            height: Self.height,
+            bubbleX: bubbleX,
+            bubbleImage: Self.systemImage(selection),
+            bubbleCount: selection == .inbox ? inboxCount : 0
+        ) {
+            HStack(spacing: 0) {
                 ForEach(Self.tabs, id: \.self) { tab in
-                    roomButton(Self.room(tab), tab: tab)
+                    tabButton(tab)
                 }
+                Button(action: onCreate) {
+                    BubbleBarLabel(
+                        title: "Создать",
+                        systemImage: "plus",
+                        tint: theme.accent,
+                        width: nil,
+                        height: Self.height,
+                        iconSize: 20,
+                        fontSize: 10.5
+                    )
+                }
+                .accessibilityLabel("Создать")
             }
-            .padding(.horizontal, 6)
-            .frame(height: 60)
-            .lumenGlass(Capsule())
-            .animation(LumenMotion.standard, value: selection)
-            Spacer(minLength: 0)
-            Button(action: onSearch) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(selection == .search ? theme.textPrimary : theme.textSecondary)
-                    .frame(width: 60, height: 60)
-                    .lumenGlass(Circle())
-                    .contentShape(Circle())
-            }
-            .accessibilityLabel("Поиск")
-            .accessibilityAddTraits(selection == .search ? .isSelected : [])
-            Button(action: onCreate) {
-                Image(systemName: "plus")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(theme.onAccent)
-                    .frame(width: 60, height: 60)
-                    .background(theme.accent, in: Circle())
-                    .shadow(color: .black.opacity(theme.shadowOpacity * 1.6), radius: 14, y: 8)
-                    .contentShape(Circle())
-            }
-            .accessibilityLabel("Создать")
+            .padding(.horizontal, Self.padding)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .task { await observeInbox() }
+        .animation(LumenMotion.standard, value: selection)
         .buttonStyle(.plain)
-        .padding(.horizontal, 14)
-        .padding(.top, 6)
+        .padding(.horizontal, 12)
+        .padding(.top, BubbleMetrics.lift + 4)
         .padding(.bottom, 4)
     }
 
-    private func roomButton(_ room: StudyRoom, tab: PhoneTab) -> some View {
+    private func tabButton(_ tab: PhoneTab) -> some View {
         let isOn = selection == tab
+        let count = tab == .inbox ? inboxCount : 0
         return Button {
-            onSelect(tab)
+            if tab == .search { onSearch() } else { onSelect(tab) }
         } label: {
-            Image(systemName: room.systemImage)
-                .font(.system(size: 20, weight: isOn ? .semibold : .regular))
-                .foregroundStyle(isOn ? theme.textPrimary : theme.textSecondary)
-                .frame(width: 52, height: 48)
-                .background {
-                    if isOn {
-                        Capsule()
-                            .fill(theme.surface2)
-                            .matchedGeometryEffect(id: "mark", in: markSpace)
-                    }
-                }
-                .contentShape(Capsule())
+            BubbleBarLabel(
+                title: Self.title(tab),
+                systemImage: Self.systemImage(tab),
+                isOn: isOn,
+                count: count,
+                width: nil,
+                height: Self.height,
+                iconSize: 20,
+                fontSize: 10.5
+            )
         }
-        .accessibilityLabel(room.title)
+        .accessibilityLabel(count > 0 ? "\(Self.title(tab)), \(count)" : Self.title(tab))
         .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+
+    private func observeInbox() async {
+        let observation = ValueObservation.tracking { db in try SidebarSnapshot.fetchCounts(db).inboxCount }
+            .removeDuplicates()
+        do {
+            for try await value in observation.values(in: database.reader) where value != inboxCount {
+                withAnimation(LumenMotion.standard) { inboxCount = value }
+            }
+        } catch {
+            lumenLog.error("Phone capsule observation failed: \(String(describing: error), privacy: .public)")
+        }
     }
 }
 
