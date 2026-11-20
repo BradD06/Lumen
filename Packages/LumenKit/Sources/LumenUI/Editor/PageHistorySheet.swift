@@ -237,7 +237,7 @@ struct VersionPreview: View {
         case .table:
             placeholder(block.type, detail: block.content.table.map { "\($0.rowCount) × \($0.columnCount)" })
         case .file, .pdf, .video, .audio:
-            placeholder(block.type, detail: block.content.file?.name)
+            placeholder(block.type, detail: block.content.file?.name ?? block.content.bookmark.map { $0.title ?? $0.url })
         case .bookmark:
             placeholder(block.type, detail: block.content.bookmark.map { $0.title ?? $0.url })
         case .synced:

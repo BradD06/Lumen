@@ -174,8 +174,14 @@ extension PageExport {
                 guard let table = block.content.table else { continue }
                 line = Self.table(table).joined(separator: "\n" + indent)
             case .file, .pdf, .video, .audio:
-                guard let file = block.content.file else { continue }
-                line = "📎 \(Self.escape(file.name))"
+                if let file = block.content.file {
+                    line = "📎 \(Self.escape(file.name))"
+                } else if block.type == .video, let video = block.content.bookmark {
+                    // Ролик YouTube: ссылка на него.
+                    line = "▶️ [\(Self.escape(video.title ?? "Видео YouTube"))](\(video.url))"
+                } else {
+                    continue
+                }
             case .synced:
                 // Содержимое оригинала идёт следом его детьми; у копии оно на другой странице.
                 guard block.isSyncedCopy else { continue }

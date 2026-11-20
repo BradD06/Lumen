@@ -368,6 +368,18 @@ struct BlockRow: View {
                 Label("Другая ссылка", systemImage: "pencil")
             }
         }
+        if block.type == .video, block.content.attachment == nil, let video = block.content.bookmark {
+            Button {
+                copyText(video.url)
+            } label: {
+                Label("Скопировать ссылку", systemImage: "link")
+            }
+            Button {
+                model.removeAttachment(block.id)
+            } label: {
+                Label("Другое видео", systemImage: "arrow.triangle.2.circlepath")
+            }
+        }
     }
 
     private var imageSizeMenu: some View {
