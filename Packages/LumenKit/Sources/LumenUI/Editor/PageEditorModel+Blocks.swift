@@ -38,6 +38,19 @@ extension PageEditorModel {
     func updateText(_ id: UUID, to newText: String) {
         guard let block = findBlock(id) else { return }
 
+        // В формуле Return (на iPhone это перевод строки) заканчивает правку, а вставка
+        // в несколько строк остаётся одной формулой: для TeX перевод строки это пробел.
+        if block.type == .equation, newText.contains("\n") {
+            if newText.count == block.text.count + 1, newText.replacingOccurrences(of: "\n", with: "") == block.text {
+                recordUndo()
+                leaveEquation(id)
+            } else {
+                recordUndo(typing: .block(id))
+                update(id) { $0.text = newText.replacingOccurrences(of: "\n", with: " ") }
+            }
+            return
+        }
+
         if newText.contains("\n"), block.type != .code {
             if pasteMarkdown(id, old: block.text, new: newText) { return }
             recordUndo()
@@ -106,6 +119,10 @@ extension PageEditorModel {
     func submit(_ id: UUID) {
         guard let block = findBlock(id) else { return }
         recordUndo()
+        if block.type == .equation {
+            leaveEquation(id)
+            return
+        }
         if block.type == .code {
             if block.text.hasSuffix("\n") {
                 leaveCodeBlock(id, text: String(block.text.dropLast()))
@@ -118,6 +135,17 @@ extension PageEditorModel {
         }
         // Оформление первой части остаётся на месте.
         split(id, lines: [block.content.runs, []])
+    }
+
+    /// Return в формуле: курсор уходит в пустой абзац под ней (новый, если его нет), формула видна готовой.
+    private func leaveEquation(_ id: UUID) {
+        let siblings = children(of: findBlock(id)?.parentBlockId)
+        if let index = siblings.firstIndex(where: { $0.id == id }), index + 1 < siblings.count,
+           siblings[index + 1].type == .paragraph, siblings[index + 1].text.isEmpty {
+            focusRequest = siblings[index + 1].id
+        } else {
+            focusRequest = insertBlock(after: id, type: .paragraph).id
+        }
     }
 
     /// Второй Return подряд в блоке кода: лишняя пустая строка убирается, ниже появляется абзац.

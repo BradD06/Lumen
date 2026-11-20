@@ -65,6 +65,7 @@
 | База данных на странице: новая, «Задачи» или существующая, все виды; «Открыть» на весь экран | все | `Editor/DatabaseBlock.swift` |
 | Вставка Markdown раскладывается по блокам (заголовки, списки, задачи, цитаты, код, разделители, таблицы) | все | `LumenCore/MarkdownPaste.swift`, `PageEditorModel+Paste.swift` |
 | Подсветка синтаксиса кода, видна прямо при наборе | все | `LumenCore/CodeSyntax.swift`, `Editor/CodeBlockBody.swift` |
+| Формулы TeX: блок «Формула» (`/формула`, `/math` или `$$ ` в начале строки; сверху исходник, под ним формула меняется на ходу, Return выходит) и формула в строке `$$x^2$$` (⇧⌘E, кнопка на панели оформления); в Markdown `$$…$$` / `$…$`, в PDF картинкой; вёрстка SwiftMath | все | `Editor/MathViews.swift`, `LumenCore/InlineMarkup.swift` (`TextMark.math`), `LumenCore/MarkdownPaste.swift` |
 | Ссылки на страницы через `[[` или `@`, подстраницы, обратные ссылки внизу страницы («Ссылки на эту страницу») | все | `LumenCore/MentionTrigger.swift`, `Editor/PageEditorView.swift`, `SubpagesPanel.swift` |
 | Предпросмотр страницы по наведению (долгое нажатие на iPhone), предпросмотр выписки | все | `Editor/PageLinkPreview.swift` |
 | Карта документа (заголовки страницы) | Mac/iPad | `Editor/PageOutlineView.swift` |

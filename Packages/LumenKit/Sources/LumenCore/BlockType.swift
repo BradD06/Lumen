@@ -12,6 +12,8 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     case quote
     case callout
     case code
+    /// Формула TeX на отдельной строке: исходник в `content.runs`, рисуется как в учебнике (`MathRenderer`).
+    case equation
     case divider
     /// Ссылка на другую страницу или подстраницу (`content.pageId`).
     case page
@@ -62,6 +64,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .quote: "Цитата"
         case .callout: "Выноска"
         case .code: "Код"
+        case .equation: "Формула"
         case .divider: "Разделитель"
         case .page: "Страница"
         case .image: "Картинка"
@@ -94,6 +97,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .quote: "text.quote"
         case .callout: "lightbulb"
         case .code: "chevron.left.forwardslash.chevron.right"
+        case .equation: "x.squareroot"
         case .divider: "minus"
         case .page: "doc.text"
         case .image: "photo"
@@ -126,6 +130,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .quote: ["quote", "цитата"]
         case .callout: ["callout", "note", "выноска", "заметка"]
         case .code: ["code", "код"]
+        case .equation: ["math", "equation", "latex", "tex", "formula", "формула", "уравнение", "математика", "тех"]
         case .divider: ["divider", "line", "разделитель", "линия"]
         case .page: ["page", "subpage", "страница", "подстраница"]
         case .image: ["image", "photo", "picture", "картинка", "фото", "изображение"]
@@ -172,6 +177,9 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         default: false
         }
     }
+
+    /// Текст без оформления: в коде и формуле разметка `**` или `$$` была бы самим текстом.
+    public var isPlainText: Bool { self == .code || self == .equation }
 
     /// Тип нового блока, который появляется по Return в конце этого блока:
     /// списки и задачи продолжаются, всё остальное превращается в обычный текст.

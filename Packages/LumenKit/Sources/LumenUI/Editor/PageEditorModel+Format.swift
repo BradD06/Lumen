@@ -9,7 +9,7 @@ struct TextSelectionInfo: Equatable {
 
 /// Кнопки панели форматирования, сочетаний клавиш и меню по правой кнопке.
 enum FormatAction: String, CaseIterable, Identifiable {
-    case bold, italic, underline, strikethrough, code, clear
+    case bold, italic, underline, strikethrough, code, math, clear
 
     var id: String { rawValue }
 
@@ -20,6 +20,7 @@ enum FormatAction: String, CaseIterable, Identifiable {
         case .underline: .underline
         case .strikethrough: .strikethrough
         case .code: .code
+        case .math: .math
         case .clear: nil
         }
     }
@@ -31,6 +32,7 @@ enum FormatAction: String, CaseIterable, Identifiable {
         case .underline: "Подчёркнутый"
         case .strikethrough: "Зачёркнутый"
         case .code: "Код"
+        case .math: "Формула"
         case .clear: "Убрать оформление"
         }
     }
@@ -42,6 +44,7 @@ enum FormatAction: String, CaseIterable, Identifiable {
         case .underline: "underline"
         case .strikethrough: "strikethrough"
         case .code: "chevron.left.forwardslash.chevron.right"
+        case .math: "x.squareroot"
         case .clear: "eraser"
         }
     }
@@ -54,6 +57,7 @@ enum FormatAction: String, CaseIterable, Identifiable {
         case .underline: "⌘U"
         case .strikethrough: "⇧⌘X"
         case .code: "⌘E"
+        case .math: "⇧⌘E"
         case .clear: nil
         }
     }
@@ -63,7 +67,7 @@ enum FormatAction: String, CaseIterable, Identifiable {
 extension PageEditorModel {
     /// Весь текст блока: меню по правой кнопке без выделения оформляет блок целиком.
     func wholeText(of id: UUID) -> TextSelectionInfo? {
-        guard let block = findBlock(id), block.type.hasText, block.type != .code else { return nil }
+        guard let block = findBlock(id), block.type.hasText, !block.type.isPlainText else { return nil }
         return TextSelectionInfo(blockId: id, range: 0..<block.text.count)
     }
 
