@@ -47,12 +47,13 @@ struct SheetPaper<Content: View, MenuItems: View>: View {
     }
 
     private var paper: some View {
-        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        // Лист «Острова»: ровная бумага цвета листа, тонкая обводка и мягкая тень снизу.
         return shape
-            .fill(theme.cardFill)
-            .overlay(shape.fill(theme.contrast.opacity(0.035)))
+            .fill(theme.sheet)
             .overlay(shape.strokeBorder(theme.cardStroke, lineWidth: 1))
-            .shadow(color: .black.opacity(theme.shadowOpacity * 0.9), radius: 18, y: 12)
+            .shadow(color: .black.opacity(theme.shadowOpacity * 0.5), radius: 1, y: 1)
+            .shadow(color: .black.opacity(theme.shadowOpacity * 1.2), radius: 20, y: 12)
     }
 
     /// Внизу листа, как в тетради: название заметки, «лист заполнен» и номер листа с меню листа.

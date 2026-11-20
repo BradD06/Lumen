@@ -1,11 +1,6 @@
-import CoreImage
 import SwiftUI
-#if os(macOS)
-import AppKit
-#endif
 
-/// Фон кабинета: градиент схемы, за «стеклом» размыто виден книжный шкаф,
-/// в углу тёплая лампа, в противоположном углу второй, холодный свет.
+/// Фон окна «Острова»: ровный цвет темы, без картинок и пятен.
 public struct ThemedBackground: View {
     @Environment(\.lumenTheme) private var theme
 
@@ -14,22 +9,14 @@ public struct ThemedBackground: View {
     public var body: some View {
         ZStack {
             theme.backgroundGradient
-            if theme.wallOpacity > 0, !theme.wallColors.isEmpty {
-                BlurredBookcase(colors: theme.wallColors, plank: theme.accent)
-                    .opacity(theme.wallOpacity)
+            if theme.glowStrength > 0 {
+                RadialGradient(
+                    colors: [theme.glow.opacity(theme.glowStrength), theme.glow.opacity(0)],
+                    center: UnitPoint(x: 0.88, y: 0.0),
+                    startRadius: 0,
+                    endRadius: 620
+                )
             }
-            RadialGradient(
-                colors: [theme.glow.opacity(theme.glowStrength), theme.glow.opacity(0)],
-                center: UnitPoint(x: 0.88, y: 0.0),
-                startRadius: 0,
-                endRadius: 620
-            )
-            RadialGradient(
-                colors: [theme.glow2.opacity(theme.glowStrength * 0.55), theme.glow2.opacity(0)],
-                center: UnitPoint(x: 0.04, y: 1.0),
-                startRadius: 0,
-                endRadius: 560
-            )
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -37,108 +24,8 @@ public struct ThemedBackground: View {
     }
 }
 
-/// Размытый шкаф: готовая картинка на весь экран, окно её только обрезает. Раньше шкаф
-/// рисовался и размывался под размер окна, и при изменении размера окна или панелей
-/// размытие на всё окно считалось заново на каждом кадре.
-struct BlurredBookcase: View {
-    let colors: [Color]
-    let plank: Color
-
-    var body: some View {
-        Color.clear
-            .overlay(alignment: .topLeading) {
-                if let image = BookcaseImage.image(colors: colors, plank: plank) {
-                    Image(decorative: image, scale: BookcaseImage.scale)
-                }
-            }
-            .clipped()
-    }
-}
-
-/// Картинки размытого шкафа, по одной на набор цветов.
-@MainActor
-enum BookcaseImage {
-    /// Шкаф размыт, мелких деталей в нём нет: хватает половины точки на пиксель.
-    static let scale: CGFloat = 0.5
-    private static let blurRadius: CGFloat = 14
-    private static var cache: [String: CGImage] = [:]
-    private static let context = CIContext()
-
-    /// Больше любого окна: самый большой экран.
-    static var size: CGSize {
-        #if os(macOS)
-        let frames = NSScreen.screens.map(\.frame.size)
-        let width = frames.map(\.width).max() ?? 1920
-        let height = frames.map(\.height).max() ?? 1200
-        return CGSize(width: max(width, 1280).rounded(.up), height: max(height, 900).rounded(.up))
-        #else
-        return CGSize(width: 1400, height: 1400)
-        #endif
-    }
-
-    static func image(colors: [Color], plank: Color) -> CGImage? {
-        let size = size
-        let key = "\(colors.map(\.description))|\(plank.description)|\(Int(size.width))x\(Int(size.height))"
-        if let cached = cache[key] { return cached }
-        let renderer = ImageRenderer(
-            content: BookcaseWall(colors: colors, plank: plank)
-                .frame(width: size.width, height: size.height)
-        )
-        renderer.scale = scale
-        guard let wall = renderer.cgImage else { return nil }
-        let input = CIImage(cgImage: wall)
-        // Размытие в пикселях картинки: радиус в точках, умноженный на масштаб.
-        guard let blurred = CIFilter(name: "CIGaussianBlur", parameters: [
-            kCIInputImageKey: input,
-            kCIInputRadiusKey: blurRadius * scale,
-        ])?.outputImage,
-            let result = context.createCGImage(blurred, from: input.extent) else { return nil }
-        cache[key] = result
-        return result
-    }
-}
-
-/// Ряды корешков и полок для фона. Рисуется один раз и размывается,
-/// поэтому детали не нужны: только цвет, высота и ритм.
-struct BookcaseWall: View {
-    let colors: [Color]
-    let plank: Color
-
-    var body: some View {
-        Canvas { context, size in
-            let rowHeight: CGFloat = 200
-            var top: CGFloat = 30
-            var row = 0
-            while top < size.height {
-                let shelfY = top + rowHeight - 18
-                var x: CGFloat = 16
-                var index = row * 7
-                while x < size.width {
-                    let width = 14 + CGFloat((index * 37) % 17)
-                    let height = 112 + CGFloat((index * 53) % 52)
-                    let rect = CGRect(x: x, y: shelfY - height, width: width, height: height)
-                    context.fill(
-                        Path(roundedRect: rect, cornerRadius: 2),
-                        with: .color(colors[index % colors.count])
-                    )
-                    x += width + 3
-                    // Иногда на полке пустое место, как в настоящем шкафу.
-                    if index % 13 == 12 { x += 30 }
-                    index += 1
-                }
-                context.fill(
-                    Path(CGRect(x: 0, y: shelfY, width: size.width, height: 10)),
-                    with: .color(plank.opacity(0.45))
-                )
-                top += rowHeight
-                row += 1
-            }
-        }
-    }
-}
-
 extension View {
-    /// Матовое стекло любой формы: размытие, лёгкий цвет схемы и светлая кромка сверху.
+    /// Матовое стекло любой формы: размытие, цвет стекла темы и тонкая обводка.
     public func lumenGlass<S: InsettableShape>(_ shape: S, prominent: Bool = false) -> some View {
         modifier(GlassModifier(shape: shape, prominent: prominent))
     }
@@ -155,26 +42,22 @@ private struct GlassModifier<S: InsettableShape>: ViewModifier {
                 // Тень отбрасывает само стекло, а не всё, что на нём: так её не надо пересчитывать,
                 // когда меняется текст или значки, и у букв нет своей тени.
                 shape.fill(prominent ? .regularMaterial : .ultraThinMaterial)
-                    .overlay(shape.fill(theme.cardFill))
-                    .shadow(color: .black.opacity(theme.shadowOpacity * 0.8), radius: 14, y: 6)
+                    .overlay(shape.fill(theme.glassFill))
+                    .shadow(color: .black.opacity(theme.shadowOpacity * 1.6), radius: 15, y: 8)
             }
             .overlay(shape.strokeBorder(theme.glassEdge, lineWidth: 1))
     }
 }
 
 extension Theme {
-    /// Обводка стекла: светлее сверху, где на кромку падает свет лампы.
+    /// Обводка стекла и карточек: тонкая и ровная.
     public var glassEdge: LinearGradient {
-        LinearGradient(
-            colors: [glassHighlight, cardStroke, cardStroke.opacity(0.5)],
-            startPoint: .top,
-            endPoint: .bottom
-        )
+        LinearGradient(colors: [cardStroke, cardStroke], startPoint: .top, endPoint: .bottom)
     }
 }
 
 public enum CardStyle: Sendable, Equatable {
-    /// Полупрозрачная карточка на фоне темы.
+    /// Лист: непрозрачная карточка цвета листа с мягкой тенью.
     case glass
     /// Яркая карточка из палитры темы.
     case vivid(Int)
@@ -195,7 +78,8 @@ private struct LumenCardModifier: ViewModifier {
             .clipShape(shape)
             .background {
                 cardBackground(shape)
-                    .shadow(color: .black.opacity(theme.shadowOpacity), radius: 16, y: 8)
+                    .shadow(color: .black.opacity(theme.shadowOpacity * 0.5), radius: 1, y: 1)
+                    .shadow(color: .black.opacity(theme.shadowOpacity), radius: 18, y: 10)
             }
             .overlay(shape.strokeBorder(theme.glassEdge, lineWidth: 1))
     }
@@ -204,8 +88,7 @@ private struct LumenCardModifier: ViewModifier {
     private func cardBackground(_ shape: RoundedRectangle) -> some View {
         switch style {
         case .glass:
-            shape.fill(.ultraThinMaterial)
-                .overlay(shape.fill(theme.cardFill))
+            shape.fill(theme.sheet)
         case .vivid(let index):
             shape.fill(
                 LinearGradient(
@@ -285,5 +168,4 @@ public struct StatCard: View {
     }
     .padding()
     .background(ThemedBackground())
-    .preferredColorScheme(.dark)
 }

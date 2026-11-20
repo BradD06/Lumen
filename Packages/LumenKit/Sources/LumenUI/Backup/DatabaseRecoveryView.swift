@@ -105,7 +105,6 @@ public struct DatabaseRecoveryView: View {
         }
         .background(ThemedBackground())
         .tint(theme.accent)
-        .preferredColorScheme(.dark)
         .task { automaticBackups = AppDatabase.defaultAutomaticBackups() }
         .fileImporter(isPresented: $isPickingBackup, allowedContentTypes: [.zip, .data]) { result in
             if case .success(let url) = result {

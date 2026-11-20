@@ -7,75 +7,47 @@ import SwiftUI
 import Testing
 
 struct ThemeTests {
-    /// Вид один, «Кабинет», у него пять стеклянных схем. Основная, «Изумрудное стекло», стоит в окружении по умолчанию.
-    @Test func emeraldIsTheDefaultScheme() {
-        #expect(Theme.study.name == "Изумрудное стекло")
-        #expect(Theme.study.fontDesign == .default)
-        #expect(Theme.study.colorScheme == .dark)
-        #expect(EnvironmentValues().lumenTheme == .study)
-        #expect(Theme.schemes.first == .study)
+    /// Вид один, «Остров»: светлая и тёмная тема, по умолчанию как в системе.
+    @Test func islandHasLightAndDarkThemes() {
+        #expect(Theme.schemes.map(\.name) == ["Светлая", "Тёмная"])
+        #expect(Theme.light.colorScheme == .light)
+        #expect(Theme.dark.colorScheme == .dark)
+        #expect(EnvironmentValues().lumenTheme == .light)
+        #expect(Set(Theme.schemes.map(\.id)).count == Theme.schemes.count)
     }
 
-    @Test func fiveSchemesWithUniqueIds() {
-        #expect(Theme.schemes.map(\.name) == ["Изумрудное стекло", "Молочный лёд", "Северный туман", "Розовый дым", "Лавандовый вечер"])
-        #expect(Set(Theme.schemes.map(\.id)).count == Theme.schemes.count)
-        #expect(Theme.schemes.filter { !$0.isDark }.map(\.id) == ["linen"], "одна светлая схема")
+    @Test func appearanceModeFollowsTheSystem() {
+        #expect(AppearanceMode.allCases.map(\.title) == ["Как в системе", "Светлая", "Тёмная"])
+        #expect(AppearanceMode.system.theme(system: .light) == .light)
+        #expect(AppearanceMode.system.theme(system: .dark) == .dark)
+        #expect(AppearanceMode.light.theme(system: .dark) == .light)
+        #expect(AppearanceMode.dark.theme(system: .light) == .dark)
+        #expect(AppearanceMode.system.colorScheme == nil)
+        #expect(AppearanceMode(rawValue: "study") == nil, "старые схемы «Кабинета» не читаются как режим")
     }
 
     @Test(arguments: Theme.schemes)
-    func everySchemeIsComplete(_ theme: Theme) {
+    func everyThemeIsComplete(_ theme: Theme) {
         #expect(theme.backgroundStops.count >= 2)
+        #expect(Set(theme.backgroundStops).count == 1, "фон ровный, без пятен")
+        #expect(theme.glowStrength == 0)
         #expect(theme.vividCards.count >= 3, "цвета папок берутся по номеру из яркой палитры")
-        #expect((0...1).contains(theme.glowStrength))
-        #expect(!theme.wallColors.isEmpty, "за стеклом виден шкаф")
         #expect(!theme.caption.isEmpty)
         #expect(theme.fontDesign == .default)
-        // Текст на латунной кнопке читается.
-        #expect(ThemeContrast.ratio(theme.onAccent, theme.accent) >= 4.5, "\(theme.name): onAccent")
-        #expect(ThemeContrast.ratio(theme.textPrimary, theme.backgroundStops[0]) >= 7, "\(theme.name): текст")
+        // На акценте только значки и короткие жирные подписи: хватает контраста крупного текста.
+        #expect(ThemeContrast.ratio(theme.onAccent, theme.accent) >= 3, "\(theme.name): onAccent")
+        #expect(ThemeContrast.ratio(theme.onInk, theme.ink) >= 7, "\(theme.name): кнопка плеера")
+        #expect(ThemeContrast.ratio(theme.textPrimary, theme.background) >= 7, "\(theme.name): текст")
+        #expect(ThemeContrast.ratio(theme.textPrimary, theme.sheet) >= 7, "\(theme.name): текст на листе")
+        #expect(ThemeContrast.ratio(theme.textSecondary, theme.sheet) >= 3, "\(theme.name): второй текст")
     }
 
-    @Test func unknownSchemeFallsBackToEmerald() {
-        #expect(Theme.named("midnight") == .midnight)
-        #expect(Theme.named("sunset") == .study, "старые темы удалены")
-        #expect(Theme.named("walnut") == .study, "«Орех» снят, его выбор переходит на основную схему")
-        #expect(Theme.named("") == .study)
-    }
-}
-
-struct DaylightScheduleTests {
-    private var calendar: Calendar {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Europe/Warsaw")!
-        return calendar
-    }
-
-    private func date(hour: Int, minute: Int = 0) -> Date {
-        calendar.date(from: DateComponents(year: 2026, month: 11, day: 11, hour: hour, minute: minute))!
-    }
-
-    @Test func periodsFollowTheClock() {
-        #expect(DaylightSchedule.Period.at(hour: 6) == .night)
-        #expect(DaylightSchedule.Period.at(hour: 7) == .day)
-        #expect(DaylightSchedule.Period.at(hour: 18) == .day)
-        #expect(DaylightSchedule.Period.at(hour: 19) == .evening)
-        #expect(DaylightSchedule.Period.at(hour: 22) == .evening)
-        #expect(DaylightSchedule.Period.at(hour: 23) == .night)
-        #expect(DaylightSchedule.Period.at(hour: 0) == .night)
-    }
-
-    @Test func defaultScheduleIsLinenEmeraldMidnight() {
-        let schedule = DaylightSchedule()
-        #expect(schedule.theme(at: date(hour: 10, minute: 30), calendar: calendar) == .linen)
-        #expect(schedule.theme(at: date(hour: 19, minute: 40), calendar: calendar) == .study)
-        #expect(schedule.theme(at: date(hour: 23, minute: 15), calendar: calendar) == .midnight)
-    }
-
-    @Test func nextChangeIsTheNextPeriodStart() {
-        #expect(DaylightSchedule.nextChange(after: date(hour: 10), calendar: calendar) == date(hour: 19))
-        #expect(DaylightSchedule.nextChange(after: date(hour: 20), calendar: calendar) == date(hour: 23))
-        let morning = calendar.date(byAdding: .day, value: 1, to: date(hour: 7))!
-        #expect(DaylightSchedule.nextChange(after: date(hour: 23, minute: 30), calendar: calendar) == morning)
+    @Test func coverTintKeepsTheSheets() {
+        let tinted = Theme.dark.tinted(by: Color(hex: 0x3A7BD5))
+        #expect(tinted.sheet == Theme.dark.sheet)
+        #expect(tinted.textPrimary == Theme.dark.textPrimary)
+        #expect(tinted.background != Theme.dark.background)
+        #expect(Set(tinted.backgroundStops).count == 1)
     }
 }
 
@@ -105,7 +77,7 @@ struct StudyRoomTests {
 }
 
 struct FolderContrastTests {
-    /// Тёмная папка сливалась бы с фоном: каждая папка заметна на зелёной стене кабинета.
+    /// Тёмная папка сливалась бы с фоном: каждая папка заметна на фоне темы.
     @Test(arguments: Theme.schemes)
     func everyFolderStandsOutFromTheBackground(_ theme: Theme) {
         guard let background = theme.backgroundStops.first else { return }
@@ -119,9 +91,9 @@ struct FolderContrastTests {
     }
 
     @Test func brightFoldersKeepTheirColor() {
-        // Пергаментная папка и так видна: её цвет не трогают.
-        let card = Theme.study.vividCard(0)
-        #expect(Theme.study.folderCard(0).colors == card.colors)
+        // Сиреневая папка и так видна на светлом фоне: её цвет не трогают.
+        let card = Theme.light.vividCard(0)
+        #expect(Theme.light.folderCard(0).colors == card.colors)
     }
 
     @Test func iconPickerTakesOneSymbol() {

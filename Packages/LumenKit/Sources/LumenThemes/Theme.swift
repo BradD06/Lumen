@@ -1,42 +1,59 @@
 import SwiftUI
 
-/// Набор дизайн-токенов. Вид у приложения один: «Кабинет», библиотека с книжными полками
-/// за матовым стеклом. У него пять цветовых схем (`Theme.schemes`), выбор в Настройках.
+/// Набор дизайн-токенов. Вид у приложения один: «Остров», ровный фон, листы и стеклянный
+/// остров с разделами внизу. Две темы, светлая и тёмная (`Theme.schemes`), см. `AppearanceMode`.
 public struct Theme: Sendable, Equatable, Identifiable {
     public var id: String
     public var name: String
-    /// Одна строка под названием схемы в Настройках.
+    /// Одна строка под названием темы в Настройках.
     public var caption: String
     /// Тёмная тема или светлая: от этого зависят системные цвета, меню и поля.
     public var isDark: Bool
     /// Начертание шрифта по всему приложению.
     public var fontDesign: Font.Design
-    /// Фон сверху вниз.
+    /// Фон окна сверху вниз. У «Острова» он ровный: обе точки одного цвета.
     public var backgroundStops: [Color]
-    /// Тёплое свечение «солнца» в углу фона.
+    /// Мягкий цвет для подложек без картинки (заметка без обложки, «Читаю сейчас»).
     public var glow: Color
-    /// Насколько ярко светит «солнце» в углу фона (0 = без свечения).
+    /// Насколько ярко подложка светит в углу фона окна (0 = фон ровный).
     public var glowStrength: Double
-    /// Второй, холодный свет в противоположном углу.
+    /// Второй мягкий цвет подложек.
     public var glow2: Color
-    /// Корешки книжного шкафа, который размыто виден за стеклом.
-    public var wallColors: [Color]
-    /// Насколько заметен шкаф за стеклом (0 = не виден).
-    public var wallOpacity: Double
+    /// Акцент: «+», выбранное, ссылки, отметки.
     public var accent: Color
-    /// Текст на латунной заливке акцентом: на открытой комнате, на главной кнопке.
+    /// Текст и значки на заливке акцентом.
     public var onAccent: Color
     public var textPrimary: Color
     public var textSecondary: Color
-    /// Заливка и обводка стеклянных карточек.
+    /// Третий, самый тихий текст: даты, подсказки, путь сверху.
+    public var textTertiary: Color
+    /// Лёгкая подложка кнопок и плашек поверх фона или листа.
     public var cardFill: Color
+    /// Тонкая обводка стекла и карточек.
     public var cardStroke: Color
     public var cardRadius: CGFloat
     /// Плотность тени под карточками.
     public var shadowOpacity: Double
     /// Непрозрачный фон всплывающих меню.
     public var menuFill: Color
-    /// Яркие карточки-виджеты (как «Прогресс» и «Время» в референсе 03).
+    /// Лист: заметка, карточка-виджет, панель книги.
+    public var sheet: Color
+    /// Подложка выбранного на стекле и плашек на листе: раздел в острове, переключатели.
+    public var surface2: Color
+    /// Тонкие линии: разделители, дорожки прогресса.
+    public var line: Color
+    /// Бледный акцент: фон выбранной кнопки панели оформления, выделенный текст.
+    public var accentSoft: Color
+    /// Тёмная (в тёмной теме светлая) заливка главной кнопки плеера.
+    public var ink: Color
+    public var onInk: Color
+    /// Цвет стекла поверх размытия: остров, панели у выделения.
+    public var glassFill: Color
+    /// Выделение маркером в тексте.
+    public var highlight: Color
+    /// «Сохранено», готово, без ошибок.
+    public var success: Color
+    /// Яркие карточки: папки, цветные плашки.
     public var vividCards: [VividCard]
 
     public struct VividCard: Sendable, Equatable {
@@ -58,10 +75,8 @@ public struct Theme: Sendable, Equatable, Identifiable {
         fontDesign: Font.Design = .default,
         backgroundStops: [Color],
         glow: Color,
-        glowStrength: Double = 0.45,
+        glowStrength: Double = 0,
         glow2: Color? = nil,
-        wallColors: [Color] = [],
-        wallOpacity: Double = 0.3,
         accent: Color,
         onAccent: Color? = nil,
         textPrimary: Color,
@@ -71,7 +86,17 @@ public struct Theme: Sendable, Equatable, Identifiable {
         cardRadius: CGFloat,
         shadowOpacity: Double = 0.25,
         menuFill: Color? = nil,
-        vividCards: [VividCard]
+        vividCards: [VividCard],
+        sheet: Color,
+        surface2: Color,
+        line: Color,
+        textTertiary: Color,
+        accentSoft: Color,
+        ink: Color,
+        onInk: Color,
+        glassFill: Color,
+        highlight: Color,
+        success: Color
     ) {
         self.id = id
         self.name = name
@@ -82,8 +107,6 @@ public struct Theme: Sendable, Equatable, Identifiable {
         self.glow = glow
         self.glowStrength = glowStrength
         self.glow2 = glow2 ?? accent
-        self.wallColors = wallColors
-        self.wallOpacity = wallOpacity
         self.accent = accent
         self.onAccent = onAccent ?? (isDark ? backgroundStops.last ?? .black : .white)
         self.textPrimary = textPrimary
@@ -92,8 +115,18 @@ public struct Theme: Sendable, Equatable, Identifiable {
         self.cardStroke = cardStroke
         self.cardRadius = cardRadius
         self.shadowOpacity = shadowOpacity
-        self.menuFill = menuFill ?? cardFill
+        self.menuFill = menuFill ?? sheet
         self.vividCards = vividCards
+        self.sheet = sheet
+        self.surface2 = surface2
+        self.line = line
+        self.textTertiary = textTertiary
+        self.accentSoft = accentSoft
+        self.ink = ink
+        self.onInk = onInk
+        self.glassFill = glassFill
+        self.highlight = highlight
+        self.success = success
     }
 
     /// Цвет тонких бликов и подложек: белый на тёмной теме, чёрный на светлой.
@@ -101,8 +134,11 @@ public struct Theme: Sendable, Equatable, Identifiable {
 
     public var colorScheme: ColorScheme { isDark ? .dark : .light }
 
-    /// Светлая кромка сверху у стекла: как блик лампы на краю.
-    public var glassHighlight: Color { isDark ? Color.white.opacity(0.2) : Color.white.opacity(0.85) }
+    /// Светлая кромка блика: на корешках и планке полки.
+    public var glassHighlight: Color { isDark ? Color.white.opacity(0.14) : Color.white.opacity(0.9) }
+
+    /// Фон окна одним цветом.
+    public var background: Color { backgroundStops.first ?? (isDark ? .black : .white) }
 
     public var backgroundGradient: LinearGradient {
         LinearGradient(colors: backgroundStops, startPoint: .top, endPoint: .bottom)
@@ -114,108 +150,90 @@ public struct Theme: Sendable, Equatable, Identifiable {
 }
 
 extension Theme {
-    /// Пять минималистичных стеклянных палитр для одного оформления «Кабинет».
-    public static let study = Theme(
-        id: "study", name: "Изумрудное стекло", caption: "Хвойный сумрак и мягкая латунь",
-        isDark: true, fontDesign: .default,
-        backgroundStops: [Color(hex: 0x263B32), Color(hex: 0x17231D), Color(hex: 0x101713)],
-        glow: Color(hex: 0xD8C08B), glowStrength: 0.28, glow2: Color(hex: 0x63927A),
-        wallColors: [Color(hex: 0x6B806F), Color(hex: 0x856D4A), Color(hex: 0x466557), Color(hex: 0x77614F)],
-        wallOpacity: 0.13, accent: Color(hex: 0xD6C18E), onAccent: Color(hex: 0x20281F),
-        textPrimary: Color(hex: 0xF0F0E9), textSecondary: Color(hex: 0xD4D8D0).opacity(0.68),
-        cardFill: Color(hex: 0xDDE9DF).opacity(0.075), cardStroke: Color.white.opacity(0.20),
-        cardRadius: 20, shadowOpacity: 0.24, menuFill: Color(hex: 0x1A2821).opacity(0.97),
-        vividCards: [
-            VividCard(colors: [Color(hex: 0xE5E8DB), Color(hex: 0xC9D3C4)], foreground: Color(hex: 0x293229)),
-            VividCard(colors: [Color(hex: 0xD6C18E), Color(hex: 0xB39B69)], foreground: Color(hex: 0x24271F)),
-            VividCard(colors: [Color(hex: 0x526F60), Color(hex: 0x3B5749)], foreground: Color(hex: 0xF0F0E9)),
-        ]
-    )
-
-    public static let linen = Theme(
-        id: "linen", name: "Молочный лёд", caption: "Светлое стекло и тёплый графит",
+    /// «Остров», светлая тема: ровный светлый фон, белые листы, один сиреневый акцент.
+    public static let light = Theme(
+        id: "light", name: "Светлая", caption: "Ровный светлый фон и белые листы",
         isDark: false, fontDesign: .default,
-        backgroundStops: [Color(hex: 0xF3F1EC), Color(hex: 0xE6E5E0), Color(hex: 0xD9DCD8)],
-        glow: Color(hex: 0xFFF8E8), glowStrength: 0.68, glow2: Color(hex: 0xBBCBC3),
-        wallColors: [Color(hex: 0xAEBBB4), Color(hex: 0xC5BBA8), Color(hex: 0x9BAEAA)],
-        wallOpacity: 0.10, accent: Color(hex: 0x76664F), onAccent: .white,
-        textPrimary: Color(hex: 0x272A28), textSecondary: Color(hex: 0x555B58).opacity(0.76),
-        cardFill: Color.white.opacity(0.36), cardStroke: Color.white.opacity(0.76),
-        cardRadius: 20, shadowOpacity: 0.10, menuFill: Color(hex: 0xF8F7F2).opacity(0.98),
+        backgroundStops: [Color(hex: 0xF4F4F2), Color(hex: 0xF4F4F2)],
+        glow: Color(hex: 0xC9C8FF), glowStrength: 0, glow2: Color(hex: 0xE6E6FF),
+        accent: Color(hex: 0x5B5BF0), onAccent: .white,
+        textPrimary: Color(hex: 0x17171A), textSecondary: Color(hex: 0x6E6E78),
+        cardFill: Color.black.opacity(0.045), cardStroke: Color.black.opacity(0.07),
+        cardRadius: 14, shadowOpacity: 0.10, menuFill: Color.white.opacity(0.98),
         vividCards: [
-            VividCard(colors: [Color(hex: 0xFCFBF7), Color(hex: 0xE9E8E1)], foreground: Color(hex: 0x292B29)),
-            VividCard(colors: [Color(hex: 0xD5D4CA), Color(hex: 0xBCBCAF)], foreground: Color(hex: 0x292B29)),
-            VividCard(colors: [Color(hex: 0x9BAEAA), Color(hex: 0x809691)], foreground: Color(hex: 0x17201D)),
-        ]
+            VividCard(colors: [Color(hex: 0xC9C8FF), Color(hex: 0xB9B8FA)], foreground: Color(hex: 0x22225A)),
+            VividCard(colors: [Color(hex: 0xF7CF7A), Color(hex: 0xEFC164)], foreground: Color(hex: 0x3D2E0A)),
+            VividCard(colors: [Color(hex: 0xA9DFC1), Color(hex: 0x93D3B0)], foreground: Color(hex: 0x173B28)),
+        ],
+        sheet: .white, surface2: Color(hex: 0xF2F2F0), line: Color(hex: 0xECECEF),
+        textTertiary: Color(hex: 0xA6A6AF), accentSoft: Color(hex: 0xEEEEFF),
+        ink: Color(hex: 0x17171A), onInk: .white,
+        glassFill: Color.white.opacity(0.74), highlight: Color(hex: 0xFFEBA6), success: Color(hex: 0x2E9E6A)
     )
 
-    public static let midnight = Theme(
-        id: "midnight", name: "Северный туман", caption: "Чернильная синева и ледяной блик",
+    /// «Остров», тёмная тема: почти чёрный фон, графитовые листы, светлый сиреневый акцент.
+    public static let dark = Theme(
+        id: "dark", name: "Тёмная", caption: "Почти чёрный фон и графитовые листы",
         isDark: true, fontDesign: .default,
-        backgroundStops: [Color(hex: 0x293B49), Color(hex: 0x17232D), Color(hex: 0x10171E)],
-        glow: Color(hex: 0x9CC9D8), glowStrength: 0.30, glow2: Color(hex: 0x7889B8),
-        wallColors: [Color(hex: 0x587487), Color(hex: 0x68728E), Color(hex: 0x486D78)],
-        wallOpacity: 0.12, accent: Color(hex: 0xA9CED8), onAccent: Color(hex: 0x17232D),
-        textPrimary: Color(hex: 0xEDF3F4), textSecondary: Color(hex: 0xC6D2D5).opacity(0.70),
-        cardFill: Color(hex: 0xD9EDF3).opacity(0.075), cardStroke: Color(hex: 0xD7ECF2).opacity(0.22),
-        cardRadius: 20, shadowOpacity: 0.28, menuFill: Color(hex: 0x1A2832).opacity(0.97),
+        backgroundStops: [Color(hex: 0x0E0E10), Color(hex: 0x0E0E10)],
+        glow: Color(hex: 0x8482FF), glowStrength: 0, glow2: Color(hex: 0x24233F),
+        accent: Color(hex: 0x8482FF), onAccent: .white,
+        textPrimary: Color(hex: 0xF2F2F5), textSecondary: Color(hex: 0x9B9BA5),
+        cardFill: Color.white.opacity(0.06), cardStroke: Color.white.opacity(0.08),
+        cardRadius: 14, shadowOpacity: 0.45, menuFill: Color(hex: 0x1C1C20).opacity(0.98),
         vividCards: [
-            VividCard(colors: [Color(hex: 0xE5EFF0), Color(hex: 0xC5D9DE)], foreground: Color(hex: 0x202C32)),
-            VividCard(colors: [Color(hex: 0x9FC7D2), Color(hex: 0x78A5B3)], foreground: Color(hex: 0x15242B)),
-            VividCard(colors: [Color(hex: 0x526C7B), Color(hex: 0x3B5666)], foreground: Color(hex: 0xF0F4F4)),
-        ]
+            VividCard(colors: [Color(hex: 0x3B3A78), Color(hex: 0x2F2E66)], foreground: Color(hex: 0xE6E6FF)),
+            VividCard(colors: [Color(hex: 0x6B5420), Color(hex: 0x57441A)], foreground: Color(hex: 0xFFE9B0)),
+            VividCard(colors: [Color(hex: 0x22553F), Color(hex: 0x1B4332)], foreground: Color(hex: 0xCFEBDB)),
+        ],
+        sheet: Color(hex: 0x18181B), surface2: Color(hex: 0x222226), line: Color(hex: 0x26262B),
+        textTertiary: Color(hex: 0x5E5E67), accentSoft: Color(hex: 0x24233F),
+        ink: Color(hex: 0xF2F2F5), onInk: Color(hex: 0x0E0E10),
+        glassFill: Color(red: 38 / 255, green: 38 / 255, blue: 43 / 255).opacity(0.72),
+        highlight: Color(hex: 0xFFCE50).opacity(0.26), success: Color(hex: 0x3CC983)
     )
 
-    public static let cherry = Theme(
-        id: "cherry", name: "Розовый дым", caption: "Брусничный сумрак и пудровый свет",
-        isDark: true, fontDesign: .default,
-        backgroundStops: [Color(hex: 0x49343B), Color(hex: 0x2A2026), Color(hex: 0x191519)],
-        glow: Color(hex: 0xE6A9A2), glowStrength: 0.30, glow2: Color(hex: 0xA76D7B),
-        wallColors: [Color(hex: 0x805C65), Color(hex: 0x916C72), Color(hex: 0x675364)],
-        wallOpacity: 0.12, accent: Color(hex: 0xE9BDB2), onAccent: Color(hex: 0x38272C),
-        textPrimary: Color(hex: 0xF5EFED), textSecondary: Color(hex: 0xD8C9C8).opacity(0.70),
-        cardFill: Color(hex: 0xF2D6D5).opacity(0.075), cardStroke: Color(hex: 0xF5DAD7).opacity(0.20),
-        cardRadius: 20, shadowOpacity: 0.27, menuFill: Color(hex: 0x302329).opacity(0.97),
-        vividCards: [
-            VividCard(colors: [Color(hex: 0xF2E6E1), Color(hex: 0xE0CBC8)], foreground: Color(hex: 0x38292B)),
-            VividCard(colors: [Color(hex: 0xDDA8A2), Color(hex: 0xBF8585)], foreground: Color(hex: 0x352326)),
-            VividCard(colors: [Color(hex: 0x79535E), Color(hex: 0x60414C)], foreground: Color(hex: 0xF6ECEB)),
-        ]
-    )
+    /// Две темы «Острова»: светлая и тёмная. Какую показывать, решает `AppearanceMode`.
+    public static let schemes: [Theme] = [.light, .dark]
+}
 
-    public static let dusk = Theme(
-        id: "dusk", name: "Лавандовый вечер", caption: "Сливовый сумрак и мягкая лаванда",
-        isDark: true, fontDesign: .default,
-        backgroundStops: [Color(hex: 0x3D394D), Color(hex: 0x25232F), Color(hex: 0x17161E)],
-        glow: Color(hex: 0xC6B2E4), glowStrength: 0.30, glow2: Color(hex: 0x8595BD),
-        wallColors: [Color(hex: 0x76698D), Color(hex: 0x6D708E), Color(hex: 0x8B7187)],
-        wallOpacity: 0.11, accent: Color(hex: 0xD0C0E7), onAccent: Color(hex: 0x282331),
-        textPrimary: Color(hex: 0xF1EEF5), textSecondary: Color(hex: 0xD0C9D9).opacity(0.70),
-        cardFill: Color(hex: 0xE4D8F1).opacity(0.075), cardStroke: Color(hex: 0xE7DAF2).opacity(0.20),
-        cardRadius: 20, shadowOpacity: 0.28, menuFill: Color(hex: 0x292632).opacity(0.97),
-        vividCards: [
-            VividCard(colors: [Color(hex: 0xECE7F0), Color(hex: 0xD5CDE1)], foreground: Color(hex: 0x302B36)),
-            VividCard(colors: [Color(hex: 0xC5B2DE), Color(hex: 0xA28CC2)], foreground: Color(hex: 0x282331)),
-            VividCard(colors: [Color(hex: 0x666785), Color(hex: 0x4D506E)], foreground: Color(hex: 0xF0EFF5)),
-        ]
-    )
+/// Настройки → «Оформление»: как в системе, всегда светлая или всегда тёмная.
+public enum AppearanceMode: String, CaseIterable, Identifiable, Sendable {
+    case system, light, dark
 
-    /// Старые сохранённые схемы переводим на новую палитру по ближайшему настроению.
-    public static let walnut = study
+    public static let storageKey = "appearance.mode"
 
-    /// Цветовые схемы в том порядке, в каком они стоят в Настройках. Первая основная.
-    public static let schemes: [Theme] = [.study, .linen, .midnight, .cherry, .dusk]
+    public var id: String { rawValue }
 
-    public static let storageKey = "appearance.scheme"
+    public var title: String {
+        switch self {
+        case .system: "Как в системе"
+        case .light: "Светлая"
+        case .dark: "Тёмная"
+        }
+    }
 
-    /// Неизвестный или снятый с выбора идентификатор даёт основную схему.
-    public static func named(_ id: String) -> Theme {
-        schemes.first { $0.id == id } ?? .study
+    /// Какую схему окна просить у системы. `nil`: как в системе.
+    public var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+
+    /// Тема при этой настройке, когда система сейчас светлая или тёмная.
+    public func theme(system: ColorScheme) -> Theme {
+        switch self {
+        case .light: .light
+        case .dark: .dark
+        case .system: system == .dark ? .dark : .light
+        }
     }
 }
 
 extension EnvironmentValues {
-    @Entry public var lumenTheme: Theme = .study
+    @Entry public var lumenTheme: Theme = .light
 }
 
 extension Color {
