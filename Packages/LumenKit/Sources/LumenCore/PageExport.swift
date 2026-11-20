@@ -132,7 +132,7 @@ extension PageExport {
                 line = "#### \(text)"
             case .tableOfContents:
                 // Оглавление в Markdown: вложенный список заголовков страницы.
-                let entries = TableOfContents.entries(items.map(\.block))
+                let entries = PageContents.entries(items.map(\.block))
                 guard !entries.isEmpty else { continue }
                 line = entries
                     .map { String(repeating: "    ", count: $0.indent) + "- " + Self.escape($0.title) }

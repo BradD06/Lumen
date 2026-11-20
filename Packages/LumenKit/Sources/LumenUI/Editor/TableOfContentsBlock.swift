@@ -24,7 +24,7 @@ struct TableOfContentsBlock: View {
                     TableOfContentsRow(
                         title: item.title,
                         level: item.level,
-                        indent: TableOfContents.indent(level: item.level, topLevel: top),
+                        indent: PageContents.indent(level: item.level, topLevel: top),
                         model: model
                     ) {
                         LumenSounds.play(.navigate)

@@ -1,7 +1,7 @@
 import Foundation
 
-/// Строки блока «Оглавление»: заголовки страницы по порядку с отступом по уровню.
-public enum TableOfContents {
+/// Строки блока «Оглавление» (`BlockType.tableOfContents`; в читалке своё `TableOfContents` для книг): заголовки страницы по порядку с отступом по уровню.
+public enum PageContents {
     public struct Entry: Hashable, Sendable {
         public var id: UUID
         public var title: String

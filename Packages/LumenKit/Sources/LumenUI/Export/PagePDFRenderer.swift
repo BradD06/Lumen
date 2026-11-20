@@ -65,7 +65,7 @@ enum PagePDFRenderer {
                 text.append(runs(block.content.runs, size: size, bold: true))
                 text.append(newline(paragraph(indent: indent, before: size * 0.7, after: 4)))
             case .tableOfContents:
-                let entries = TableOfContents.entries(export.items.map(\.block))
+                let entries = PageContents.entries(export.items.map(\.block))
                 guard !entries.isEmpty else { continue }
                 for (index, entry) in entries.enumerated() {
                     text.append(NSAttributedString(string: entry.title, attributes: [

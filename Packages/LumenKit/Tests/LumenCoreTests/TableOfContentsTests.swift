@@ -16,15 +16,15 @@ struct TableOfContentsTests {
             block(.heading3, "  Детали ", key: "c"),
             block(.heading2, "", key: "d"),
         ]
-        let entries = TableOfContents.entries(blocks)
-        #expect(entries.map(\.title) == ["Введение", "Детали", TableOfContents.untitled])
+        let entries = PageContents.entries(blocks)
+        #expect(entries.map(\.title) == ["Введение", "Детали", PageContents.untitled])
         // На странице нет «Заголовка 1»: вторые уровни стоят без отступа.
         #expect(entries.map(\.indent) == [0, 1, 0])
         #expect(entries.map(\.level) == [2, 3, 2])
     }
 
     @Test func noHeadingsGiveEmptyList() {
-        #expect(TableOfContents.entries([block(.paragraph, "Текст", key: "a")]).isEmpty)
+        #expect(PageContents.entries([block(.paragraph, "Текст", key: "a")]).isEmpty)
     }
 
     @Test func tableOfContentsIsInsertableWithoutText() {
