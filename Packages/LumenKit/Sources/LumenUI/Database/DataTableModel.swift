@@ -40,7 +40,7 @@ final class DataTableModel {
         if let rowsCache, rowsCache.viewId == view.id, rowsCache.today == today {
             return rowsCache.rows
         }
-        let rows = DataQuery.rows(snapshot.rows, in: table, view: view, today: today)
+        let rows = DataQuery.rows(snapshot.rows, in: table, view: view, relations: snapshot.relations, today: today)
         rowsCache = (view.id, today, rows)
         return rows
     }
@@ -212,6 +212,44 @@ final class DataTableModel {
 
     func deleteProperty(_ propertyId: UUID) {
         updateTable { $0.properties.removeAll { $0.id == propertyId } }
+    }
+
+    // MARK: Связи и сводки
+
+    /// Новая колонка «Связь» с базой `targetTableId`, по желанию с обратной колонкой там.
+    func addRelation(to targetTableId: UUID, twoWay: Bool) {
+        guard let tableId = table?.id else { return }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось добавить связь") {
+                try await database.addRelation(to: tableId, target: targetTableId, twoWay: twoWay)
+            }
+        }
+    }
+
+    func setRelationTwoWay(_ isOn: Bool, property propertyId: UUID) {
+        guard let tableId = table?.id else { return }
+        Task {
+            await NoticeCenter.shared.attempt("Не удалось изменить связь") {
+                try await database.setRelationTwoWay(isOn, table: tableId, property: propertyId)
+            }
+        }
+    }
+
+    /// Новая колонка «Сводка» с готовой настройкой.
+    func addRollup(_ config: RollupConfig, name: String) {
+        guard let table else { return }
+        let property = PropertyDefinition(
+            name: Self.uniqueName(name, among: table.properties.map(\.name)),
+            type: .rollup,
+            rollup: config
+        )
+        updateTable { $0.properties.append(property) }
+    }
+
+    /// Новая строка в связанной базе: из выбора связи, когда нужной строки ещё нет.
+    func addRelatedRow(to tableId: UUID, title: String) async -> UUID? {
+        LumenSounds.play(.create)
+        return try? await database.addRow(to: tableId, title: title).id
     }
 
     /// Новый вариант выбора. Цвета идут по кругу, чтобы соседние варианты различались.

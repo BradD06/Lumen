@@ -297,6 +297,7 @@ struct PropertyHeaderMenu<Label: View>: View {
     @State private var isRenaming = false
     @State private var isAddingOption = false
     @State private var isEditingFormula = false
+    @State private var isEditingRollup = false
     @State private var name = ""
 
     var body: some View {
@@ -314,6 +315,22 @@ struct PropertyHeaderMenu<Label: View>: View {
                     SwiftUI.Label("Изменить формулу…", systemImage: "function")
                 }
             }
+            if property.type == .relation, let config = property.relation {
+                Text("Связь с «\(model.snapshot.relations.tableTitles[config.targetTableId] ?? "база удалена")»")
+                Toggle(isOn: Binding(
+                    get: { config.isTwoWay },
+                    set: { model.setRelationTwoWay($0, property: property.id) }
+                )) {
+                    SwiftUI.Label("Показать и в той базе", systemImage: "arrow.left.arrow.right")
+                }
+            }
+            if property.type == .rollup {
+                Button {
+                    isEditingRollup = true
+                } label: {
+                    SwiftUI.Label("Настроить сводку…", systemImage: "sum")
+                }
+            }
             Picker(selection: Binding(
                 get: { property.type },
                 set: { type in
@@ -321,7 +338,8 @@ struct PropertyHeaderMenu<Label: View>: View {
                     if type == .formula, property.formula == nil { isEditingFormula = true }
                 }
             )) {
-                ForEach(PropertyType.allCases) { type in
+                // Связь и сводку создают через «+»: им нужна настройка, а не просто другой тип.
+                ForEach(PropertyType.allCases.filter { !$0.needsSetup || $0 == property.type }) { type in
                     SwiftUI.Label(type.title, systemImage: type.symbolName).tag(type)
                 }
             } label: {
@@ -397,6 +415,11 @@ struct PropertyHeaderMenu<Label: View>: View {
                 isEditingFormula = false
             }
         }
+        .sheet(isPresented: $isEditingRollup) {
+            RollupSetupSheet(model: model, property: model.table?.property(property.id) ?? property) {
+                isEditingRollup = false
+            }
+        }
     }
 }
 
@@ -446,13 +469,21 @@ struct AddPropertyMenu<Label: View>: View {
 
     /// Новая колонка-формула: сразу окно, где её пишут.
     @State private var newFormula: PropertyDefinition?
+    /// Связь и сводка сначала настраиваются, а колонка появляется по «Добавить».
+    @State private var isAddingRelation = false
+    @State private var isAddingRollup = false
 
     var body: some View {
         Menu {
             ForEach(PropertyType.allCases) { type in
                 Button {
-                    let property = model.addProperty(type)
-                    if type == .formula { newFormula = property }
+                    switch type {
+                    case .relation: isAddingRelation = true
+                    case .rollup: isAddingRollup = true
+                    default:
+                        let property = model.addProperty(type)
+                        if type == .formula { newFormula = property }
+                    }
                 } label: {
                     SwiftUI.Label(type.title, systemImage: type.symbolName)
                 }
@@ -469,6 +500,12 @@ struct AddPropertyMenu<Label: View>: View {
             FormulaEditorSheet(model: model, property: property) {
                 newFormula = nil
             }
+        }
+        .sheet(isPresented: $isAddingRelation) {
+            RelationSetupSheet(model: model) { isAddingRelation = false }
+        }
+        .sheet(isPresented: $isAddingRollup) {
+            RollupSetupSheet(model: model, property: nil) { isAddingRollup = false }
         }
     }
 }
@@ -631,7 +668,7 @@ private struct FilterRow: View {
     @ViewBuilder
     private func valueControl(_ property: PropertyDefinition?) -> some View {
         switch property?.type {
-        case nil, .text, .number, .formula:
+        case nil, .text, .number, .formula, .rollup:
             CommitTextField(placeholder: "Значение", text: filterText) { text in
                 let value: PropertyValue? = if property?.type == .number {
                     NumberText.parse(text).map(PropertyValue.number)
@@ -664,6 +701,20 @@ private struct FilterRow: View {
             }
             .labelsHidden()
             .fixedSize()
+        case .relation:
+            // «Содержит» одну строку той базы: например, задачи проекта «Диплом».
+            let rows = property?.relation.flatMap { model.snapshot.relations.rows[$0.targetTableId] } ?? []
+            Picker("", selection: Binding(
+                get: { filter.value?.pageId },
+                set: { id in change { $0.value = id.map(PropertyValue.page) } }
+            )) {
+                Text("строку…").tag(UUID?.none)
+                ForEach(rows) { row in
+                    Text(row.page.displayTitle).tag(UUID?.some(row.id))
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 180)
         case let type?:
             if let property {
                 PropertyValueEditor(
@@ -795,8 +846,8 @@ struct RowPropertiesPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let table = snapshot.table, let stored = snapshot.row {
-                // Формулы считаются на лету, как и в таблице.
-                let row = Formula.computed([stored], in: table).first ?? stored
+                // Сводки и формулы считаются на лету, как и в таблице.
+                let row = DataQuery.computed([stored], in: table, relations: snapshot.relations).first ?? stored
                 ForEach(table.properties) { property in
                     HStack(alignment: .center, spacing: 12) {
                         Label(property.name, systemImage: property.type.symbolName)
@@ -808,6 +859,7 @@ struct RowPropertiesPanel: View {
                             property: property,
                             value: row.value(property.id),
                             pages: snapshot.linkablePages,
+                            relations: snapshot.relations,
                             onChange: { value in
                                 let propertyId = property.id
                                 Task {
@@ -817,7 +869,10 @@ struct RowPropertiesPanel: View {
                                 }
                             },
                             onAddOption: { name in addOption(name, to: property, tableId: table.id) },
-                            onOpenPage: onOpenPage
+                            onOpenPage: onOpenPage,
+                            onCreateRow: { tableId, title in
+                                try? await database.addRow(to: tableId, title: title).id
+                            }
                         )
                     }
                 }

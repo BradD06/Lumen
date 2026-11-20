@@ -59,6 +59,7 @@ struct PropertyValueLabel: View {
     let property: PropertyDefinition
     let value: PropertyValue?
     var pages: [Page] = []
+    var relations: RelationContext = .empty
     var isDone = false
 
     @Environment(\.lumenTheme) private var theme
@@ -70,7 +71,7 @@ struct PropertyValueLabel: View {
         case .text(let text)?:
             Text(text).font(.caption).foregroundStyle(theme.textSecondary).lineLimit(1)
         case .number(let number)?:
-            Text(NumberText.format(number)).font(.caption.monospacedDigit()).foregroundStyle(theme.textSecondary)
+            Text(RollupText.number(number, property: property)).font(.caption.monospacedDigit()).foregroundStyle(theme.textSecondary)
         case .option(let id)?:
             if let option = property.option(id) { OptionChip(option: option) }
         case .options(let ids)?:
@@ -90,6 +91,8 @@ struct PropertyValueLabel: View {
                 .font(.caption)
                 .foregroundStyle(theme.accent)
                 .lineLimit(1)
+        case .pages?:
+            RelationChips(property: property, value: value, relations: relations)
         }
     }
 }
@@ -146,11 +149,15 @@ struct PropertyValueEditor: View {
     let property: PropertyDefinition
     let value: PropertyValue?
     var pages: [Page] = []
+    /// Строки связанных баз: для колонки «Связь».
+    var relations: RelationContext = .empty
     let onChange: (PropertyValue?) -> Void
     /// Создать вариант по имени, набранному в меню. Возвращает его, чтобы сразу выбрать.
     var onAddOption: ((String) -> SelectOption?)?
     /// Открыть страницу из свойства-ссылки.
     var onOpenPage: ((UUID) -> Void)?
+    /// Новая строка в связанной базе (база, название), её id сразу попадает в связь.
+    var onCreateRow: (@MainActor (UUID, String) async -> UUID?)?
 
     @State private var isPickingDate = false
     @State private var isAddingOption = false
@@ -216,6 +223,17 @@ struct PropertyValueEditor: View {
             pageMenu
         case .formula:
             FormulaValueView(value: value)
+        case .relation:
+            RelationCell(
+                property: property,
+                value: value,
+                relations: relations,
+                onChange: onChange,
+                onCreateRow: onCreateRow,
+                onOpenPage: onOpenPage
+            )
+        case .rollup:
+            RollupValueView(property: property, value: value)
         }
     }
 
