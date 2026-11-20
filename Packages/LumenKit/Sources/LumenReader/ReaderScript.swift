@@ -317,7 +317,81 @@ enum ReaderScript {
       }, { passive: false });
       document.addEventListener('touchcancel', () => { touch = null; }, { passive: true });
 
+      // Чтение вслух. Текст главы режется на куски по блокам (абзац, заголовок, код), у каждого
+      // место в тех же символах, что и место чтения. Сноски и скрытое внутри куска заменяются
+      // пробелами той же длины, чтобы места не съехали.
+      const blockSelector = 'p, h1, h2, h3, h4, h5, h6, li, pre, blockquote, dt, dd, td, th, figcaption, caption, section.slide';
+      const skipSelector = 'script, style, title, sup, rt, rp, .slide-number, a[epub\\:type~="noteref"], aside[epub\\:type~="footnote"], aside[epub\\:type~="endnote"], [role="doc-noteref"], [role="doc-footnote"], [hidden]';
+      function speechBlocks() {
+        const blocks = [];
+        let current = null;
+        let position = 0;
+        for (const node of textNodes()) {
+          const length = node.data.length;
+          const parent = node.parentElement;
+          const skipped = !parent || parent.closest(skipSelector) !== null || (parent.closest('[aria-hidden="true"]') !== null);
+          const block = parent ? (parent.closest(blockSelector) || document.body) : document.body;
+          if (!skipped && /\S/.test(node.data)) {
+            if (!current || current.element !== block) {
+              const tag = block.tagName ? block.tagName.toLowerCase() : '';
+              const kind = /^h[1-6]$/.test(tag) ? 'heading' : (tag === 'pre' || block.closest('pre') ? 'code' : 'text');
+              current = { element: block, kind: kind, start: position, text: '' };
+              blocks.push(current);
+            }
+            const gap = position - (current.start + current.text.length);
+            if (gap > 0) { current.text += ' '.repeat(gap); }
+            current.text += node.data;
+          }
+          position += length;
+        }
+        return JSON.stringify(blocks.map((b) => ({ kind: b.kind, text: b.text, start: b.start })));
+      }
+
+      function rangeOf(start, end) {
+        const range = document.createRange();
+        let position = 0;
+        let started = false;
+        for (const node of textNodes()) {
+          const length = node.data.length;
+          if (!started && start < position + length) {
+            range.setStart(node, Math.max(start - position, 0));
+            started = true;
+          }
+          if (started && end <= position + length) {
+            range.setEnd(node, Math.max(end - position, 0));
+            return range;
+          }
+          position += length;
+        }
+        return started ? range : null;
+      }
+
+      // Читатель сам листает: несколько секунд книга не прокручивается за голосом.
+      let touched = 0;
+      for (const name of ['wheel', 'touchstart', 'keydown', 'mousedown']) {
+        window.addEventListener(name, () => { touched = Date.now(); }, { passive: true, capture: true });
+      }
+      const spoken = window.Highlight && window.CSS && CSS.highlights ? CSS.highlights : null;
+      function speak(start, end, follow) {
+        const range = rangeOf(start, end);
+        if (!range) { return false; }
+        if (spoken) { spoken.set('lumen-now', new Highlight(range)); }
+        if (!follow || Date.now() - touched < 4000) { return true; }
+        const rect = range.getBoundingClientRect();
+        if (rect.height === 0) { return true; }
+        if (rect.top < 48 || rect.bottom > window.innerHeight - 96) {
+          window.scrollTo({ top: Math.max(window.scrollY + rect.top - window.innerHeight * 0.28, 0), behavior: 'smooth' });
+          pinned = null;
+          lastTop = start;
+        }
+        return true;
+      }
+
       window.lumen = {
+        speechBlocks: speechBlocks,
+        speak: speak,
+        unspeak: () => { if (spoken) { spoken.delete('lumen-now'); } },
+        topOffset: () => topOffset(),
         turn: (direction) => turn(direction),
         setStyle: (css) => { style.textContent = css; },
         // Новое оформление, а сверху экрана та же строка, что была.
@@ -488,6 +562,7 @@ public struct ReaderAppearance: Hashable, Sendable {
           transition: background 0.4s;
         }
         mark.lumen-hl.lumen-flash { background: color-mix(in srgb, var(--lumen-hl) 75%, transparent) !important; }
+        ::highlight(lumen-now) { background-color: rgba(124, 122, 255, 0.28); }
         """
         switch palette {
         case .night:
