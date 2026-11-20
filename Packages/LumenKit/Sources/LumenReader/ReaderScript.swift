@@ -384,7 +384,7 @@ enum ReaderScript {
 /// Как выглядит текст в читалке: тема страницы и размер шрифта.
 public struct ReaderAppearance: Hashable, Sendable {
     public enum Palette: String, CaseIterable, Sendable, Identifiable {
-        /// Тёмная закатная тема приложения: текст светлый, фон прозрачный.
+        /// Тёмный лист «Острова»: текст светлый, фон прозрачный.
         case night
         /// Тёплая бумага для долгого чтения.
         case paper
@@ -483,7 +483,7 @@ public struct ReaderAppearance: Hashable, Sendable {
         switch palette {
         case .night:
             return layout + """
-            html, body { background: transparent !important; color: #F3E3DA !important; }
+            html, body { background: transparent !important; color: #D8D6D0 !important; }
             body { font-family: \(font) !important; }
             body * { color: inherit !important; background-color: transparent !important; border-color: rgba(255,255,255,0.18) !important; }
             mark.lumen-hl { background: color-mix(in srgb, var(--lumen-hl) 30%, transparent) !important; }

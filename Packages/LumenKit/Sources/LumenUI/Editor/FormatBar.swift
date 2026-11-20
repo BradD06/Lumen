@@ -54,11 +54,9 @@ struct FormatBar: View {
                 TextFormatting.perform(.clear, model: model, blockId: blockId)
             }
         }
-        .padding(4)
-        .background(theme.cardFill.opacity(0.55), in: Capsule())
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(theme.textPrimary.opacity(0.14)))
-        .shadow(color: .black.opacity(0.3), radius: 14, y: 6)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 3)
+        .lumenGlass(RoundedRectangle(cornerRadius: 12, style: .continuous), prominent: true)
         .fixedSize()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Оформление текста")
@@ -97,10 +95,15 @@ struct FormatBar: View {
                 }
             }
         } label: {
-            Image(systemName: "textformat")
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 32, height: 30)
-                .contentShape(Rectangle())
+            HStack(spacing: 3) {
+                Text("Aa")
+                    .font(.system(size: 13, weight: .medium))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+            }
+            .padding(.horizontal, 6)
+            .frame(height: 28)
+            .contentShape(Rectangle())
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -118,7 +121,7 @@ struct FormatBar: View {
 
     private var separator: some View {
         Capsule()
-            .fill(theme.textPrimary.opacity(0.15))
+            .fill(theme.line)
             .frame(width: 1, height: 18)
             .padding(.horizontal, 3)
     }
@@ -126,11 +129,11 @@ struct FormatBar: View {
     private func button(_ symbol: String, title: String, shortcut: String?, isOn: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 14, weight: isOn ? .bold : .semibold))
-                .foregroundStyle(isOn ? theme.vividCard(0).foreground : theme.textPrimary)
-                .frame(width: 32, height: 30)
-                .background(isOn ? AnyShapeStyle(theme.textPrimary) : AnyShapeStyle(.clear), in: Capsule())
-                .contentShape(Capsule())
+                .font(.system(size: 13.5, weight: isOn ? .bold : .medium))
+                .foregroundStyle(isOn ? theme.accent : theme.textPrimary)
+                .frame(width: 30, height: 28)
+                .background(isOn ? theme.accentSoft : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
         #if os(macOS)

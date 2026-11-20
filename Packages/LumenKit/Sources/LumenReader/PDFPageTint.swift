@@ -36,7 +36,7 @@ extension ReaderAppearance.Palette {
     /// а картинки на ней остаются цветными.
     public var pdfStyle: PDFPageStyle {
         switch self {
-        case .night: PDFPageStyle(tint: .night(page: 0x3A2A40, ink: 0xF3E3DA), backdrop: 0x2B1E31)
+        case .night: PDFPageStyle(tint: .night(page: 0x1C1C20, ink: 0xD8D6D0), backdrop: 0x141417)
         case .paper: PDFPageStyle(tint: .paper(0xF4EADB), backdrop: 0xE4D5C0)
         case .dawn: PDFPageStyle(tint: .paper(0xFBE6DA), backdrop: 0xEDCDBE)
         case .original: .original
