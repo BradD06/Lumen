@@ -92,7 +92,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 
 ### 🗂️ Library and workspace
 - A visual library for pages, notebooks, books and folders. Notes made from a book stay right next to it. Give any folder, note or database its own emoji icon (pick one or type any), and folders always stand out from the background.
-- Browser-style back and forward, tabs (⌘T, ⌘1…9, ⌃Tab and ⌃⇧Tab to the next and previous tab) and split screen on Mac and iPad (⌥⌘← and ⌥⌘→ jump between the two halves). Drag a tab to one side of the window to open it next to another one.
+- Browser-style back and forward, tabs (⌘T, ⌘1…9, ⌃Tab and ⌃⇧Tab to the next and previous tab) and split screen on Mac and iPad (⌥⌘← and ⌥⌘→ jump between the two halves). Open tabs sit as small circles to the left of the bottom island (a book shows its cover, a page its icon; hover for the title and a close button, «+N» lists the rest); the classic tab strip on top is still in Settings. Drag a tab to one side of the window to open it next to another one.
 - Favorites, an Inbox for quick notes, and a trash you can restore from.
 - Sort the Inbox one note at a time: swipe, pick one of three suggested folders, turn a note into a task, keep it or delete it. Changed your mind? "Undo" (⌘Z) brings the last note back.
 - Export a page to Markdown or PDF, plus full backups of your data.

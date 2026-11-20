@@ -61,11 +61,13 @@ public struct RootView: View {
     @State private var panesWidth = GeometryBox<CGFloat>(0)
     /// Окно выше, чем шире (iPad стоя): панели тогда сами встают друг под другом.
     @State private var isTallWindow = false
+    /// Сколько кружков вкладок влезает слева от острова (меняется, только когда окно сильно сузили).
+    @State private var tabCapacity = IslandTabs.maxShown
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     @Environment(\.lumenTheme) private var theme
-    @Setting(ScreenOptions.tabStripKey) private var tabStripMode = TabStripMode.multiple
+    @Setting(ScreenOptions.tabStripKey) private var tabStripMode = TabStripMode.island
     @Setting(ScreenOptions.windowButtonsKey) private var showsWindowButtons = ScreenOptions.windowButtonsDefault
 
     public init(database: AppDatabase) {
@@ -489,9 +491,10 @@ public struct RootView: View {
         } catch {}
     }
 
-    /// Остров с разделами внизу по центру. В режиме фокуса он уходит.
+    /// Остров с разделами внизу по центру, слева от него вкладки кружками. В режиме фокуса всё уходит.
+    /// Поля слева и справа одной ширины, так что остров всегда по центру, а кружки знают, сколько им места.
     /// Пока книга звучит, остров в её читалке становится плеером, а на других экранах
-    /// у острова справа кружок с обложкой.
+    /// в правом поле у острова кружок с обложкой.
     @ViewBuilder
     private var island: some View {
         if !focusMode.isOn {
@@ -500,7 +503,20 @@ public struct RootView: View {
                     ReadAloudBar { withAnimation(LumenMotion.standard) { ReadAloud.shared.showsRooms = true } }
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 } else {
-                    HStack(spacing: 12) {
+                    HStack(alignment: .bottom, spacing: 0) {
+                        Color.clear
+                            .frame(maxWidth: .infinity)
+                            .frame(height: NavigationIsland.height)
+                            .overlay(alignment: .trailing) {
+                                if tabStripMode.showsCircles(tabCount: workspace.tabs.count) {
+                                    IslandTabs(database: database, workspace: workspace, capacity: tabCapacity)
+                                        .fixedSize()
+                                        .padding(.trailing, IslandTabs.gap)
+                                        .transition(.opacity.combined(with: .offset(x: 12)))
+                                }
+                            }
+                            // Только число кружков, а не ширина: окно не пересобирается на каждом кадре.
+                            .onGeometryChange(for: Int.self) { IslandTabs.capacity(space: $0.size.width) } action: { tabCapacity = $0 }
                         NavigationIsland(
                             database: database,
                             selection: selection,
@@ -510,14 +526,20 @@ public struct RootView: View {
                             onCreate: { create($0) },
                             onQuickNote: { newQuickNote() }
                         )
-                        if let sourceId = ReadAloud.shared.sourceId {
-                            ReadAloudRing { openListenedBook(sourceId) }
-                                .padding(.top, BubbleMetrics.lift)
-                                .transition(.scale.combined(with: .opacity))
-                        }
+                        Color.clear
+                            .frame(maxWidth: .infinity)
+                            .frame(height: NavigationIsland.height)
+                            .overlay(alignment: .leading) {
+                                if let sourceId = ReadAloud.shared.sourceId {
+                                    ReadAloudRing { openListenedBook(sourceId) }
+                                        .padding(.leading, 14)
+                                        .transition(.scale.combined(with: .opacity))
+                                }
+                            }
                     }
                 }
             }
+            .animation(LumenMotion.standard, value: workspace.tabs.count > 1)
             .animation(LumenMotion.standard, value: ReadAloud.shared.sourceId)
             .padding(.top, 8)
             .padding(.bottom, 16)
