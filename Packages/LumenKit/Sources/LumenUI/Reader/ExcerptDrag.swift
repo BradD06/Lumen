@@ -40,14 +40,20 @@ enum ExcerptDrag {
         guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.lumenExcerpt.identifier) }) else {
             return false
         }
-        _ = provider.loadDataRepresentation(forTypeIdentifier: UTType.lumenExcerpt.identifier) { data, _ in
-            guard let payload = decode(data) else { return }
-            Task { @MainActor in
-                guard let reader = OpenReaders.shared.model(for: payload.sourceId) else { return }
-                await reader.dropExcerpt(highlightId: payload.highlightId, into: notes)
-            }
+        load(provider) { payload in
+            guard let reader = OpenReaders.shared.model(for: payload.sourceId) else { return }
+            await reader.dropExcerpt(highlightId: payload.highlightId, into: notes)
         }
         return true
+    }
+
+    /// Данные броска приходят на фоновой очереди, поэтому их обработчик создаётся вне главного
+    /// актора: замыкание из кода главного актора на чужой очереди роняет приложение.
+    private nonisolated static func load(_ provider: NSItemProvider, then use: @escaping @MainActor @Sendable (Payload) async -> Void) {
+        _ = provider.loadDataRepresentation(forTypeIdentifier: UTType.lumenExcerpt.identifier) { data, _ in
+            guard let payload = decode(data) else { return }
+            Task { @MainActor in await use(payload) }
+        }
     }
 }
 
