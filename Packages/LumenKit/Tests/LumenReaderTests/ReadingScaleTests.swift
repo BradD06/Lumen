@@ -71,4 +71,38 @@ import Testing
         #expect(TocEntry.chapters(in: toc).map(\.title) == ["Глава 1", "Глава 2"])
         #expect(TocEntry.chapters(in: []).isEmpty)
     }
+
+    @Test func arrowsStepThroughSubsections() {
+        // Как в «Хрониках»: глава и её разделы, каждый в своём файле.
+        let toc = [
+            TocEntry(title: "Глава 2", section: 15),
+            TocEntry(title: "Галакронд", section: 24, level: 1),
+            TocEntry(title: "Глава 3", section: 34),
+            TocEntry(title: "Империя Зул", section: 35, level: 1),
+            TocEntry(title: "Цикл богомолов", section: 36, level: 1),
+        ]
+        #expect(TocEntry.neighbour(of: 2, forward: true, in: toc) == 3)
+        #expect(TocEntry.neighbour(of: 3, forward: true, in: toc) == 4)
+        #expect(TocEntry.neighbour(of: 4, forward: true, in: toc) == nil)
+        #expect(TocEntry.neighbour(of: 3, forward: false, in: toc) == 2)
+        #expect(TocEntry.neighbour(of: 0, forward: false, in: toc) == nil)
+        // Ещё на обложке: вперёд к первому пункту, назад некуда.
+        #expect(TocEntry.neighbour(of: nil, forward: true, in: toc) == 0)
+        #expect(TocEntry.neighbour(of: nil, forward: false, in: toc) == nil)
+    }
+
+    @Test func arrowsSkipEntriesAtTheSamePlace() {
+        // «Часть I» и «Глава 1» начинаются в одном месте: назад из раздела 1.1 к главе,
+        // а из главы сразу к прологу, иначе стрелка открывала бы то же место.
+        let toc = [
+            TocEntry(title: "Пролог", section: 1),
+            TocEntry(title: "Часть I", section: 2),
+            TocEntry(title: "Глава 1", section: 2, level: 1),
+            TocEntry(title: "1.1", section: 2, anchor: "x", level: 2),
+        ]
+        #expect(TocEntry.neighbour(of: 3, forward: false, in: toc) == 2)
+        #expect(TocEntry.neighbour(of: 2, forward: false, in: toc) == 0)
+        #expect(TocEntry.neighbour(of: 0, forward: true, in: toc) == 1)
+        #expect(TocEntry.neighbour(of: 2, forward: true, in: toc) == 3)
+    }
 }

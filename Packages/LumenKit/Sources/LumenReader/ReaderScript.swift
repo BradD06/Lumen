@@ -208,7 +208,14 @@ enum ReaderScript {
 
       // Якоря оглавления в этой главе: по ним видно, в каком разделе сейчас читатель.
       let anchors = [];
+      // Пункт, к которому только что перешли по оглавлению или стрелкой. Короткий раздел в конце
+      // главы не встаёт к верху экрана, и без этого читалка считала бы, что читатель ещё
+      // в прошлом разделе, а стрелка «вперёд» открывала бы его снова. Забывается, как только
+      // страницу прокрутили.
+      let jumped = null;
       function currentAnchor() {
+        if (jumped && Math.abs(window.scrollY - jumped.y) < 2) { return jumped.id; }
+        jumped = null;
         let current = null;
         for (const id of anchors) {
           const element = document.getElementById(id);
@@ -359,6 +366,8 @@ enum ReaderScript {
           element.scrollIntoView({ block: 'start' });
           window.scrollBy(0, -16);
           pinned = topOffset();
+          jumped = { id: id, y: window.scrollY };
+          reportScroll();
           return true;
         },
         // Заголовки главы для оглавления, если в файле своего нет. Без id им даётся свой.
