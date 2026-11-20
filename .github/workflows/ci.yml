@@ -22,13 +22,16 @@ jobs:
           xcodebuild -version
           swift --version
       - name: swift test
+        # При падении процесса тестов Swift сам печатает, в каком потоке и функции оно случилось.
+        env:
+          SWIFT_BACKTRACE: enable=yes,interactive=no,color=no,sanitize=yes
         run: swift test --package-path Packages/LumenKit
       - name: Отчёт о падении тестов
-        # Процесс тестов иногда падает сигналом 5 без подробностей: печатаем отчёт macOS о сбое
-        # (какой поток и какая функция), чтобы найти причину.
+        # Процесс тестов иногда падает сигналом 5 без подробностей: печатаем и отчёт macOS о сбое.
         if: failure()
         run: |
-          for report in $(ls -t ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -3); do
+          sleep 15
+          for report in $(ls -t ~/Library/Logs/DiagnosticReports/*.ips /Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -3); do
             echo "=== $report"
             head -c 60000 "$report"
             echo
