@@ -3,9 +3,10 @@ import LumenStorage
 import LumenThemes
 import SwiftUI
 
-/// Остров внизу окна на Mac и iPad: стеклянная капсула по центру. Слева четыре раздела
-/// (открытый на светлой подложке, на «Записках» число неразобранных), дальше поиск ⌘K,
-/// круглая «+» и «Ещё» с архивом и настройками. В режиме фокуса остров уходит.
+/// Остров внизу окна на Mac и iPad: стеклянная капсула по центру. У каждой кнопки значок и подпись.
+/// Слева четыре раздела: открытый выпрыгивает кружком над капсулой, под кружком в капсуле вырез
+/// (на «Записках» число неразобранных переезжает в кружок). Дальше поиск ⌘K, «Создать» и «Ещё»
+/// с архивом и настройками. В режиме фокуса остров уходит.
 struct NavigationIsland: View {
     let database: AppDatabase
     let selection: SidebarItem?
@@ -17,30 +18,41 @@ struct NavigationIsland: View {
 
     @Environment(\.lumenTheme) private var theme
     @State private var counts = SidebarSnapshot.empty
-    /// Подложка переезжает с раздела на раздел, а не гаснет и зажигается.
-    @Namespace private var markSpace
 
-    static let height: CGFloat = 52
+    #if os(macOS)
+    static let height: CGFloat = 62
+    private static let itemWidth: CGFloat = 64
+    #else
+    static let height: CGFloat = 64
+    private static let itemWidth: CGFloat = 66
+    #endif
+    private static let padding: CGFloat = 16
+    private static let dividerWidth: CGFloat = 14
 
     /// Разделы в острове, слева направо. Архив в «Ещё».
     static let rooms: [StudyRoom] = [.desk, .notes, .tasks, .shelf]
 
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(Self.rooms) { room in
-                roomButton(room)
+        BubbleBar(
+            height: Self.height,
+            bubbleX: bubbleX,
+            bubbleImage: bubbleRoom?.systemImage ?? StudyRoom.desk.systemImage,
+            bubbleCount: bubbleRoom.map { Self.rooms.contains($0) ? $0.count(in: counts) : 0 } ?? 0
+        ) {
+            HStack(spacing: 0) {
+                ForEach(Self.rooms) { room in
+                    roomButton(room)
+                }
+                divider
+                searchButton
+                createButton
+                moreMenu
             }
-            divider
-            searchButton
-            createButton
-            divider
-            moreMenu
+            .padding(.horizontal, Self.padding)
         }
         .animation(LumenMotion.standard, value: selection)
         .buttonStyle(.plain)
-        .padding(.horizontal, 6)
-        .frame(height: Self.height)
-        .lumenGlass(Capsule())
+        .padding(.top, BubbleMetrics.lift)
         .fixedSize()
         .task { await observe() }
         .accessibilityElement(children: .contain)
@@ -48,11 +60,28 @@ struct NavigationIsland: View {
         .accessibilityIdentifier("island")
     }
 
+    /// Раздел в кружке: один из четырёх или архив (тогда кружок над «Ещё»).
+    private var bubbleRoom: StudyRoom? {
+        (Self.rooms + [.archive]).first { $0.contains(selection) }
+    }
+
+    /// Центр кружка от левого края капсулы. Кнопки одной ширины, так что считать проще, чем мерить.
+    private var bubbleX: CGFloat? {
+        guard let room = bubbleRoom else { return nil }
+        let slot: CGFloat
+        if let index = Self.rooms.firstIndex(of: room) {
+            slot = CGFloat(index)
+        } else {
+            slot = CGFloat(Self.rooms.count + 2) + Self.dividerWidth / Self.itemWidth
+        }
+        return Self.padding + (slot + 0.5) * Self.itemWidth
+    }
+
     private var divider: some View {
         Capsule()
             .fill(theme.line)
-            .frame(width: 1, height: 24)
-            .padding(.horizontal, 4)
+            .frame(width: 1, height: 26)
+            .frame(width: Self.dividerWidth)
     }
 
     private func roomButton(_ room: StudyRoom) -> some View {
@@ -61,24 +90,14 @@ struct NavigationIsland: View {
         return Button {
             onSelect(room.item)
         } label: {
-            Image(systemName: room.systemImage)
-                .font(.system(size: 17, weight: isOn ? .semibold : .regular))
-                .foregroundStyle(isOn ? theme.textPrimary : theme.textSecondary)
-                .frame(width: 40, height: 40)
-                .background {
-                    if isOn {
-                        Circle()
-                            .fill(theme.surface2)
-                            .matchedGeometryEffect(id: "mark", in: markSpace)
-                    }
-                }
-                .contentShape(Circle())
-        }
-        .overlay(alignment: .topTrailing) {
-            if count > 0 {
-                CountBadge(count: count)
-                    .offset(x: 2, y: 1)
-            }
+            BubbleBarLabel(
+                title: room.title,
+                systemImage: room.systemImage,
+                isOn: isOn,
+                count: count,
+                width: Self.itemWidth,
+                height: Self.height
+            )
         }
         .help(room.hint)
         .accessibilityLabel(count > 0 ? "\(room.title), \(count)" : room.title)
@@ -87,24 +106,10 @@ struct NavigationIsland: View {
         .keyHint(room.title) { onSelect(room.item) }
     }
 
-    /// «Поиск ⌘K»: тихая капсула, на iPad без сочетания клавиш.
+    /// «Поиск»: на Mac открывается и по ⌘K.
     private var searchButton: some View {
         Button(action: onSearch) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 15, weight: .medium))
-                Text("Поиск")
-                    .font(.system(size: 14))
-                #if os(macOS)
-                Text("⌘K")
-                    .font(.system(size: 11))
-                    .padding(.leading, 14)
-                #endif
-            }
-            .foregroundStyle(theme.textTertiary)
-            .padding(.horizontal, 12)
-            .frame(height: 40)
-            .contentShape(Capsule())
+            BubbleBarLabel(title: "Поиск", systemImage: "magnifyingglass", width: Self.itemWidth, height: Self.height)
         }
         .help("Поиск и команды (⌘K)")
         .accessibilityLabel("Поиск")
@@ -112,7 +117,7 @@ struct NavigationIsland: View {
         .keyHint("Поиск", perform: onSearch)
     }
 
-    /// Круглая «+»: щелчок создаёт заметку во «Входящих», меню выбирает, что создать.
+    /// «Создать» акцентом: щелчок создаёт заметку во «Входящих», меню выбирает, что создать.
     private var createButton: some View {
         Menu {
             ForEach(CreateKind.allCases) { kind in
@@ -123,12 +128,7 @@ struct NavigationIsland: View {
                 }
             }
         } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(theme.onAccent)
-                .frame(width: 40, height: 40)
-                .background(theme.accent, in: Circle())
-                .contentShape(Circle())
+            BubbleBarLabel(title: "Создать", systemImage: "plus", tint: theme.accent, width: Self.itemWidth, height: Self.height)
         } primaryAction: {
             onQuickNote()
         }
@@ -154,18 +154,13 @@ struct NavigationIsland: View {
                 Label("Настройки", systemImage: "gearshape")
             }
         } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(StudyRoom.archive.contains(selection) ? theme.textPrimary : theme.textSecondary)
-                .frame(width: 40, height: 40)
-                .background {
-                    if StudyRoom.archive.contains(selection) {
-                        Circle()
-                            .fill(theme.surface2)
-                            .matchedGeometryEffect(id: "mark", in: markSpace)
-                    }
-                }
-                .contentShape(Circle())
+            BubbleBarLabel(
+                title: "Ещё",
+                systemImage: "ellipsis",
+                isOn: StudyRoom.archive.contains(selection),
+                width: Self.itemWidth,
+                height: Self.height
+            )
         }
         .menuStyle(.button)
         .menuIndicator(.hidden)
@@ -192,16 +187,18 @@ struct NavigationIsland: View {
 /// Число на значке раздела: маленькая капсула акцентом.
 struct CountBadge: View {
     let count: Int
+    /// На акцентном кружке цвета меняются местами, иначе значок сливается с ним.
+    var onAccent = false
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
         Text(count > 99 ? "99+" : "\(count)")
             .font(.system(size: 9.5, weight: .bold))
             .contentTransition(.numericText())
-            .foregroundStyle(theme.onAccent)
+            .foregroundStyle(onAccent ? theme.accent : theme.onAccent)
             .padding(.horizontal, 4)
             .frame(minWidth: 15, minHeight: 15)
-            .background(theme.accent, in: Capsule())
+            .background(onAccent ? theme.sheet : theme.accent, in: Capsule())
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
