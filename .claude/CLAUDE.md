@@ -77,6 +77,7 @@ Dependencies only go downward: `LumenUI` → `LumenReader`, `LumenSync`, `LumenS
 - **A new synced table** also needs `createSyncClockTriggers(db, table:)` in its migration (folder sync clock). Never loop over `SyncTable.allCases` inside a migration: older migrations run before the new table exists.
 - A new `SidebarItem` case needs a title in `ItemTitle` and a branch in `RootView.detail`, and on iPhone in `PhoneRootView`.
 - In split screen, toolbars and shortcuts of the inactive pane are hidden via the `isActivePane` environment value. Never switch a view's identity on `isActivePane` (an `if/else` on it rebuilds the whole editor on focus change).
+- A book or file (`.source`) opens in its own tab (`Workspace.opensInOwnTab`, the owner's rule): if it is open in some tab, that tab is selected; split tabs and moves inside the same book (excerpts, «О книге» → read) stay in place. Closing a reader with no history closes its tab (`RootView.closeScreen`).
 - Links clicked in a note open in the opposite pane when the tab is split (`RootView.openLink(_:from:)`). Excerpts from a book go to the note open beside it (`besidePageId`), otherwise to the book's notes. Book notes live in the book's folder next to the book and are created lazily (`ReaderModel.ensureNotes()`).
 - Custom drag types and document types are declared in `project.yml` under `info:`. Don't set `LSSupportsOpeningDocumentsInPlace` (Xcode rejects `NO` for the macOS side).
 - In `LumenUI` files that import GRDB, write `ButtonStyleConfiguration`, not `Configuration` (name clash).

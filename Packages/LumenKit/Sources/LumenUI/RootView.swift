@@ -469,11 +469,14 @@ public struct RootView: View {
         return id
     }
 
-    /// Закрыть экран: на шаг назад, а если идти некуда, туда, куда вёл старый «закрыть».
+    /// Закрыть экран: на шаг назад. Идти некуда, а вкладка своя (книга открылась новой вкладкой):
+    /// закрывается вкладка. Иначе туда, куда вёл старый «закрыть».
     private func closeScreen(pane: Int, fallback: SidebarItem) {
         workspace.focus(pane: pane)
         if workspace.canGoBack {
             workspace.goBack()
+        } else if !workspace.isSplit, workspace.tabs.count > 1 {
+            withAnimation(LumenMotion.standard) { workspace.closeTab(workspace.selectedTabId) }
         } else {
             workspace.open(fallback, inPane: pane)
         }
@@ -508,7 +511,7 @@ public struct RootView: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: NavigationIsland.height)
                             .overlay(alignment: .trailing) {
-                                if tabStripMode.showsCircles(tabCount: workspace.tabs.count) {
+                                if tabStripMode.showsIslandRow {
                                     IslandTabs(database: database, workspace: workspace, capacity: tabCapacity)
                                         .fixedSize()
                                         .padding(.trailing, IslandTabs.gap)

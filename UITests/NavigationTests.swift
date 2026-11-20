@@ -48,4 +48,12 @@ final class NavigationTests: XCTestCase {
         element("tab-1").click()
         XCTAssertTrue(element("row-").waitForExistence(timeout: 5), "Кружок не вернул вкладку с заметкой")
     }
+
+    /// Круглая «+» у острова видна и с одной вкладкой и открывает новую.
+    func testPlusCircleOpensNewTab() {
+        XCTAssertTrue(element("island.newTab").waitForExistence(timeout: 10), "Нет кнопки «+» у острова")
+        XCTAssertFalse(element("tab-1").exists, "Кружок вкладки виден при одной вкладке")
+        element("island.newTab").click()
+        XCTAssertTrue(element("tab-2").waitForExistence(timeout: 5), "«+» не открыла вкладку")
+    }
 }

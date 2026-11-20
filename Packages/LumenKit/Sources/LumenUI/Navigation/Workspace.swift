@@ -185,6 +185,7 @@ final class Workspace {
         let index = selectedIndex
         let pane = pane ?? tabs[index].focusedPane
         guard tabs[index].panes.indices.contains(pane) else { return }
+        if opensInOwnTab(item, from: index, pane: pane) { return }
         if let other = tabs[index].panes.indices.first(where: { $0 != pane && tabs[index].panes[$0].current == item }),
            item.isEditable {
             tabs[index].focusedPane = other
@@ -192,6 +193,40 @@ final class Workspace {
         }
         tabs[index].panes[pane].open(item)
         tabs[index].focusedPane = pane
+    }
+
+    /// Книга или файл открывается своей вкладкой (так просил владелец): уже открыт в какой-то
+    /// вкладке — переходим туда, иначе новая вкладка рядом с текущей. Не трогаем разделённый экран
+    /// (там книга нарочно стоит рядом с заметкой) и переходы внутри той же книги (к выписке, из «О книге»).
+    private func opensInOwnTab(_ item: SidebarItem, from index: Int, pane: Int) -> Bool {
+        guard case .source(let id, let highlight) = item, !tabs[index].isSplit else { return false }
+        switch tabs[index].panes[pane].current {
+        case .source(id, _), .sourceInfo(id): return false
+        default: break
+        }
+        if let place = place(ofSource: id) {
+            selectedTabId = tabs[place.tab].id
+            tabs[place.tab].focusedPane = place.pane
+            if highlight != nil {
+                tabs[place.tab].panes[place.pane].open(item)
+            }
+            return true
+        }
+        guard tabs.count < Self.maxTabs else { return false }
+        let tab = WorkspaceTab(item)
+        tabs.insert(tab, at: index + 1)
+        selectedTabId = tab.id
+        return true
+    }
+
+    /// Вкладка и панель, где сейчас открыта эта книга.
+    private func place(ofSource id: UUID) -> (tab: Int, pane: Int)? {
+        for (tabIndex, tab) in tabs.enumerated() {
+            for (paneIndex, history) in tab.panes.enumerated() {
+                if case .source(id, _) = history.current { return (tabIndex, paneIndex) }
+            }
+        }
+        return nil
     }
 
     /// Ссылка из экрана в панели `pane`. В разделённом экране она открывается во второй

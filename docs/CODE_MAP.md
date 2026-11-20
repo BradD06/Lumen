@@ -18,7 +18,8 @@
 | Заголовок вкладки / пункта | `Navigation/WorkspaceViews.swift` → `ItemTitle` |
 | Остров внизу (Стол, Записки, Дела, Полка, Поиск, Создать, Ещё) | `Navigation/Island.swift` (`NavigationIsland`, `StudyRoom`), кружок с вырезом `Navigation/BubbleBar.swift` |
 | Вкладки, «Назад / Вперёд», две панели | `Navigation/Workspace.swift` (`Workspace`, `WorkspaceTab`, `NavigationHistory`), `WorkspaceViews.swift`, `PaneSplit.swift`, `PaneLayout.swift` |
-| Вкладки кружками у острова | `Navigation/IslandTabs.swift` (`IslandTabs`, `TabGlyph`, `TabContextMenu`), место слева от острова в `RootView.island`; режим `TabStripMode.island` в `ScreenOptions.swift` |
+| Книга открывается своей вкладкой | `Workspace.opensInOwnTab` (`Navigation/Workspace.swift`), закрытие вкладки книги в `RootView.closeScreen` |
+| Вкладки кружками у острова (и круглая «+») | `Navigation/IslandTabs.swift` (`IslandTabs`, `TabGlyph`, `TabContextMenu`), место слева от острова в `RootView.island`; режим `TabStripMode.island` в `ScreenOptions.swift` |
 | Горячие клавиши окна (⌘[ ⌘] ⌘\ ⌘T ⌘W ⌘1…9) | `RootView.tabShortcuts` |
 | ⌘K (палитра команд, поиск) | `Navigation/CommandPalette.swift`; доп. команды `RootView.paletteExtras` / `currentItemCommands`; поиск в базе `LumenStorage/Search.swift` (`searchEverything`) |
 | Меню «Создать», быстрый ввод, Настройки | `Navigation/AppActions.swift` (`CreateKind`, `AppActions`, `Creator`, `CaptureField`, `CreateSheet`, `SettingsSheet`) |
