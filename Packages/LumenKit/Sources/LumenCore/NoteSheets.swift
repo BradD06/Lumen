@@ -78,6 +78,9 @@ public enum NoteSheets {
             own = textHeight(block.text, size: 24, width: width) + 16
         case .heading3:
             own = textHeight(block.text, size: 19, width: width) + 12
+        case .tableOfContents:
+            // Сколько на странице заголовков, отсюда не видно: примерно пять строк.
+            own = 150
         case .bulletedList, .numberedList, .todo, .toggle:
             own = textHeight(block.text, size: 17, width: width - 28) + 4
         case .quote:

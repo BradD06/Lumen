@@ -6,6 +6,9 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     case heading1
     case heading2
     case heading3
+    /// Оглавление: заголовки страницы по порядку, щелчок прокручивает к заголовку.
+    /// Список строится из блоков на лету, в самом блоке ничего не хранится.
+    case tableOfContents
     case bulletedList
     case numberedList
     case todo
@@ -56,6 +59,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .heading1: "Заголовок 1"
         case .heading2: "Заголовок 2"
         case .heading3: "Заголовок 3"
+        case .tableOfContents: "Оглавление"
         case .bulletedList: "Маркированный список"
         case .numberedList: "Нумерованный список"
         case .todo: "Задача"
@@ -88,6 +92,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .heading1: "textformat.size.larger"
         case .heading2: "textformat.size"
         case .heading3: "textformat.size.smaller"
+        case .tableOfContents: "list.bullet.indent"
         case .bulletedList: "list.bullet"
         case .numberedList: "list.number"
         case .todo: "checkmark.square"
@@ -120,6 +125,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
         case .heading1: ["h1", "heading", "заголовок"]
         case .heading2: ["h2", "heading", "заголовок"]
         case .heading3: ["h3", "heading", "заголовок"]
+        case .tableOfContents: ["toc", "table of contents", "contents", "outline", "оглавление", "содержание", "заголовки"]
         case .bulletedList: ["list", "bullet", "список"]
         case .numberedList: ["list", "number", "список", "номер"]
         case .todo: ["todo", "task", "check", "задача", "чекбокс"]
@@ -148,6 +154,7 @@ public enum BlockType: String, Codable, Sendable, CaseIterable, Identifiable {
     /// Есть ли у блока редактируемый текст.
     public var hasText: Bool {
         switch self {
+        case .tableOfContents: false
         case .divider, .page, .image, .columnList, .column, .excerpt, .drawing, .sheetBreak, .table, .database,
              .file, .pdf, .video, .audio, .bookmark, .synced: false
         default: true

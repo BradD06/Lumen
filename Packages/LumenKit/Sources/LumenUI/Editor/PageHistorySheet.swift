@@ -214,6 +214,8 @@ struct VersionPreview: View {
             text.font(.headline).foregroundStyle(theme.textPrimary)
         case .heading3:
             text.font(.subheadline.bold()).foregroundStyle(theme.textPrimary)
+        case .tableOfContents:
+            placeholder(block.type, detail: nil)
         case .bulletedList:
             marked("•", text)
         case .numberedList:
