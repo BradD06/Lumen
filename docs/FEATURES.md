@@ -89,7 +89,7 @@
 | Заметки рядом с книгой (на iPhone выезжают снизу), переключатель «Текст / Перо», кнопка «ссылка на это место», любая другая страница рядом | все | `Reader/ReaderView+Notes.swift`, `SidePagePicker.swift` |
 | «Окна»: книга и заметки рядом или друг под другом, запоминается для каждой книги | Mac/iPad | `Navigation/PaneLayout.swift`, `Reader/ReaderLayoutStore.swift` |
 | Оформление: темы «Ночь», «Бумага», «Рассвет», «Как в файле», шрифт (засечки, гротеск, округлый), размер 14–48 | все | `Reader/ReaderChrome.swift`, `LumenReader/ReaderScript.swift` (`ReaderAppearance`) |
-| Точное место чтения запоминается; полоса прогресса | все | `Reader/ReaderModel.swift` |
+| Точное место чтения запоминается; полоса прогресса; стрелки ‹ › в ней идут по всем пунктам оглавления, с подразделами | все | `Reader/ReaderModel.swift`, `LumenReader/ReadingScale.swift` (`TocEntry.neighbour`) |
 | Листание свайпом, двумя пальцами на трекпаде, стрелками; ⌥⌘← → между книгой и заметками | все (клавиши на Mac) | `LumenReader/PDFReader.swift`, `Reader/ReaderKeys.swift` |
 | PDF «Текст / Оригинал»: перекладка в главы, без колонтитулов, выноски цветными рамками | все | `LumenReader/PDFTextConverter.swift`, `PDFTextLayout.swift` |
 | PDF: обрезка полей, чтение по колонкам, свой масштаб для книги, тонировка страниц в тёмной теме | все | `LumenReader/PDFPageLayout.swift`, `PDFPageTint.swift`, `PDFReader.swift` |

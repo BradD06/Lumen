@@ -481,33 +481,35 @@ final class ReaderModel {
         return Set(anchors[...index])
     }
 
-    /// К началу предыдущей главы. Если до первой главы ещё не дошли, назад некуда.
+    /// К предыдущему пункту оглавления, включая подразделы. Если до первого ещё не дошли, назад некуда.
     func openPreviousChapter() {
-        guard !chapters.isEmpty else {
+        guard !toc.isEmpty else {
             openSection(section - 1)
             return
         }
-        guard let current = currentChapterIndex, current > 0 else { return }
-        open(chapters[current - 1])
+        guard let index = TocEntry.neighbour(of: lastPassed(in: toc), forward: false, in: toc) else { return }
+        open(toc[index])
     }
 
-    /// К началу следующей главы.
+    /// К следующему пункту оглавления, включая подразделы: по одним главам стрелки
+    /// перескакивали бы все разделы внутри главы.
     func openNextChapter() {
-        guard !chapters.isEmpty else {
+        guard !toc.isEmpty else {
             openSection(section + 1)
             return
         }
-        let next = (currentChapterIndex ?? -1) + 1
-        guard chapters.indices.contains(next) else { return }
-        open(chapters[next])
+        guard let index = TocEntry.neighbour(of: lastPassed(in: toc), forward: true, in: toc) else { return }
+        open(toc[index])
     }
 
     var canOpenPreviousChapter: Bool {
-        chapters.isEmpty ? section > 0 : (currentChapterIndex ?? 0) > 0
+        guard !toc.isEmpty else { return section > 0 }
+        return TocEntry.neighbour(of: lastPassed(in: toc), forward: false, in: toc) != nil
     }
 
     var canOpenNextChapter: Bool {
-        chapters.isEmpty ? section < sections.count - 1 : (currentChapterIndex ?? -1) < chapters.count - 1
+        guard !toc.isEmpty else { return section < sections.count - 1 }
+        return TocEntry.neighbour(of: lastPassed(in: toc), forward: true, in: toc) != nil
     }
 
     /// Где на полосе прогресса начинается каждая глава, от 0 до 1. Пусто, если глав много или одна.

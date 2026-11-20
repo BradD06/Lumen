@@ -77,4 +77,23 @@ extension TocEntry {
         }
         return first
     }
+
+    /// Куда ведут стрелки внизу читалки: соседний пункт оглавления по порядку, вместе
+    /// с подразделами, иначе стрелки перескакивали бы целые разделы. Пункты, которые открывают
+    /// то же место, что и текущий (у части и её первой главы бывает одно начало), пропускаются,
+    /// чтобы «назад» не застревал. `current` это пункт, где сейчас читатель, `nil` до первого.
+    public static func neighbour(of current: Int?, forward: Bool, in toc: [TocEntry]) -> Int? {
+        let here = current.flatMap { toc.indices.contains($0) ? toc[$0] : nil }
+        let elsewhere: (TocEntry) -> Bool = { entry in
+            guard let here else { return true }
+            return entry.section != here.section || entry.anchor != here.anchor
+        }
+        if forward {
+            let start = (current ?? -1) + 1
+            guard start >= 0, start < toc.count else { return nil }
+            return toc[start...].firstIndex(where: elsewhere)
+        }
+        guard let current, toc.indices.contains(current) else { return nil }
+        return toc[..<current].lastIndex(where: elsewhere)
+    }
 }
