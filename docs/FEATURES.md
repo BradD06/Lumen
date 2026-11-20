@@ -126,6 +126,8 @@
 | Рисование мышью и трекпадом | Mac | `Drawing/MouseDrawing.swift` |
 | Лассо: выделить, переместить, растянуть, повернуть (прилипает к углам через 15°), перекрасить, выровнять в ровные фигуры, дублировать, удалить | Mac (на iPad и iPhone системное лассо PencilKit) | `Drawing/DrawingLasso.swift`, `Drawing/MouseDrawing.swift` |
 | Страницы PDF и книг из библиотеки как листы тетради | все | `Drawing/SheetPDFImages.swift` |
+| Миниатюры листов (кнопка в шапке тетради): нажать, чтобы открыть лист; перетащить, чтобы переставить; меню: дублировать, новый лист, выше / ниже, удалить. На Mac и iPad колонка слева, на iPhone сетка в окне | все | `Drawing/NotebookSheetStrip.swift`, `moveNotebookSheet` / `duplicateNotebookSheet` в `Editor/PageEditorModel+Drawing.swift` |
+| Поиск по почерку: написанное от руки читается на устройстве (Vision, русский и английский) через 2 с после того, как перестали писать; тетрадь находится в общем поиске ⌘K по этим словам и по текстам на листах; лупа в шапке тетради показывает, на каких листах слово | все | `Drawing/HandwritingReader.swift`, `BlockContent.sheetTexts`, `NotebookSheets.matches` в `LumenCore/NotebookSheetEdits.swift` |
 | Блок «Рисунок» внутри обычной заметки | все | `Drawing/DrawingBlock.swift` |
 
 ## Базы данных и задачи

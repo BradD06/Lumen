@@ -90,6 +90,9 @@ public struct BlockContent: Hashable, Codable, Sendable {
     public var syncedFrom: SyncedReference?
     /// Шаблон отдельных листов тетради, по номеру листа. `nil` у листа с шаблоном всей тетради (`paper`).
     public var sheetPapers: [PaperPattern?]?
+    /// Распознанный рукописный текст листов тетради, по номеру листа: по нему ищут.
+    /// `nil` у листа без чернил или ещё не прочитанного, пустая строка у листа, где слов не нашлось.
+    public var sheetTexts: [String?]?
 
     public init(
         runs: [TextRun] = [],
@@ -115,7 +118,8 @@ public struct BlockContent: Hashable, Codable, Sendable {
         bookmark: WebBookmark? = nil,
         comments: [BlockComment]? = nil,
         syncedFrom: SyncedReference? = nil,
-        sheetPapers: [PaperPattern?]? = nil
+        sheetPapers: [PaperPattern?]? = nil,
+        sheetTexts: [String?]? = nil
     ) {
         self.runs = runs
         self.isChecked = isChecked
@@ -141,6 +145,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         self.comments = comments
         self.syncedFrom = syncedFrom
         self.sheetPapers = sheetPapers
+        self.sheetTexts = sheetTexts
     }
 
     public init(text: String, isChecked: Bool = false) {
@@ -154,9 +159,12 @@ public struct BlockContent: Hashable, Codable, Sendable {
         set { runs = newValue.isEmpty ? [] : [TextRun(newValue)] }
     }
 
-    /// Текст для поиска: сам текст блока, ячейки таблицы, имя файла, название и адрес закладки, комментарии.
+    /// Текст для поиска: сам текст блока, ячейки таблицы, имя файла, название и адрес закладки, комментарии,
+    /// тексты на листах тетради и распознанный почерк.
     public var searchText: String {
         var parts = [text]
+        if let items { parts += items.filter { $0.kind == .text }.map(\.text) }
+        if let sheetTexts { parts += sheetTexts.compactMap { $0 } }
         if let table { parts.append(table.plainText) }
         if let file { parts.append(file.name) }
         if let bookmark {
@@ -169,7 +177,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case runs, isChecked, pageId, attachment, imageWidth, imageAspect, isCollapsed, textColor, backgroundColor, columnWidth, excerpt
         case drawingHeight, drawingWidth, sheetCount, paper, paperTone, items, sheetBackgrounds, table, file, bookmark, comments, syncedFrom
-        case sheetPapers
+        case sheetPapers, sheetTexts
     }
 
     public init(from decoder: any Decoder) throws {
@@ -204,6 +212,7 @@ public struct BlockContent: Hashable, Codable, Sendable {
         // Незнакомый шаблон листа из более новой версии читается как шаблон всей тетради.
         sheetPapers = (try? container.decodeIfPresent([String?].self, forKey: .sheetPapers))?
             .map { $0.flatMap(PaperPattern.init(rawValue:)) }
+        sheetTexts = try? container.decodeIfPresent([String?].self, forKey: .sheetTexts)
     }
 
     /// Элемент тетради, который не ломает чтение остальных, если сам не читается.

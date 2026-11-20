@@ -73,7 +73,7 @@ public enum NotebookSheets {
 
     // MARK: Списки по номерам листов
 
-    private static func insertingValues<Value: Equatable>(
+    static func insertingValues<Value: Equatable>(
         _ added: [Value?],
         after index: Int?,
         into list: [Value?]?,
@@ -85,7 +85,7 @@ public enum NotebookSheets {
         return normalized(full)
     }
 
-    private static func removingValue<Value: Equatable>(_ index: Int, from list: [Value?]?) -> [Value?]? {
+    static func removingValue<Value: Equatable>(_ index: Int, from list: [Value?]?) -> [Value?]? {
         guard var full = list, full.indices.contains(index) else { return list }
         full.remove(at: index)
         return normalized(full)
@@ -111,7 +111,7 @@ public enum NotebookSheets {
             && (content.items ?? []).isEmpty && background(of: content, sheet: 0) == nil
     }
 
-    private static func padded<Value>(_ list: [Value?]?, to count: Int) -> [Value?] {
+    public static func padded<Value>(_ list: [Value?]?, to count: Int) -> [Value?] {
         var full = list ?? []
         if full.count < count {
             full += Array(repeating: nil, count: count - full.count)
@@ -119,7 +119,7 @@ public enum NotebookSheets {
         return full
     }
 
-    private static func normalized<Value>(_ list: [Value?]) -> [Value?]? {
+    public static func normalized<Value>(_ list: [Value?]) -> [Value?]? {
         var list = list
         while let last = list.last, last == nil {
             list.removeLast()

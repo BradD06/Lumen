@@ -40,6 +40,8 @@ struct PencilCanvas: UIViewRepresentable {
     var onTap: ((CGPoint) -> Void)?
     /// Где сейчас холст на экране: по нему слой правки ставит рамки поверх элементов.
     var onViewport: ((NotebookViewport) -> Void)?
+    /// Перейти к листу тетради: из миниатюр или поиска.
+    var jump: NotebookJump?
 
     struct NotebookItemsContent: Equatable {
         var items: [NotebookItem]
@@ -113,6 +115,11 @@ struct PencilCanvas: UIViewRepresentable {
         canvas.paper = notebook
         canvas.items = items
         canvas.isPaperDark = isDark
+        if let jump, jump != coordinator.lastJump {
+            coordinator.lastJump = jump
+            // Холст мог ещё не разложить листы под свою ширину: переходим в следующем такте.
+            Task { @MainActor [weak canvas] in canvas?.scrollToSheet(jump.sheet) }
+        }
         coordinator.setToolPicker(visible: showsToolPicker && isDrawingEnabled)
     }
 
@@ -130,6 +137,7 @@ struct PencilCanvas: UIViewRepresentable {
         var isApplying = false
         /// Сколько штрихов было на холсте: по нему виден только что дописанный штрих.
         var strokeCount = 0
+        var lastJump: NotebookJump?
         var onChange: (Data?) -> Void = { _ in }
         var onVisibleSheet: (Int) -> Void = { _ in }
         var onTap: ((CGPoint) -> Void)?
@@ -309,6 +317,14 @@ final class NotebookCanvasView: PKCanvasView {
         }
         layoutItems(scale: scale, size: size)
         sendSubviewToBack(paperView)
+    }
+
+    /// Верх листа `index` у верхнего края экрана.
+    func scrollToSheet(_ index: Int) {
+        layoutIfNeeded()
+        let top = NotebookLayout.sheetRect(index).minY * zoomScale
+        let maxY = max(contentSize.height + contentInset.bottom - bounds.height, 0)
+        setContentOffset(CGPoint(x: contentOffset.x, y: min(max(top - 12, 0), maxY)), animated: true)
     }
 
     /// Область в заметке не прокручивается: масштаб задан снаружи, холст ровно по размеру области.
