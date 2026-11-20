@@ -35,9 +35,10 @@ extension SidebarItem {
     }
 }
 
-/// Корневой экран: слева узкая колонка с разделами (стол, записки, дела, полка, поиск,
-/// внизу «+», архив, настройки), справа вкладки, у каждой своя история «Назад / Вперёд», вкладку можно
-/// разделить на две панели. На iPhone (узкий экран) вместо колонки вкладки внизу, см. `PhoneRootView`.
+/// Корневой экран: внизу по центру стеклянный остров с разделами (стол, записки, дела, полка),
+/// поиском, «+» и «Ещё»; сверху вкладки (когда их больше одной), у каждой своя история
+/// «Назад / Вперёд», вкладку можно разделить на две панели. На iPhone (узкий экран) вместо
+/// острова капсула разделов внизу, см. `PhoneRootView`.
 public struct RootView: View {
     private let database: AppDatabase
     /// Вкладки и история переходов. UI-тесты начинают с чистого листа и ничего не сохраняют.
@@ -155,7 +156,7 @@ public struct RootView: View {
         NavigationStack {
             workspaceDetail
                 .themedToolbar()
-                .safeAreaInset(edge: .leading, spacing: 0) { sideRail }
+                .safeAreaInset(edge: .bottom, spacing: 0) { island }
                 .overlay { LampLight() }
                 .toolbar {
                     // Сочетания ⌘[ ⌘] ⌘\ живут в `tabShortcuts`: кнопки можно спрятать в настройках.
@@ -174,29 +175,8 @@ public struct RootView: View {
                             .help("Вперёд (⌘])")
                         }
                     }
+                    // Поиск и «Создать» живут в острове внизу, сверху только то, что про окно.
                     ToolbarItemGroup(placement: .primaryAction) {
-                        Button {
-                            isSearchPresented = true
-                        } label: {
-                            Label("Поиск", systemImage: "magnifyingglass")
-                        }
-                        .keyboardShortcut("k", modifiers: .command)
-
-                        Menu {
-                            ForEach(CreateKind.allCases) { kind in
-                                Button {
-                                    create(kind)
-                                } label: {
-                                    Label(kind.title, systemImage: kind.systemImage)
-                                }
-                            }
-                        } label: {
-                            Label("Создать", systemImage: "plus")
-                        } primaryAction: {
-                            newQuickNote()
-                        }
-                        .help("Новая заметка (⌘N). Удерживайте, чтобы выбрать, что создать")
-
                         if workspace.isSplit {
                             PaneArrangementControls(axis: paneAxis, subject: "панели", onAxis: setPaneAxis, onSwap: swapPanes)
                         }
@@ -363,7 +343,7 @@ public struct RootView: View {
             // Под вкладками и в просвете между панелями виден фон темы.
             // При разделении он приглушён, чтобы карточки панелей читались отдельно.
             ThemedBackground()
-                .overlay(Color.black.opacity(workspace.isSplit ? 0.28 : 0).ignoresSafeArea())
+                .overlay(theme.contrast.opacity(workspace.isSplit ? 0.035 : 0).ignoresSafeArea())
         }
         .background { tabShortcuts }
     }
@@ -413,6 +393,10 @@ public struct RootView: View {
                 .keyboardShortcut("]", modifiers: [.command, .shift])
             Button("Предыдущая вкладка") { workspace.selectPreviousTab() }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
+            Button("Поиск") { isSearchPresented = true }
+                .keyboardShortcut("k", modifiers: .command)
+            Button("Настройки") { isSettingsPresented = true }
+                .keyboardShortcut(",", modifiers: .command)
             Button("Новая заметка") { newQuickNote() }
                 .keyboardShortcut("n", modifiers: .command)
             Button("Новая задача") { create(.task) }
@@ -505,11 +489,11 @@ public struct RootView: View {
         } catch {}
     }
 
-    /// Разделы в узкой колонке слева. В режиме фокуса колонка уходит.
+    /// Остров с разделами внизу по центру. В режиме фокуса он уходит.
     @ViewBuilder
-    private var sideRail: some View {
+    private var island: some View {
         if !focusMode.isOn {
-            SideRail(
+            NavigationIsland(
                 database: database,
                 selection: selection,
                 onSelect: { selection = $0 },
@@ -518,7 +502,10 @@ public struct RootView: View {
                 onCreate: { create($0) },
                 onQuickNote: { newQuickNote() }
             )
-            .transition(.move(edge: .leading).combined(with: .opacity))
+            .padding(.top, 8)
+            .padding(.bottom, 16)
+            .frame(maxWidth: .infinity)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
 

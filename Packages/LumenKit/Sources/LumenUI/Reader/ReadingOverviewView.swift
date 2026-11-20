@@ -220,7 +220,7 @@ struct ReadingOverviewView: View {
 
     /// Три книги, которые читали дольше всех за период, получают свои цвета; остальные вместе.
     private func bookColors(_ overview: ReadingOverview) -> [UUID: Color] {
-        let palette = [theme.accent, theme.glow2, theme.wallColors.dropFirst().first ?? theme.textSecondary]
+        let palette = [theme.accent, theme.success, theme.textTertiary]
         var colors: [UUID: Color] = [:]
         for (index, book) in overview.books.prefix(palette.count).enumerated() {
             colors[book.sourceId] = palette[index]

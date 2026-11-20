@@ -30,11 +30,11 @@ struct PageOutlineView: View {
 
     /// Полоски заголовков.
     private var strip: some View {
-        VStack(alignment: .trailing, spacing: 7) {
+        VStack(alignment: .trailing, spacing: 9) {
             ForEach(items) { item in
                 Capsule()
-                    .fill(item.id == currentId ? theme.accent : theme.textSecondary.opacity(0.45))
-                    .frame(width: barWidth(item.level), height: 3)
+                    .fill(item.id == currentId ? theme.accent : theme.textTertiary)
+                    .frame(width: barWidth(item.level), height: 2)
             }
         }
         .padding(.vertical, 10)
@@ -62,7 +62,7 @@ struct PageOutlineView: View {
                     } label: {
                         HStack(spacing: 8) {
                             Capsule()
-                                .fill(item.id == currentId ? theme.accent : theme.textSecondary.opacity(0.45))
+                                .fill(item.id == currentId ? theme.accent : theme.textTertiary)
                                 .frame(width: barWidth(item.level) / 2, height: 3)
                             Text(item.title)
                                 .font(item.level == 1 ? .callout.weight(.semibold) : .callout)
@@ -84,13 +84,7 @@ struct PageOutlineView: View {
         .frame(width: 240)
         .frame(maxHeight: 360)
         .fixedSize(horizontal: false, vertical: true)
-        .background(.ultraThinMaterial, in: shape)
-        .background(theme.cardFill, in: shape)
-        .overlay(shape.strokeBorder(
-            LinearGradient(colors: [.white.opacity(0.3), .white.opacity(0.06)], startPoint: .top, endPoint: .bottom),
-            lineWidth: 1
-        ))
-        .shadow(color: .black.opacity(0.4), radius: 18, y: 10)
+        .lumenGlass(shape, prominent: true)
         #if os(iOS)
         .overlay(alignment: .topTrailing) {
             Button {

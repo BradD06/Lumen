@@ -47,12 +47,13 @@ struct SheetPaper<Content: View, MenuItems: View>: View {
     }
 
     private var paper: some View {
-        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        // Лист «Острова»: ровная бумага цвета листа, тонкая обводка и мягкая тень снизу.
         return shape
-            .fill(theme.cardFill)
-            .overlay(shape.fill(theme.contrast.opacity(0.035)))
+            .fill(theme.sheet)
             .overlay(shape.strokeBorder(theme.cardStroke, lineWidth: 1))
-            .shadow(color: .black.opacity(theme.shadowOpacity * 0.9), radius: 18, y: 12)
+            .shadow(color: .black.opacity(theme.shadowOpacity * 0.5), radius: 1, y: 1)
+            .shadow(color: .black.opacity(theme.shadowOpacity * 1.2), radius: 20, y: 12)
     }
 
     /// Внизу листа, как в тетради: название заметки, «лист заполнен» и номер листа с меню листа.
@@ -158,7 +159,9 @@ struct AddSheetBar: View {
     }
 }
 
-/// Миниатюры листов слева от заметки на широком экране: нажатие прокручивает к листу.
+/// Листы у левого края заметки на широком экране: маленькие значки страниц, видный лист
+/// подсвечен акцентом. Наведёшь мышь, и вместо значков покажутся миниатюры с номерами.
+/// Нажатие прокручивает к листу.
 struct SheetRail: View {
     let count: Int
     let current: Int
@@ -167,31 +170,91 @@ struct SheetRail: View {
     var onAdd: () -> Void
     var onDelete: (Int) -> Void
 
+    @State private var isExpanded = false
     @Environment(\.lumenTheme) private var theme
 
     var body: some View {
         GeometryReader { geometry in
             // Колонка по высоте содержимого; длинная упирается в окно и прокручивается.
-            ViewThatFits(in: .vertical) {
-                column
-                ScrollView(.vertical, showsIndicators: false) { column }
+            Group {
+                if isExpanded {
+                    ViewThatFits(in: .vertical) {
+                        column
+                        ScrollView(.vertical, showsIndicators: false) { column }
+                    }
+                    .frame(width: 74)
+                    .lumenGlass(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .topLeading)))
+                } else {
+                    ViewThatFits(in: .vertical) {
+                        icons
+                        ScrollView(.vertical, showsIndicators: false) { icons }
+                    }
+                    .frame(width: 32)
+                    .transition(.opacity)
+                }
             }
-            .frame(width: 74)
-            .lumenCard(padding: 0)
-            // lumenCard растягивает содержимое на всю предложенную ширину.
-            .frame(width: 74)
             .frame(maxHeight: max(140, geometry.size.height - 48), alignment: .top)
         }
-        .frame(width: 74, alignment: .leading)
+        .frame(width: isExpanded ? 74 : 32, alignment: .leading)
+        .animation(LumenMotion.standard, value: isExpanded)
+        #if os(macOS)
+        .onHover { isExpanded = $0 }
+        #endif
+    }
+
+    /// Свёрнутый вид: значок страницы на каждый лист и «+».
+    private var icons: some View {
+        VStack(spacing: 8) {
+            ForEach(0..<count, id: \.self) { index in
+                icon(index)
+            }
+            Button(action: onAdd) {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(theme.textTertiary)
+                    .frame(width: 28, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Добавить лист")
+            .accessibilityLabel("Добавить лист")
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func icon(_ index: Int) -> some View {
+        let isCurrent = index == current
+        let shape = RoundedRectangle(cornerRadius: 3, style: .continuous)
+        return Button {
+            onSelect(index)
+        } label: {
+            shape
+                .fill(isCurrent ? theme.accentSoft : .clear)
+                .overlay(shape.strokeBorder(isCurrent ? theme.accent : theme.textTertiary, lineWidth: 1.5))
+                .frame(width: 16, height: 22)
+                .overlay(alignment: .topTrailing) {
+                    if pinned == index {
+                        Circle().fill(theme.accent).frame(width: 5, height: 5).offset(x: 2, y: -2)
+                    }
+                }
+                .frame(width: 28, height: 26)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("Удалить лист", systemImage: "trash", role: .destructive) {
+                onDelete(index)
+            }
+            .disabled(count < 2)
+        }
+        .help("Лист \(index + 1)")
+        .accessibilityLabel("Лист \(index + 1)")
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
 
     private var column: some View {
         VStack(spacing: 12) {
-            Text("Листы")
-                .font(.caption2.weight(.semibold))
-                .textCase(.uppercase)
-                .tracking(1.2)
-                .foregroundStyle(theme.textSecondary)
             ForEach(0..<count, id: \.self) { index in
                 thumb(index)
             }
@@ -208,8 +271,8 @@ struct SheetRail: View {
             .help("Добавить лист")
             .accessibilityLabel("Добавить лист")
         }
-        .padding(.top, 14)
-        .padding(.bottom, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 14)
         .padding(.horizontal, 12)
     }
 
@@ -220,7 +283,8 @@ struct SheetRail: View {
         } label: {
             VStack(spacing: 4) {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(theme.contrast.opacity(isCurrent ? 0.14 : 0.07))
+                    .fill(theme.sheet)
+                    .shadow(color: .black.opacity(theme.shadowOpacity), radius: 3, y: 1)
                     .frame(width: 46, height: 65)
                     .overlay(alignment: .topLeading) {
                         VStack(alignment: .leading, spacing: 4) {

@@ -30,17 +30,16 @@ private struct HighlightSwatch: View {
     let color: HighlightColor
     var isSelected = false
     var action: () -> Void
+    @Environment(\.lumenTheme) private var theme
 
     var body: some View {
         Button(action: action) {
             Circle()
                 .fill(Color(hex: color.hex))
-                .frame(width: 26, height: 26)
-                .overlay(Circle().strokeBorder(
-                    isSelected ? AnyShapeStyle(Color.white.opacity(0.95)) : AnyShapeStyle(LinearGradient(colors: [.white.opacity(0.55), .white.opacity(0)], startPoint: .top, endPoint: .center)),
-                    lineWidth: isSelected ? 2.5 : 1
-                ))
-                .shadow(color: Color(hex: color.hex).opacity(0.45), radius: 5, y: 3)
+                .frame(width: 18, height: 18)
+                .padding(3)
+                .overlay(Circle().strokeBorder(theme.textPrimary.opacity(isSelected ? 0.8 : 0), lineWidth: 1.5))
+                .frame(width: 28, height: 28)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -49,8 +48,9 @@ private struct HighlightSwatch: View {
     }
 }
 
-/// Мягкая плашка действий над выделением. На Mac и iPad это капсула в одну строку,
-/// на iPhone две строки: цвета сверху и крупная кнопка «В заметки» снизу.
+/// Пузырь действий у выделения: цвета, «В заметки» акцентом, остальное тихими значками.
+/// На Mac и iPad это стеклянная плашка в одну строку, на iPhone две строки: цвета сверху
+/// и крупная кнопка «В заметки» снизу.
 private struct HighlightActionBar<Extra: View>: View {
     var selectedColor: HighlightColor?
     var isCompact: Bool
@@ -78,9 +78,9 @@ private struct HighlightActionBar<Extra: View>: View {
                     }
                 }
             } else {
-                HStack(spacing: 10) {
+                HStack(spacing: 4) {
                     swatches
-                    Capsule().fill(.white.opacity(0.15)).frame(width: 1, height: 22)
+                    Capsule().fill(theme.line).frame(width: 1, height: 20).padding(.horizontal, 2)
                     excerptButton(expands: false)
                     extra()
                     closeButton
@@ -101,7 +101,7 @@ private struct HighlightActionBar<Extra: View>: View {
     private func excerptButton(expands: Bool) -> some View {
         let button = Button(action: onExcerpt) {
             Label("В заметки", systemImage: "quote.opening")
-                .font(.system(size: expands ? 16 : 14, weight: .heavy, design: .rounded))
+                .font(.system(size: expands ? 16 : 13.5, weight: .semibold))
         }
         .buttonStyle(ReaderPillButtonStyle(isProminent: true, expands: expands))
         .keyboardShortcut("e", modifiers: .command)
@@ -123,7 +123,7 @@ private struct HighlightActionBar<Extra: View>: View {
         Button(action: onClose) {
             Image(systemName: "xmark")
         }
-        .buttonStyle(ReaderPillButtonStyle(size: isCompact ? 46 : 34))
+        .buttonStyle(ReaderPillButtonStyle(size: isCompact ? 46 : 30))
         .help("Закрыть")
     }
 }
@@ -222,27 +222,26 @@ private struct ReaderPillButtonStyle: ButtonStyle {
     var isProminent = false
     /// Растянуть на всю ширину: крупная кнопка «В заметки» на iPhone.
     var expands = false
-    var size: CGFloat = 34
+    var size: CGFloat = 30
     @Environment(\.lumenTheme) private var theme
 
     func makeBody(configuration: ButtonStyleConfiguration) -> some View {
-        configuration.label
+        let shape = RoundedRectangle(cornerRadius: expands ? 14 : 8, style: .continuous)
+        return configuration.label
             .labelStyle(.titleAndIcon)
-            .foregroundStyle(isProminent ? ReaderStyle.onPeach : theme.textPrimary)
-            .padding(.horizontal, isProminent ? 14 : 0)
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(isProminent ? theme.onAccent : theme.textPrimary)
+            .padding(.horizontal, isProminent ? 10 : 0)
             .frame(maxWidth: expands ? .infinity : nil)
             .frame(minWidth: size, minHeight: expands ? 46 : size)
             .background {
                 if isProminent {
-                    Capsule()
-                        .fill(ReaderStyle.peachGradient)
-                        .overlay(Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 0.5))
-                        .shadow(color: ReaderStyle.peachDeep.opacity(0.55), radius: 8, y: 4)
-                } else {
-                    Circle().fill(.white.opacity(0.08))
+                    shape.fill(theme.accent)
+                } else if configuration.isPressed {
+                    shape.fill(theme.surface2)
                 }
             }
-            .contentShape(Capsule())
+            .contentShape(shape)
             .scaleEffect(configuration.isPressed ? 0.95 : 1)
             .animation(LumenMotion.quick, value: configuration.isPressed)
     }
@@ -250,17 +249,11 @@ private struct ReaderPillButtonStyle: ButtonStyle {
 
 private extension View {
     func readerBarStyle(_ theme: Theme, isCompact: Bool) -> some View {
-        let shape = RoundedRectangle(cornerRadius: isCompact ? 30 : 28, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: isCompact ? 24 : 12, style: .continuous)
         return self
-            .padding(.leading, isCompact ? 14 : 14)
-            .padding(.trailing, isCompact ? 12 : 8)
-            .padding(.vertical, isCompact ? 12 : 8)
-            .background(theme.cardFill.opacity(0.5), in: shape)
-            .background(.ultraThinMaterial, in: shape)
-            .overlay(shape.strokeBorder(
-                LinearGradient(colors: [.white.opacity(0.3), .white.opacity(0.06)], startPoint: .top, endPoint: .bottom),
-                lineWidth: 1
-            ))
-            .shadow(color: .black.opacity(0.35), radius: 18, y: 10)
+            .padding(.leading, isCompact ? 14 : 6)
+            .padding(.trailing, isCompact ? 12 : 5)
+            .padding(.vertical, isCompact ? 12 : 5)
+            .lumenGlass(shape, prominent: true)
     }
 }

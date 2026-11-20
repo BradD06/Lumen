@@ -4,18 +4,19 @@ import SwiftUI
 
 /// Мягкие цвета и формы читалки: скруглённые листы, пастельные акценты.
 enum ReaderStyle {
-    static let peach = Color(hex: 0xFFB59A)
-    static let peachDeep = Color(hex: 0xF59482)
+    /// Главная кнопка читалки в акценте «Острова» (между светлым и тёмным, чтобы читался на обоих).
+    static let peach = Color(hex: 0x6C6AF6)
+    static let peachDeep = Color(hex: 0x5B5BF0)
     static let lilac = Color(hex: 0xCBB2F2)
-    /// Тёмно-сливовый ink для текста на кнопке-персике.
-    static let onPeach = Color(hex: 0x3A1C22)
+    /// Текст на главной кнопке.
+    static let onPeach = Color.white
 
-    static let sheetRadius: CGFloat = 32
-    static let cardRadius: CGFloat = 28
+    static let sheetRadius: CGFloat = 14
+    static let cardRadius: CGFloat = 12
     static let gap: CGFloat = 14
 
     static var peachGradient: LinearGradient {
-        LinearGradient(colors: [Color(hex: 0xFFC6A6), peachDeep], startPoint: .topLeading, endPoint: .bottomTrailing)
+        LinearGradient(colors: [peach, peachDeep], startPoint: .top, endPoint: .bottom)
     }
 }
 
@@ -23,7 +24,7 @@ extension ReaderAppearance.Palette {
     /// Цвета листа книги сверху вниз.
     var sheetColors: [Color] {
         switch self {
-        case .night: [Color(hex: 0x2B1E31), Color(hex: 0x33243A)]
+        case .night: [Color(hex: 0x141417), Color(hex: 0x141417)]
         case .paper: [Color(hex: 0xF4EADB), Color(hex: 0xF4EADB)]
         case .dawn: [Color(hex: 0xFBE6DA), Color(hex: 0xFBE6DA)]
         case .original: [.white, .white]
@@ -33,7 +34,7 @@ extension ReaderAppearance.Palette {
     /// Цвет текста на листе: им же рисуются прогресс и подписи поверх книги.
     var ink: Color {
         switch self {
-        case .night: Color(hex: 0xF3E3DA)
+        case .night: Color(hex: 0xD8D6D0)
         case .paper: Color(hex: 0x4A3A30)
         case .dawn: Color(hex: 0x5B3B3E)
         case .original: Color(hex: 0x2A2226)
@@ -54,14 +55,10 @@ extension View {
             // Тень отбрасывает само стекло, а не всё, что на нём: раньше каждая прокрутка
             // и буква в заметках рядом с книгой пересчитывала тень всей заметки.
             .background {
-                shape.fill(.ultraThinMaterial)
-                    .overlay(shape.fill(theme.cardFill.opacity(0.45)))
-                    .shadow(color: .black.opacity(0.3), radius: 24, y: 14)
+                shape.fill(theme.sheet)
+                    .shadow(color: .black.opacity(theme.shadowOpacity), radius: 20, y: 10)
             }
-            .overlay(shape.strokeBorder(
-                LinearGradient(colors: [.white.opacity(0.18), .white.opacity(0.04)], startPoint: .top, endPoint: .bottom),
-                lineWidth: 1
-            ))
+            .overlay(shape.strokeBorder(theme.cardStroke, lineWidth: 1))
     }
 
     /// Лист книги: свой цвет, большое скругление и мягкая тень.

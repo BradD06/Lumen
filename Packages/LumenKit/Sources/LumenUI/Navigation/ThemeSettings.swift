@@ -1,11 +1,13 @@
 import LumenThemes
 import SwiftUI
-#if os(iOS)
+#if os(macOS)
+import AppKit
+#else
 import UIKit
 #endif
 
 extension View {
-    /// Применяет оформление «Кабинета»: цвета, тёмный режим, шрифт с засечками.
+    /// Применяет оформление «Острова»: светлая или тёмная тема, цвета, шрифт.
     /// Вешается один раз на корень окна, всё внутри (и листы) берёт тему из окружения.
     public func lumenThemed() -> some View {
         modifier(LumenThemeHost())
@@ -13,7 +15,7 @@ extension View {
 }
 
 extension View {
-    /// Верхняя полоса окна (заголовок, кнопки) в цвет кабинета, а не системная серая.
+    /// Верхняя полоса окна (заголовок, кнопки) в цвет фона, а не системная серая.
     func themedToolbar() -> some View {
         modifier(ThemedToolbar())
     }
@@ -23,7 +25,7 @@ private struct ThemedToolbar: ViewModifier {
     @Environment(\.lumenTheme) private var theme
 
     func body(content: Content) -> some View {
-        let fill = theme.backgroundStops.first ?? .clear
+        let fill = theme.background
         #if os(macOS)
         content
             .toolbarBackground(fill, for: .windowToolbar)
@@ -38,20 +40,14 @@ private struct ThemedToolbar: ViewModifier {
 }
 
 private struct LumenThemeHost: ViewModifier {
-    @Setting(Theme.storageKey) private var schemeID = Theme.study.id
-    @Setting(DaylightSchedule.enabledKey) private var followsDaylight = false
-    @Setting(DaylightSchedule.dayKey) private var dayID = Theme.linen.id
-    @Setting(DaylightSchedule.eveningKey) private var eveningID = Theme.study.id
-    @Setting(DaylightSchedule.nightKey) private var nightID = Theme.midnight.id
+    @Setting(AppearanceMode.storageKey) private var mode = AppearanceMode.system
     @Setting(CoverTint.enabledKey) private var followsCover = true
-    /// Текущее время для «света по времени суток»; обновляется, когда меняется часть суток.
-    @State private var now = Date()
+    /// Светлая или тёмная сейчас система (или то, что попросили у окна).
+    @Environment(\.colorScheme) private var systemScheme
     private let coverTint = CoverTint.shared
 
     private var theme: Theme {
-        let base = followsDaylight
-            ? DaylightSchedule(dayID: dayID, eveningID: eveningID, nightID: nightID).theme(at: now)
-            : Theme.named(schemeID)
+        let base = mode.theme(system: systemScheme)
         // Окно в цвет обложки открытой заметки, если это включено в Настройках.
         guard followsCover, let cover = coverTint.color else { return base }
         return base.tinted(by: cover)
@@ -63,137 +59,148 @@ private struct LumenThemeHost: ViewModifier {
             .environment(\.lumenTheme, theme)
             .fontDesign(theme.fontDesign)
             .tint(theme.accent)
-            .preferredColorScheme(theme.colorScheme)
             #if os(macOS)
-            .background(WindowChrome(color: theme.backgroundStops.first ?? .clear))
+            .background(WindowChrome(color: theme.background))
             #endif
             .task { AppIcon.resetToPrimary() }
-            .task(id: followsDaylight) {
-                guard followsDaylight else { return }
-                while !Task.isCancelled {
-                    now = Date()
-                    // Спим до смены части суток, но не дольше 15 минут: компьютер мог уснуть.
-                    let wait = min(DaylightSchedule.nextChange(after: now).timeIntervalSince(now) + 1, 15 * 60)
-                    try? await Task.sleep(for: .seconds(max(wait, 1)))
-                }
-            }
+            .task(id: mode) { WindowAppearance.apply(mode) }
     }
 }
 
-/// Раздел «Оформление» в Настройках: шесть цветовых схем и «свет по времени суток».
+/// Светлая, тёмная или как в системе: просим у самого окна, а не через `preferredColorScheme`.
+/// Тот не умеет вернуться к «как в системе»: окно остаётся в последней выбранной схеме.
+@MainActor
+enum WindowAppearance {
+    static func apply(_ mode: AppearanceMode) {
+        #if os(macOS)
+        switch mode {
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+        #else
+        let style: UIUserInterfaceStyle = switch mode {
+        case .system: .unspecified
+        case .light: .light
+        case .dark: .dark
+        }
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows {
+                window.overrideUserInterfaceStyle = style
+            }
+        }
+        #endif
+    }
+}
+
+/// Раздел «Оформление» в Настройках: как в системе, светлая или тёмная, и окно в цвет обложки.
 struct AppearanceSection: View {
-    @Setting(Theme.storageKey) private var schemeID = Theme.study.id
-    @Setting(DaylightSchedule.enabledKey) private var followsDaylight = false
-    @Setting(DaylightSchedule.dayKey) private var dayID = Theme.linen.id
-    @Setting(DaylightSchedule.eveningKey) private var eveningID = Theme.study.id
-    @Setting(DaylightSchedule.nightKey) private var nightID = Theme.midnight.id
+    @Setting(AppearanceMode.storageKey) private var mode = AppearanceMode.system
     @Setting(CoverTint.enabledKey) private var followsCover = true
 
     var body: some View {
         Section {
+            HStack(spacing: 10) {
+                ForEach(AppearanceMode.allCases) { option in
+                    AppearanceSwatch(mode: option, isSelected: option == mode) {
+                        mode = option
+                    }
+                    .keyHint("Оформление: \(option.title)") { mode = option }
+                }
+            }
+            .padding(.vertical, 4)
             Toggle("Окно в цвет обложки заметки", isOn: $followsCover)
                 .accessibilityIdentifier("settings.coverTint")
                 .keyHint("Окно в цвет обложки") { followsCover.toggle() }
         } header: {
-            Text("Обложки")
-        } footer: {
-            Text(followsCover
-                ? "Открыта заметка с обложкой: фон окна и кнопки берут цвет обложки. Без обложки окно в цветах схемы."
-                : "Окно всегда в цветах выбранной схемы, какая бы обложка ни была у заметки.")
-        }
-        Section {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 10)], spacing: 10) {
-                ForEach(Theme.schemes) { scheme in
-                    SchemeSwatch(scheme: scheme, isSelected: !followsDaylight && scheme.id == schemeID) {
-                        schemeID = scheme.id
-                        followsDaylight = false
-                    }
-                    .keyHint("Схема \(scheme.name)") {
-                        schemeID = scheme.id
-                        followsDaylight = false
-                    }
-                }
-            }
-            .padding(.vertical, 4)
-            Toggle("Менять по времени суток", isOn: $followsDaylight)
-                .keyHint("По времени суток") { followsDaylight.toggle() }
-            if followsDaylight {
-                schemePicker(.day, selection: $dayID)
-                schemePicker(.evening, selection: $eveningID)
-                schemePicker(.night, selection: $nightID)
-            }
-        } header: {
             Text("Оформление")
         } footer: {
-            Text(followsDaylight
-                ? "День с 7:00, вечер с 19:00, ночь с 23:00."
-                : "Можно включить смену схемы по времени суток: например, днём «Молочный лёд», а ночью «Северный туман».")
-        }
-    }
-
-    private func schemePicker(_ period: DaylightSchedule.Period, selection: Binding<String>) -> some View {
-        Picker(period.title, selection: selection) {
-            ForEach(Theme.schemes) { scheme in
-                Text(scheme.name).tag(scheme.id)
-            }
+            Text(followsCover
+                ? "Открыта заметка с обложкой: фон окна и акцент берут цвет обложки."
+                : "Окно всегда в цветах темы, какая бы обложка ни была у заметки.")
         }
     }
 }
 
-/// Плитка схемы: кусочек её фона, полка из трёх корешков и латунная полоска.
-private struct SchemeSwatch: View {
+/// Плитка выбора: кусочек фона, белый (или графитовый) лист и остров внизу.
+/// «Как в системе» показывает обе темы пополам.
+private struct AppearanceSwatch: View {
     @Environment(\.lumenTheme) private var current
-    let scheme: Theme
+    let mode: AppearanceMode
     let isSelected: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                ZStack(alignment: .bottomLeading) {
-                    LinearGradient(colors: scheme.backgroundStops, startPoint: .top, endPoint: .bottom)
-                    RadialGradient(
-                        colors: [scheme.glow.opacity(scheme.glowStrength), .clear],
-                        center: .topTrailing, startRadius: 0, endRadius: 70
-                    )
-                    HStack(alignment: .bottom, spacing: 3) {
-                        ForEach(Array(scheme.wallColors.prefix(4).enumerated()), id: \.offset) { index, color in
-                            RoundedRectangle(cornerRadius: 1.5)
-                                .fill(color)
-                                .frame(width: 9, height: CGFloat(30 + (index * 7) % 12))
-                        }
+            VStack(spacing: 6) {
+                preview
+                    .frame(height: 62)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(isSelected ? current.accent : current.cardStroke, lineWidth: isSelected ? 2 : 1)
                     }
-                    .padding(.leading, 10)
-                    .padding(.bottom, 6)
-                    Rectangle()
-                        .fill(scheme.accent.opacity(0.8))
-                        .frame(height: 3)
-                }
-                .frame(height: 64)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Text(scheme.name)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(current.textPrimary)
-                Text(scheme.caption)
-                    .font(.caption2)
-                    .foregroundStyle(current.textSecondary)
-                    .lineLimit(2, reservesSpace: true)
-                    .multilineTextAlignment(.leading)
+                Text(mode.title)
+                    .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? current.textPrimary : current.textSecondary)
             }
-            .padding(6)
-            .background {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(isSelected ? current.accent : current.cardStroke, lineWidth: isSelected ? 2 : 1)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Схема \(scheme.name)")
+        .accessibilityLabel("Оформление: \(mode.title)")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier("appearance.\(mode.rawValue)")
+    }
+
+    @ViewBuilder
+    private var preview: some View {
+        switch mode {
+        case .light: ThemeMiniature(theme: .light)
+        case .dark: ThemeMiniature(theme: .dark)
+        case .system:
+            HStack(spacing: 0) {
+                ThemeMiniature(theme: .light)
+                ThemeMiniature(theme: .dark)
+            }
+        }
     }
 }
 
-/// Раньше значок менялся вместе с темой. Тем больше нет, и значок «Кабинета» стал основным:
+/// Маленький экран темы: фон, лист с двумя строчками и капсула острова.
+private struct ThemeMiniature: View {
+    let theme: Theme
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            theme.background
+            VStack(alignment: .leading, spacing: 4) {
+                Capsule().fill(theme.textPrimary.opacity(0.8)).frame(width: 30, height: 4)
+                Capsule().fill(theme.textSecondary.opacity(0.5)).frame(width: 40, height: 3)
+                Capsule().fill(theme.textSecondary.opacity(0.5)).frame(width: 26, height: 3)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(theme.sheet, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
+            HStack(spacing: 3) {
+                Circle().fill(theme.surface2).frame(width: 7, height: 7)
+                Circle().fill(theme.textTertiary).frame(width: 5, height: 5)
+                Circle().fill(theme.accent).frame(width: 7, height: 7)
+            }
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(theme.glassFill, in: Capsule())
+            .overlay(Capsule().strokeBorder(theme.cardStroke))
+            .padding(.bottom, 4)
+        }
+    }
+}
+
+/// Раньше значок менялся вместе с темой. Теперь значок один:
 /// на iPhone и iPad снимаем запасной значок, если его когда-то поставили.
 @MainActor
 enum AppIcon {

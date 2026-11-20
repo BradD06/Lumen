@@ -27,6 +27,7 @@ struct LumenApp: App {
                     AppEnvironment.useRecovered(recovered)
                     database = recovered
                 }
+                .lumenThemed()
             }
         }
         #if os(macOS)

@@ -5,6 +5,8 @@ import LumenThemes
 import SwiftUI
 
 #if os(iOS)
+import Combine
+import UIKit
 
 /// Куда можно перейти внутри вкладки на iPhone. Каждый переход кладётся в стек вкладки,
 /// поэтому «Назад» возвращает туда, откуда пришли: из книги в заметку, из заметки в папку.
@@ -21,9 +23,12 @@ enum PhoneRoute: Hashable {
 }
 
 extension PhoneRoute {
-    /// Книга открыта во весь экран, без нижних панелей.
-    var isReader: Bool {
-        if case .source = self { true } else { false }
+    /// Заметка и книга открыты во весь экран, без капсулы разделов внизу.
+    var hidesTabCapsule: Bool {
+        switch self {
+        case .page, .source: true
+        default: false
+        }
     }
 }
 
@@ -35,7 +40,8 @@ enum PhoneTab: Hashable {
     case search
 }
 
-/// iPhone: вместо табло с комнатами вкладки внизу экрана, у каждой свой стек экранов.
+/// iPhone: внизу слева стеклянная капсула с четырьмя разделами, справа отдельные круглые
+/// кнопки поиска и «+», под большим пальцем. У каждого раздела свой стек экранов.
 /// Сами экраны те же, что на Mac и iPad, они подстраиваются под узкую ширину.
 /// Избранное на телефоне в начале списка на полке, корзина и iCloud в её меню.
 struct PhoneRootView: View {
@@ -46,9 +52,11 @@ struct PhoneRootView: View {
     @State private var isCreating = false
     @State private var isImportingBook = false
     @State private var isSettingsPresented = false
+    /// Пока открыта клавиатура, капсула разделов прячется: иначе она ехала бы над клавиатурой.
+    @State private var isKeyboardShown = false
 
     var body: some View {
-        // Вкладки те же, что колонка слева на Mac и iPad: названия и значки из `StudyRoom`.
+        // Разделы те же, что в острове на Mac и iPad: названия и значки из `StudyRoom`.
         TabView(selection: $tab) {
             Tab(StudyRoom.desk.title, systemImage: StudyRoom.desk.systemImage, value: PhoneTab.home) {
                 stack(.home) {
@@ -61,13 +69,11 @@ struct PhoneRootView: View {
                         onShowLibrary: { tab = .library }
                     )
                     .toolbar { settingsButton }
-                    .overlay(alignment: .bottomTrailing) { createButton }
                 }
             }
             Tab(StudyRoom.notes.title, systemImage: StudyRoom.notes.systemImage, value: PhoneTab.inbox) {
                 stack(.inbox) {
                     InboxView(database: database, onOpen: { push(.page($0)) }, onNewNote: newQuickNote)
-                        .overlay(alignment: .bottomTrailing) { createButton }
                 }
             }
             Tab(StudyRoom.tasks.title, systemImage: StudyRoom.tasks.systemImage, value: PhoneTab.tasks) {
@@ -83,7 +89,7 @@ struct PhoneRootView: View {
                         }
                 }
             }
-            Tab(value: PhoneTab.search, role: .search) {
+            Tab("Поиск", systemImage: "magnifyingglass", value: PhoneTab.search) {
                 stack(.search) {
                     SearchView(
                         database: database,
@@ -93,6 +99,26 @@ struct PhoneRootView: View {
                     )
                 }
             }
+        }
+        // Системная полоса вкладок спрятана (`stack`), вместо неё капсула «Острова».
+        // Место под неё экраны оставляют сами (`capsuleRoom`).
+        .overlay(alignment: .bottom) {
+            if showsTabCapsule {
+                PhoneTabCapsule(
+                    selection: tab,
+                    onSelect: select,
+                    onSearch: { select(.search) },
+                    onCreate: { isCreating = true }
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(LumenMotion.standard, value: showsTabCapsule)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            isKeyboardShown = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            isKeyboardShown = false
         }
         .overlay { LampLight() }
         // Книги из «Файлов», Telegram и «Поделиться», ссылки lumen:// на страницы, книги и цитаты.
@@ -143,11 +169,24 @@ struct PhoneRootView: View {
         )
     }
 
-    /// Круглая «+» над вкладками: создать что угодно одним касанием.
-    private var createButton: some View {
-        PhoneCreateButton { isCreating = true }
-            .padding(.trailing, 20)
-            .padding(.bottom, 16)
+    /// Капсула разделов видна на экранах разделов и папок. Заметка и книга открыты
+    /// во весь экран, и пока печатаешь, капсула тоже не мешает.
+    private var showsTabCapsule: Bool {
+        !isKeyboardShown && paths[tab]?.last?.hidesTabCapsule != true
+    }
+
+    /// Пустое место внизу экрана раздела, чтобы конец списка не прятался под капсулой.
+    private func capsuleRoom(_ shows: Bool) -> some View {
+        Color.clear.frame(height: shows && !isKeyboardShown ? PhoneTabCapsule.height + 10 : 0)
+    }
+
+    /// Повторное касание открытого раздела возвращает к его началу, как у системных вкладок.
+    private func select(_ newTab: PhoneTab) {
+        if newTab == tab {
+            paths[newTab] = []
+        } else {
+            tab = newTab
+        }
     }
 
     /// «Чтение» на iPhone живёт на полке: отдельной вкладке внизу нет места.
@@ -175,11 +214,13 @@ struct PhoneRootView: View {
         NavigationStack(path: path(for: tab)) {
             root()
                 .themedToolbar()
+                .toolbar(.hidden, for: .tabBar)
+                .safeAreaInset(edge: .bottom, spacing: 0) { capsuleRoom(true) }
                 .navigationDestination(for: PhoneRoute.self) { route in
                     destination(route)
                         .themedToolbar()
-                        // Книга во весь экран: панель вкладок ей только мешает.
-                        .toolbar(route.isReader ? .hidden : .automatic, for: .tabBar)
+                        .toolbar(.hidden, for: .tabBar)
+                        .safeAreaInset(edge: .bottom, spacing: 0) { capsuleRoom(!route.hidesTabCapsule) }
                 }
         }
     }
@@ -321,22 +362,89 @@ struct PhoneRootView: View {
     }
 }
 
-/// Круглая кнопка «Создать» в углу экрана.
-private struct PhoneCreateButton: View {
-    var action: () -> Void
+/// Низ экрана iPhone: слева стеклянная капсула с разделами, справа круглый поиск и «+».
+private struct PhoneTabCapsule: View {
+    let selection: PhoneTab
+    var onSelect: (PhoneTab) -> Void
+    var onSearch: () -> Void
+    var onCreate: () -> Void
+
     @Environment(\.lumenTheme) private var theme
+    @Namespace private var markSpace
+
+    static let height: CGFloat = 60
+
+    private static let tabs: [PhoneTab] = [.home, .inbox, .tasks, .library]
+
+    /// Названия и значки те же, что у разделов острова на Mac и iPad.
+    private static func room(_ tab: PhoneTab) -> StudyRoom {
+        switch tab {
+        case .home, .search: .desk
+        case .inbox: .notes
+        case .tasks: .tasks
+        case .library: .shelf
+        }
+    }
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: "plus")
-                .font(.title2.weight(.bold))
-                .foregroundStyle(theme.vividCard(0).foreground)
-                .frame(width: 60, height: 60)
-                .background(LinearGradient(colors: theme.vividCard(0).colors, startPoint: .top, endPoint: .bottom), in: Circle())
-                .shadow(color: (theme.vividCard(0).colors.last ?? .orange).opacity(0.45), radius: 12, y: 6)
+        HStack(spacing: 8) {
+            HStack(spacing: 2) {
+                ForEach(Self.tabs, id: \.self) { tab in
+                    roomButton(Self.room(tab), tab: tab)
+                }
+            }
+            .padding(.horizontal, 6)
+            .frame(height: 60)
+            .lumenGlass(Capsule())
+            .animation(LumenMotion.standard, value: selection)
+            Spacer(minLength: 0)
+            Button(action: onSearch) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(selection == .search ? theme.textPrimary : theme.textSecondary)
+                    .frame(width: 60, height: 60)
+                    .lumenGlass(Circle())
+                    .contentShape(Circle())
+            }
+            .accessibilityLabel("Поиск")
+            .accessibilityAddTraits(selection == .search ? .isSelected : [])
+            Button(action: onCreate) {
+                Image(systemName: "plus")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(theme.onAccent)
+                    .frame(width: 60, height: 60)
+                    .background(theme.accent, in: Circle())
+                    .shadow(color: .black.opacity(theme.shadowOpacity * 1.6), radius: 14, y: 8)
+                    .contentShape(Circle())
+            }
+            .accessibilityLabel("Создать")
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Создать")
+        .padding(.horizontal, 14)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+    }
+
+    private func roomButton(_ room: StudyRoom, tab: PhoneTab) -> some View {
+        let isOn = selection == tab
+        return Button {
+            onSelect(tab)
+        } label: {
+            Image(systemName: room.systemImage)
+                .font(.system(size: 20, weight: isOn ? .semibold : .regular))
+                .foregroundStyle(isOn ? theme.textPrimary : theme.textSecondary)
+                .frame(width: 52, height: 48)
+                .background {
+                    if isOn {
+                        Capsule()
+                            .fill(theme.surface2)
+                            .matchedGeometryEffect(id: "mark", in: markSpace)
+                    }
+                }
+                .contentShape(Capsule())
+        }
+        .accessibilityLabel(room.title)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }
 
