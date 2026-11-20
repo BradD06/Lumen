@@ -7,6 +7,10 @@ import LumenStorage
 
 @MainActor
 struct NotebookShapesTests {
+    init() {
+        PencilKitTestGuard.install()
+    }
+
     /// Штрих по точкам, как от руки: `pause` секунд в конце перо стоит на месте.
     private func stroke(_ locations: [CGPoint], startedAgo: TimeInterval = 1, pause: TimeInterval = 0, width: CGFloat = 4) -> PKStroke {
         let step = 0.01

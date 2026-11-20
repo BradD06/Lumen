@@ -7,6 +7,10 @@ import LumenStorage
 
 @MainActor
 struct DrawingLassoTests {
+    init() {
+        PencilKitTestGuard.install()
+    }
+
     /// Штрих по прямой из нескольких точек.
     private func stroke(from: CGPoint, to: CGPoint) -> PKStroke {
         let points = (0...4).map { step in

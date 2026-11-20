@@ -7,6 +7,10 @@ import LumenStorage
 
 @MainActor
 struct NotebookSheetStripTests {
+    init() {
+        PencilKitTestGuard.install()
+    }
+
     private func stroke(from: CGPoint, to: CGPoint) -> PKStroke {
         let points = [from, to].enumerated().map { index, location in
             PKStrokePoint(
