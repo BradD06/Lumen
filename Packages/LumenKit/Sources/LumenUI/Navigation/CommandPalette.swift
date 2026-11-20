@@ -79,6 +79,7 @@ struct CommandPalette: View {
         .frame(width: isCompact ? nil : 640)
         .frame(minHeight: 300, idealHeight: 460, maxHeight: isCompact ? .infinity : 560)
         .background(ThemedBackground())
+        .dismissesOnOutsideClick(onDismiss)
         .task { await loadRecent() }
         .task(id: query) { await runSearch() }
         .onChange(of: query) { _, _ in selected = 0 }

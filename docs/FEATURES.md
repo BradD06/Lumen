@@ -19,7 +19,7 @@
 | «Назад / Вперёд» как в браузере (⌘[ ⌘]) у каждой вкладки | Mac/iPad | `Navigation/Workspace.swift` |
 | Разделить экран на две панели (⌘\\), перетащить вкладку к краю, панели рядом или друг под другом, поменять местами, ⌥⌘← → между панелями | Mac/iPad | `Navigation/PaneSplit.swift`, `PaneLayout.swift`, `LumenCore/PaneArrangement.swift` |
 | Ссылка из заметки открывается в соседней панели | Mac/iPad | `RootView.openLink(_:from:)` |
-| Палитра команд ⌘K: поиск страниц, книг, цитат, недавнее, действия; ⌘↵ открывает рядом | все (на iPhone вкладка «Поиск») | `Navigation/CommandPalette.swift`, `RootView.paletteExtras` |
+| Палитра команд ⌘K: поиск страниц, книг, цитат, недавнее, действия; ⌘↵ открывает рядом; на Mac закрывается щелчком мимо окна | все (на iPhone вкладка «Поиск») | `Navigation/CommandPalette.swift`, `Navigation/OutsideClick.swift`, `RootView.paletteExtras` |
 | Управление без мыши: ⌘J ставит букву на всё, что нажимается; ⇧+буква открывает меню; работает в русской раскладке | Mac (iPad с клавиатурой) | `Navigation/KeyHints.swift` |
 | Режим фокуса (⇧⌘F): прячет остров с разделами и вкладки, таймер учёбы 25 минут | Mac/iPad | `Navigation/FocusMode.swift`, `Editor/PageChrome.swift` |
 | Лампа на полке «Стола»: затемняет края окна и включает таймер | все | `Library/StudyLamp.swift` |
