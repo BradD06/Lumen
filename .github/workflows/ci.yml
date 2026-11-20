@@ -22,19 +22,36 @@ jobs:
           xcodebuild -version
           swift --version
       - name: swift test
-        # При падении процесса тестов Swift сам печатает, в каком потоке и функции оно случилось.
+        # Падение отдаём системе (не Swift): тогда отчёт macOS о сбое пишет и причину падения.
         env:
-          SWIFT_BACKTRACE: enable=yes,interactive=no,color=no,sanitize=yes,unwind=precise,threads=crashed,images=all
+          SWIFT_BACKTRACE: enable=no
         run: swift test --package-path Packages/LumenKit
       - name: Отчёт о падении тестов
-        # Процесс тестов иногда падает сигналом 5 без подробностей: печатаем и отчёт macOS о сбое.
+        # Процесс тестов иногда падает сигналом 5: печатаем причину и стек упавшего потока из отчёта macOS.
         if: failure()
         run: |
-          sleep 15
-          for report in $(ls -t ~/Library/Logs/DiagnosticReports/*.ips /Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -3); do
+          sleep 30
+          ls -lt ~/Library/Logs/DiagnosticReports /Library/Logs/DiagnosticReports 2>/dev/null | head -20
+          find ~/Library/Logs/DiagnosticReports /Library/Logs/DiagnosticReports -name '*.ips' -mmin -30 2>/dev/null | while read -r report; do
             echo "=== $report"
-            head -c 60000 "$report"
-            echo
+            python3 - "$report" <<'PY'
+          import json, sys
+          text = open(sys.argv[1]).read()
+          body = json.loads(text[text.index("\n") + 1:])
+          print("exception:", body.get("exception"))
+          print("asi:", json.dumps(body.get("asi"), ensure_ascii=False))
+          images = body.get("usedImages", [])
+          for index, thread in enumerate(body.get("threads", [])):
+              if not thread.get("triggered"):
+                  continue
+              print("crashed thread", index, thread.get("queue"))
+              for frame in thread.get("frames", [])[:40]:
+                  image = images[frame["imageIndex"]].get("name", "?") if frame.get("imageIndex") is not None else "?"
+                  print("  ", image, frame.get("symbol"), frame.get("sourceFile", ""), frame.get("sourceLine", ""))
+          for frame in body.get("lastExceptionBacktrace", [])[:30]:
+              image = images[frame["imageIndex"]].get("name", "?") if frame.get("imageIndex") is not None else "?"
+              print("  exc:", image, frame.get("symbol"))
+          PY
           done
 
   build:
