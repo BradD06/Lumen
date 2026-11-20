@@ -139,6 +139,9 @@ extension PageEditorModel {
             $0.content.sheetPapers = NotebookSheets.insertingPapers(
                 addedPapers, after: after, into: $0.content.sheetPapers, sheetCount: count
             )
+            $0.content.sheetTexts = NotebookSheets.insertingSheets(
+                Array(repeating: String?.none, count: added), after: after, into: $0.content.sheetTexts, sheetCount: count
+            )
             if let after {
                 let drawing = NotebookEditing.insertingSheet(after: after, count: added, in: DrawingSupport.drawing(from: $0.drawing))
                 $0.drawing = DrawingSupport.data(of: drawing)
@@ -166,6 +169,7 @@ extension PageEditorModel {
             }
             $0.content.sheetBackgrounds = NotebookSheets.removing(index, from: $0.content.sheetBackgrounds)
             $0.content.sheetPapers = NotebookSheets.removingPaper(index, from: $0.content.sheetPapers)
+            $0.content.sheetTexts = NotebookSheets.removingSheet(index, from: $0.content.sheetTexts)
         }
     }
 
@@ -208,6 +212,7 @@ extension PageEditorModel {
                 $0.content.sheetCount = backgrounds.count
                 $0.content.sheetBackgrounds = backgrounds
                 $0.content.sheetPapers = nil
+                $0.content.sheetTexts = nil
             }
             return 0
         }
@@ -223,6 +228,63 @@ extension PageEditorModel {
             if let drawing { $0.drawing = DrawingSupport.data(of: drawing) }
             if let items { $0.content.items = items.isEmpty ? nil : items }
         }
+    }
+
+    /// Переставляет лист `from` на место `to` вместе со всем, что на нём: штрихами, текстами,
+    /// картинками, страницей PDF, шаблоном и распознанным текстом.
+    func moveNotebookSheet(from: Int, to: Int) {
+        guard let block = notebookBlock else { return }
+        let count = NotebookLayout.sheetCount(of: block.content)
+        guard from != to, (0..<count).contains(from), (0..<count).contains(to) else { return }
+        recordUndo()
+        update(block.id) {
+            let drawing = NotebookEditing.movingSheet(from: from, to: to, sheets: count, in: DrawingSupport.drawing(from: $0.drawing))
+            $0.drawing = DrawingSupport.data(of: drawing)
+            if let items = $0.content.items {
+                $0.content.items = NotebookEditing.movingSheet(from: from, to: to, sheets: count, in: items)
+            }
+            $0.content.sheetBackgrounds = NotebookSheets.movingSheet($0.content.sheetBackgrounds, from: from, to: to, sheetCount: count)
+            $0.content.sheetPapers = NotebookSheets.movingSheet($0.content.sheetPapers, from: from, to: to, sheetCount: count)
+            $0.content.sheetTexts = NotebookSheets.movingSheet($0.content.sheetTexts, from: from, to: to, sheetCount: count)
+        }
+    }
+
+    /// Копия листа сразу после него: те же штрихи, тексты, картинки, страница PDF и шаблон.
+    /// Одна правка в истории. Возвращает номер копии.
+    @discardableResult
+    func duplicateNotebookSheet(_ index: Int) -> Int? {
+        guard let block = notebookBlock else { return nil }
+        let count = NotebookLayout.sheetCount(of: block.content)
+        guard (0..<count).contains(index), count < NotebookLayout.maxSheets else { return nil }
+        let original = DrawingSupport.drawing(from: block.drawing)
+        let strokes = NotebookEditing.copyingStrokes(ofSheet: index, sheets: count, in: original)
+        let copies = NotebookEditing.copyingItems(ofSheet: index, sheets: count, in: block.content.items ?? [])
+        let background = NotebookSheets.background(of: block.content, sheet: index)
+        let own = block.content.sheetPapers.flatMap { $0.indices.contains(index) ? $0[index] : nil }
+        let text = block.content.sheetTexts.flatMap { $0.indices.contains(index) ? $0[index] : nil }
+        guard let copy = insertNotebookSheets([background], after: index, papers: [own]) else { return nil }
+        update(block.id) {
+            if !strokes.isEmpty {
+                var drawing = DrawingSupport.drawing(from: $0.drawing)
+                drawing.strokes.append(contentsOf: strokes)
+                $0.drawing = DrawingSupport.data(of: drawing)
+            }
+            if !copies.isEmpty {
+                $0.content.items = ($0.content.items ?? []) + copies
+            }
+            if let text {
+                var texts = NotebookSheets.padded($0.content.sheetTexts, to: count + 1)
+                texts[copy] = text
+                $0.content.sheetTexts = NotebookSheets.normalized(texts)
+            }
+        }
+        return copy
+    }
+
+    /// Распознанный почерк листов. Не шаг истории: это не правка, а то, что прочитано на листах.
+    func setSheetTexts(_ texts: [String?]?) {
+        guard let block = notebookBlock, block.content.sheetTexts != texts else { return }
+        update(block.id) { $0.content.sheetTexts = texts }
     }
 
     /// Шаблон всей тетради: достаётся всем листам, свои шаблоны листов сбрасываются.

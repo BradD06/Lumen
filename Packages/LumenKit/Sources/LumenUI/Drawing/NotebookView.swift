@@ -34,6 +34,17 @@ struct NotebookView: View {
     @State private var pdfImport: PDFImportRequest?
     /// PDF-книги из библиотеки: их страницы тоже можно положить на листы.
     @State private var libraryPDFs: [Source] = []
+    /// Миниатюры листов: колонка слева, на iPhone отдельное окно.
+    @State private var showsStrip = false
+    /// Поиск слов на листах тетради.
+    @State private var isFinding = false
+    @State private var findQuery = ""
+    /// Читает почерк листов для поиска.
+    @State private var reader = HandwritingReader()
+    #if os(iOS)
+    /// Переход холста к листу.
+    @State private var jump: NotebookJump?
+    #endif
     #if os(iOS)
     /// Где холст на экране: по нему слой правки ставит рамки поверх элементов.
     @State private var viewport = NotebookViewport()
@@ -59,7 +70,39 @@ struct NotebookView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            canvas
+            HStack(spacing: 0) {
+                if showsStrip && !isCompact {
+                    sheetStrip(columns: 1)
+                        .frame(width: 148)
+                        .background(theme.surface2.opacity(0.6))
+                    Divider()
+                }
+                canvas
+            }
+        }
+        .sheet(isPresented: Binding(get: { showsStrip && isCompact }, set: { if !$0 { showsStrip = false } })) {
+            NavigationStack {
+                sheetStrip(columns: 3) { showsStrip = false }
+                    .navigationTitle("Листы")
+                    #if os(iOS)
+                    .navigationBarTitleDisplayMode(.inline)
+                    #endif
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Готово") { showsStrip = false }
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+        }
+        // Почерк читается в фоне через пару секунд после того, как перестали писать.
+        .task(id: block?.drawing) {
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled, model.isLoaded, let block else { return }
+            let drawing = parsed.drawing(for: block.drawing)
+            if let texts = await reader.read(drawing: drawing, content: block.content), !Task.isCancelled {
+                model.setSheetTexts(texts)
+            }
         }
         // Тетрадь никогда не шире своей панели, что бы ни лежало в шапке.
         .frame(minWidth: 0, maxWidth: .infinity)
@@ -455,6 +498,115 @@ struct NotebookView: View {
             Label("Лист", systemImage: "plus")
         }
         .help("Добавить лист в конец")
+
+        findButton
+        stripButton
+    }
+
+    // MARK: Миниатюры и поиск
+
+    /// Открыть лист: прокрутить к нему тетрадь.
+    private func go(to sheet: Int) {
+        let index = min(max(sheet, 0), sheets - 1)
+        visibleSheet = index
+        #if os(iOS)
+        jump = NotebookJump(sheet: index)
+        #else
+        withAnimation(LumenMotion.standard) { topSheet = index }
+        #endif
+    }
+
+    private func sheetStrip(columns: Int, afterOpen: @escaping () -> Void = {}) -> some View {
+        NotebookSheetStrip(
+            model: model,
+            drawing: parsed.drawing(for: block?.drawing),
+            current: min(visibleSheet, sheets - 1),
+            columns: columns
+        ) { sheet in
+            go(to: sheet)
+            afterOpen()
+        }
+    }
+
+    private var stripButton: some View {
+        Button {
+            withAnimation(LumenMotion.standard) { showsStrip.toggle() }
+        } label: {
+            Label("Миниатюры листов", systemImage: "rectangle.grid.1x2")
+        }
+        .labelStyle(.iconOnly)
+        .foregroundStyle(showsStrip ? theme.accent : theme.textPrimary)
+        .help(showsStrip ? "Скрыть миниатюры листов" : "Миниатюры листов: перейти, переставить, дублировать")
+    }
+
+    private var findButton: some View {
+        Button {
+            isFinding = true
+        } label: {
+            Label("Найти на листах", systemImage: "magnifyingglass")
+        }
+        .labelStyle(.iconOnly)
+        .help("Найти слово на листах: в почерке и текстах")
+        .popover(isPresented: $isFinding, arrowEdge: .bottom) {
+            findPanel
+                .keyHintHost()
+        }
+    }
+
+    /// Поиск по листам: распознанный почерк и тексты на листах.
+    private var findPanel: some View {
+        let matches = block.map { NotebookSheets.matches(findQuery, in: $0.content) } ?? []
+        let isEmptyQuery = findQuery.trimmingCharacters(in: .whitespaces).isEmpty
+        return VStack(alignment: .leading, spacing: 10) {
+            TextField("Слово на листах", text: $findQuery)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit {
+                    if let first = matches.first { go(to: first.sheet) }
+                }
+            if isEmptyQuery {
+                Text("Ищет в написанном от руки и в текстах на листах. Почерк читается на этом устройстве через пару секунд после того, как перестали писать.")
+                    .font(.caption)
+                    .foregroundStyle(theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if matches.isEmpty {
+                Text("Не нашлось")
+                    .font(.callout)
+                    .foregroundStyle(theme.textSecondary)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(matches) { match in
+                            Button {
+                                go(to: match.sheet)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Лист \(match.sheet + 1)")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(theme.accent)
+                                    Text(match.snippet)
+                                        .font(.callout)
+                                        .foregroundStyle(theme.textPrimary)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 8)
+                                .background(
+                                    match.sheet == visibleSheet ? theme.accentSoft : .clear,
+                                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                )
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .frame(maxHeight: 320)
+            }
+        }
+        .padding(16)
+        .frame(width: 340)
     }
 
     // MARK: Листы
@@ -505,7 +657,8 @@ struct NotebookView: View {
                         attachments: model.database.attachments
                     ),
                     onTap: tool == .draw ? nil : { tapEmpty(at: $0) },
-                    onViewport: tool == .draw ? nil : { viewport = $0 }
+                    onViewport: tool == .draw ? nil : { viewport = $0 },
+                    jump: jump
                 )
                 if tool != .draw {
                     NotebookItemsEditor(

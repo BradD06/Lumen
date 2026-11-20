@@ -131,6 +131,63 @@ enum NotebookEditing {
         }
     }
 
+    /// Лист штриха или элемента по его середине (как при удалении листа).
+    static func sheet(ofMidY y: CGFloat, sheets: Int) -> Int {
+        NotebookLayout.sheetIndex(at: y + NotebookLayout.sheetGap / 2, sheets: sheets)
+    }
+
+    /// Рисунок после того, как лист `from` переставили на место `to`: штрихи едут вместе со своими листами.
+    static func movingSheet(from: Int, to: Int, sheets: Int, in drawing: PKDrawing) -> PKDrawing {
+        let mapping = NotebookSheets.sheetMapping(movingFrom: from, to: to, count: sheets)
+        return PKDrawing(strokes: drawing.strokes.map { stroke in
+            let old = sheet(ofMidY: stroke.renderBounds.midY, sheets: sheets)
+            let shift = CGFloat(mapping[old] - old) * NotebookLayout.sheetStride
+            guard shift != 0 else { return stroke }
+            var stroke = stroke
+            stroke.transform = stroke.transform.concatenating(CGAffineTransform(translationX: 0, y: shift))
+            return stroke
+        })
+    }
+
+    static func movingSheet(from: Int, to: Int, sheets: Int, in items: [NotebookItem]) -> [NotebookItem] {
+        let mapping = NotebookSheets.sheetMapping(movingFrom: from, to: to, count: sheets)
+        return items.map { item in
+            let old = sheet(ofMidY: item.frame.midY, sheets: sheets)
+            var item = item
+            item.frame = item.frame.offsetBy(dx: 0, dy: CGFloat(mapping[old] - old) * NotebookLayout.sheetStride)
+            return item
+        }
+    }
+
+    /// Штрихи листа `index`, сдвинутые на `offset` листов вниз: копия листа.
+    static func copyingStrokes(ofSheet index: Int, sheets: Int, offset: Int = 1, in drawing: PKDrawing) -> [PKStroke] {
+        let shift = CGAffineTransform(translationX: 0, y: CGFloat(offset) * NotebookLayout.sheetStride)
+        return drawing.strokes
+            .filter { sheet(ofMidY: $0.renderBounds.midY, sheets: sheets) == index }
+            .map { stroke in
+                var stroke = stroke
+                stroke.transform = stroke.transform.concatenating(shift)
+                return stroke
+            }
+    }
+
+    /// Тексты и картинки листа `index` с новыми номерами, сдвинутые на `offset` листов вниз.
+    static func copyingItems(ofSheet index: Int, sheets: Int, offset: Int = 1, in items: [NotebookItem]) -> [NotebookItem] {
+        items
+            .filter { sheet(ofMidY: $0.frame.midY, sheets: sheets) == index }
+            .map { item in
+                var copy = item
+                copy.id = UUID()
+                copy.frame = item.frame.offsetBy(dx: 0, dy: CGFloat(offset) * NotebookLayout.sheetStride)
+                return copy
+            }
+    }
+
+    /// Штрихи только листа `index`.
+    static func strokes(onSheet index: Int, sheets: Int, in drawing: PKDrawing) -> [PKStroke] {
+        drawing.strokes.filter { sheet(ofMidY: $0.renderBounds.midY, sheets: sheets) == index }
+    }
+
     /// Тексты и картинки без листа `index`: с него убираются, те, что ниже, поднимаются.
     static func removingSheet(_ index: Int, from items: [NotebookItem]) -> [NotebookItem] {
         let rect = NotebookLayout.sheetRect(index)

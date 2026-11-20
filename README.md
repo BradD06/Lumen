@@ -77,6 +77,8 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 - Perfect shapes: draw a line, circle, oval, triangle or rectangle and hold the pen for a moment at the end, and it snaps into a clean shape. Turn on Shapes mode to snap every stroke.
 - Turn PDF pages, or pages of a book from your library, into notebook sheets and write over them.
 - A lasso to select, move, resize, rotate and recolor strokes, or straighten them into clean shapes.
+- Sheet thumbnails: jump to a sheet, drag to reorder, duplicate or delete a sheet.
+- Search your handwriting: what you write by hand is read on the device, so notebooks show up in search, and the notebook's own search shows which sheets have the word.
 - A drawing block that fits inside any regular note.
 - Apple Pencil on iPad. On the Mac you can draw with the mouse or trackpad.
 
