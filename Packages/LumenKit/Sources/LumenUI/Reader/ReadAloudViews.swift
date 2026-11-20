@@ -396,46 +396,6 @@ struct ReadAloudPanel: View {
     }
 }
 
-/// Чипы в несколько строк, если не влезают в одну.
-private struct FlowChips: Layout {
-    var spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? 320
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var row: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > 0, x + size.width > width {
-                x = 0
-                y += row + spacing
-                row = 0
-            }
-            x += size.width + spacing
-            row = max(row, size.height)
-        }
-        return CGSize(width: width, height: y + row)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var row: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > bounds.minX, x + size.width > bounds.maxX {
-                x = bounds.minX
-                y += row + spacing
-                row = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            row = max(row, size.height)
-        }
-    }
-}
-
 /// Настройки → «Озвучка книг».
 struct ReadAloudSettingsSection: View {
     @Setting(ReadAloud.highlightKey) private var highlights = true

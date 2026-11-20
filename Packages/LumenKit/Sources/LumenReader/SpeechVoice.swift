@@ -195,7 +195,7 @@ public final class SpeechVoicePlayer: NSObject {
     }
 
     /// Множитель скорости → скорость синтезатора. Обычная 0.5, в 2 раза быстрее примерно 0.75.
-    static func utteranceRate(_ multiplier: Double) -> Float {
+    nonisolated static func utteranceRate(_ multiplier: Double) -> Float {
         let value = multiplier <= 1
             ? Double(AVSpeechUtteranceDefaultSpeechRate) * multiplier
             : Double(AVSpeechUtteranceDefaultSpeechRate) + (Double(AVSpeechUtteranceMaximumSpeechRate) - Double(AVSpeechUtteranceDefaultSpeechRate)) * (multiplier - 1) / 2

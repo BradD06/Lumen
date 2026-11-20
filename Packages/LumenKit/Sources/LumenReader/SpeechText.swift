@@ -60,7 +60,12 @@ public enum SpeechText {
 
     public static func parts(from blocks: [SpeechBlock], groupLength: Int = 0) -> [SpeechPart] {
         var result: [SpeechPart] = []
-        for block in blocks {
+        for original in blocks {
+            // Переносы строк внутри абзаца (в EPUB их полно) разбивщик принял бы за конец
+            // предложения: заменяем их пробелами той же длины, место в главе не меняется.
+            var block = original
+            block.text = flattened(original.text)
+            block.raw = original.raw ?? original.text
             switch block.kind {
             case .code:
                 let length = block.text.utf16.count
@@ -184,6 +189,18 @@ public enum SpeechText {
             return String(decoding: units[offset..<offset + length], as: UTF16.self)
         } ?? String(text[range])
         return SpeechPart(spoken: clean(raw), raw: raw, start: start, length: length, isHeading: isHeading)
+    }
+
+    /// Переводы строк → пробелы, по одному символу UTF-16 на символ: места не сдвигаются.
+    static func flattened(_ text: String) -> String {
+        var scalars = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            switch scalar {
+            case "\n", "\r", "\u{0B}", "\u{0C}", "\u{85}", "\u{2028}", "\u{2029}": scalars.append(" ")
+            default: scalars.append(scalar)
+            }
+        }
+        return String(scalars)
     }
 
     /// Мягкие переносы, сноски вида [12] и лишние пробелы голосу не нужны.

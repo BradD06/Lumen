@@ -41,7 +41,7 @@ struct SpeechTextTests {
     }
 
     @Test func groupingJoinsShortSentences() {
-        let text = "Раз. Два. Три. " + String(repeating: "длинно ", count: 20) + "конец."
+        let text = "Раз. Два. Три. Длинно " + String(repeating: "длинно ", count: 20) + "конец."
         let parts = SpeechText.parts(from: [SpeechBlock(text: text, start: 0)], groupLength: 40)
         #expect(parts.first?.spoken == "Раз. Два. Три.")
         #expect(parts.count == 2)
