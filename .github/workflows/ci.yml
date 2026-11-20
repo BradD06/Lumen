@@ -23,6 +23,16 @@ jobs:
           swift --version
       - name: swift test
         run: swift test --package-path Packages/LumenKit
+      - name: Отчёт о падении тестов
+        # Процесс тестов иногда падает сигналом 5 без подробностей: печатаем отчёт macOS о сбое
+        # (какой поток и какая функция), чтобы найти причину.
+        if: failure()
+        run: |
+          for report in $(ls -t ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -3); do
+            echo "=== $report"
+            head -c 60000 "$report"
+            echo
+          done
 
   build:
     name: Сборка приложения (${{ matrix.platform }})
