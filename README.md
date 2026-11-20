@@ -81,6 +81,7 @@ Lumen takes the flexible block pages of Notion and puts your reading next to the
 
 ### ✅ Tasks and databases
 - Notion-like databases with table, board, calendar and list views.
+- Relations between databases: link a row to rows of another database (a task to its project, a note to its book), optionally two-way so both databases show the link. Rollup columns sum, count, average or show the share of done items across the linked rows.
 - Formula columns: compute a value from the other columns of the row, like `{Price} * {Count}`, `if({Done}, "✓", "")` or the days left until a deadline. Formulas understand Russian words too («если», «и», «сегодня»), show a live check on the first row while you write them, and can be filtered and sorted like any column.
 - Typed properties, filters and sorting.
 - A ready-made task tracker with Today, Board, All tasks and Calendar views.

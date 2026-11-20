@@ -66,6 +66,10 @@ public enum PropertyType: String, Codable, Sendable, CaseIterable, Identifiable 
     case page
     /// Считается из других колонок строки (`PropertyDefinition.formula`, см. `Formula`).
     case formula
+    /// Связь со строками другой базы (или этой же), как в Notion. Настройка в `PropertyDefinition.relation`.
+    case relation
+    /// Сводка по связанным строкам: сколько их, сумма, среднее, процент готовых (`PropertyDefinition.rollup`).
+    case rollup
 
     public var id: String { rawValue }
 
@@ -80,6 +84,8 @@ public enum PropertyType: String, Codable, Sendable, CaseIterable, Identifiable 
         case .checkbox: "Флажок"
         case .page: "Ссылка на страницу"
         case .formula: "Формула"
+        case .relation: "Связь с базой"
+        case .rollup: "Сводка по связи"
         }
     }
 
@@ -95,6 +101,8 @@ public enum PropertyType: String, Codable, Sendable, CaseIterable, Identifiable 
         case .checkbox: "checkmark.square"
         case .page: "arrow.up.right.square"
         case .formula: "function"
+        case .relation: "link"
+        case .rollup: "sum"
         }
     }
 
@@ -103,6 +111,12 @@ public enum PropertyType: String, Codable, Sendable, CaseIterable, Identifiable 
 
     /// По свойству можно разложить строки на колонки доски.
     public var canGroup: Bool { self == .select || self == .status || self == .checkbox }
+
+    /// Значение не вводят, его считает сама база.
+    public var isComputed: Bool { self == .formula || self == .rollup }
+
+    /// Свойству нужна настройка при создании (какая база, что считать), просто сменить на него тип нельзя.
+    public var needsSetup: Bool { self == .relation || self == .rollup }
 }
 
 /// Вариант выбора: «В работе», «Высокий», «Математика».
@@ -129,13 +143,27 @@ public struct PropertyDefinition: Identifiable, Hashable, Codable, Sendable {
     public var options: [SelectOption]
     /// Текст формулы для колонки «Формула», например `{Цена} * {Количество}`.
     public var formula: String?
+    /// Для колонки «Связь с базой»: с какой базой и есть ли обратная колонка там.
+    public var relation: RelationConfig?
+    /// Для колонки «Сводка по связи»: по какой связи и что считать.
+    public var rollup: RollupConfig?
 
-    public init(id: UUID = UUID(), name: String, type: PropertyType, options: [SelectOption] = [], formula: String? = nil) {
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        type: PropertyType,
+        options: [SelectOption] = [],
+        formula: String? = nil,
+        relation: RelationConfig? = nil,
+        rollup: RollupConfig? = nil
+    ) {
         self.id = id
         self.name = name
         self.type = type
         self.options = options
         self.formula = formula
+        self.relation = relation
+        self.rollup = rollup
     }
 
     public func option(_ id: UUID?) -> SelectOption? {
@@ -214,12 +242,15 @@ public enum PropertyValue: Hashable, Codable, Sendable {
     case date(DayDate)
     case checkbox(Bool)
     case page(UUID)
+    /// Связанные строки другой базы: их страницы по порядку.
+    case pages([UUID])
 
     /// Пустое значение не хранится вовсе: пустой текст, пустой список.
     public var isEmpty: Bool {
         switch self {
         case .text(let text): text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .options(let ids): ids.isEmpty
+        case .pages(let ids): ids.isEmpty
         case .checkbox(let isOn): !isOn
         case .number, .option, .date, .page: false
         }
@@ -230,6 +261,14 @@ public enum PropertyValue: Hashable, Codable, Sendable {
     public var dayDate: DayDate? { if case .date(let value) = self { value } else { nil } }
     public var isChecked: Bool { if case .checkbox(let value) = self { value } else { false } }
     public var pageId: UUID? { if case .page(let value) = self { value } else { nil } }
+    /// Связанные строки (для связи) или одна страница (для ссылки).
+    public var pageIds: [UUID] {
+        switch self {
+        case .pages(let ids): ids
+        case .page(let id): [id]
+        default: []
+        }
+    }
 
     /// Выбранные варианты для выбора, статуса и нескольких вариантов.
     public var optionIds: [UUID] {
@@ -348,7 +387,8 @@ public struct DataFilter: Identifiable, Hashable, Codable, Sendable {
             case .status: [.equals, .notEquals, .isDone, .isNotDone, .isEmpty, .isNotEmpty]
             case .checkbox: [.equals]
             case .page: [.equals, .notEquals, .isEmpty, .isNotEmpty]
-            case .formula: [.equals, .notEquals, .contains, .notContains, .less, .lessOrEqual, .greater, .greaterOrEqual, .isEmpty, .isNotEmpty]
+            case .formula, .rollup: [.equals, .notEquals, .contains, .notContains, .less, .lessOrEqual, .greater, .greaterOrEqual, .isEmpty, .isNotEmpty]
+            case .relation: [.contains, .notContains, .isEmpty, .isNotEmpty]
             }
         }
     }
@@ -465,13 +505,27 @@ public struct DataGroup: Identifiable, Hashable, Sendable {
 /// Базы небольшие (сотни строк), поэтому всё считается в памяти, а не в SQL.
 public enum DataQuery {
     /// Строки представления: отфильтрованные и отсортированные.
-    public static func rows(_ rows: [DataRow], in table: DataTable, view: DataView, today: DayDate = .today()) -> [DataRow] {
-        // Сначала формулы: по ним тоже фильтруют и сортируют.
-        let rows = Formula.computed(rows, in: table, today: today)
+    /// `relations`: строки связанных баз, без них сводки по связям пустые.
+    public static func rows(
+        _ rows: [DataRow],
+        in table: DataTable,
+        view: DataView,
+        relations: RelationContext = .empty,
+        today: DayDate = .today()
+    ) -> [DataRow] {
+        // Сначала сводки и формулы: по ним тоже фильтруют и сортируют.
+        let rows = computed(rows, in: table, relations: relations, today: today)
         let filtered = rows.filter { row in
             view.filters.allSatisfy { matches(row, $0, in: table, today: today) }
         }
         return sorted(filtered, by: view.sorts, in: table)
+    }
+
+    /// Строки с посчитанными колонками: сначала сводки по связям, потом формулы,
+    /// чтобы формула могла взять число из сводки.
+    public static func computed(_ rows: [DataRow], in table: DataTable, relations: RelationContext = .empty, today: DayDate = .today()) -> [DataRow] {
+        let rolled = Rollup.computed(rows, in: table, relations: relations)
+        return Formula.computed(rolled, in: table, today: today)
     }
 
     public static func matches(_ row: DataRow, _ filter: DataFilter, in table: DataTable, today: DayDate = .today()) -> Bool {
@@ -487,8 +541,8 @@ public enum DataQuery {
         if let days = filter.relativeDays {
             target = .date(today.adding(days: days))
         }
-        // У формулы значение вводят текстом: «10» сравнивается с числом, «да» с флажком.
-        if property?.type == .formula, let text = target?.text {
+        // У формулы и сводки значение вводят текстом: «10» сравнивается с числом, «да» с флажком.
+        if property?.type.isComputed == true, let text = target?.text {
             switch value {
             case .number?:
                 if let number = Double(text.replacingOccurrences(of: ",", with: ".")) { target = .number(number) }
@@ -528,6 +582,8 @@ public enum DataQuery {
                 contains = value?.optionIds.contains(id) ?? false
             case .options(let ids)?:
                 contains = !Set(ids).isDisjoint(with: value?.optionIds ?? [])
+            case .page(let id)?:
+                contains = value?.pageIds.contains(id) ?? false
             default:
                 contains = true
             }
@@ -603,6 +659,8 @@ public enum DataQuery {
         case .options(let ids):
             return ids.compactMap { id in property.options.firstIndex { $0.id == id } }.min().map { .number(Double($0)) }
         case .page(let id): return .text(id.uuidString)
+        // Связи сортируются по числу связанных строк.
+        case .pages(let ids): return .number(Double(ids.count))
         }
     }
 
@@ -663,14 +721,16 @@ public enum DataQuery {
     public static func presetValues(for view: DataView, in table: DataTable, group: DataGroup? = nil, day: DayDate? = nil, today: DayDate = .today()) -> PropertyValues {
         var values = PropertyValues()
         for filter in view.filters {
-            // Формулу считает сама база, задавать ей значение незачем.
-            guard let property = table.property(filter.propertyId), property.type != .formula else { continue }
+            // Формулу и сводку считает сама база, задавать им значение незачем.
+            guard let property = table.property(filter.propertyId), !property.type.isComputed else { continue }
             switch filter.op {
             case .equals:
                 if let value = filter.value { values[property.id] = value }
             case .contains:
                 if property.type == .multiSelect, let id = filter.value?.optionIds.first {
                     values[property.id] = .options([id])
+                } else if property.type == .relation, let id = filter.value?.pageId {
+                    values[property.id] = .pages([id])
                 }
             case .lessOrEqual, .greaterOrEqual:
                 guard property.type == .date else { break }

@@ -438,6 +438,8 @@ public enum Formula {
             case .date(let day): return .date(day)
             case .checkbox(let isOn): return .bool(isOn)
             case .page: return .empty
+            // Связь в формуле это число связанных строк: `{Задачи} > 3`.
+            case .pages(let ids): return ids.isEmpty ? .empty : .number(Double(ids.count))
             }
         }
 

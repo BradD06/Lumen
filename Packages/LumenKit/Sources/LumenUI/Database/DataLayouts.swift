@@ -42,9 +42,11 @@ struct DataTableGrid: View {
                                 property: property,
                                 value: row.value(property.id),
                                 pages: model.snapshot.linkablePages,
+                                relations: model.snapshot.relations,
                                 onChange: { model.setValue($0, property: property.id, row: row.id) },
                                 onAddOption: { model.addOption(to: property.id, name: $0) },
-                                onOpenPage: onOpen
+                                onOpenPage: onOpen,
+                                onCreateRow: { await model.addRelatedRow(to: $0, title: $1) }
                             )
                             .padding(.horizontal, 10)
                             .frame(width: columnWidth, height: 38, alignment: .leading)
@@ -244,6 +246,7 @@ struct DataRowCard: View {
                                 property: property,
                                 value: row.value(property.id),
                                 pages: model.snapshot.linkablePages,
+                                relations: model.snapshot.relations,
                                 isDone: isDone
                             )
                         }
