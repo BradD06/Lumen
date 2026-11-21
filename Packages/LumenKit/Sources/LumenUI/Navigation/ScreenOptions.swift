@@ -48,7 +48,10 @@ enum TabStripMode: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Кружки слева от острова: только когда вкладок больше одной.
+    /// Ряд слева от острова: круглая «+» всегда, кружки вкладок только когда их больше одной.
+    var showsIslandRow: Bool { self == .island }
+
+    /// Кружки вкладок слева от острова: только когда вкладок больше одной.
     nonisolated func showsCircles(tabCount: Int) -> Bool {
         self == .island && tabCount > 1
     }

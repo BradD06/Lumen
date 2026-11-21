@@ -113,6 +113,38 @@ struct WorkspaceTests {
         #expect(workspace.current == b)
     }
 
+    @Test func booksOpenInTheirOwnTab() {
+        let workspace = Workspace()
+        let book = UUID()
+        workspace.open(a)
+
+        // Книга открывается новой вкладкой рядом, заметка остаётся в своей.
+        workspace.open(.source(book, highlight: nil))
+        #expect(workspace.tabs.count == 2)
+        #expect(workspace.selectedIndex == 1)
+        #expect(workspace.current == .source(book, highlight: nil))
+        #expect(workspace.tabs[0].current == a)
+
+        // Переход к выписке в этой же книге остаётся в её вкладке.
+        let highlight = UUID()
+        workspace.open(.source(book, highlight: highlight))
+        #expect(workspace.tabs.count == 2)
+        #expect(workspace.current == .source(book, highlight: highlight))
+
+        // Книга уже открыта: из другой вкладки переходим к ней, а не открываем вторую.
+        workspace.select(number: 1)
+        workspace.open(.source(book, highlight: nil))
+        #expect(workspace.tabs.count == 2)
+        #expect(workspace.selectedIndex == 1)
+
+        // «О книге» → «Читать» той же книги: в той же вкладке.
+        let other = UUID()
+        workspace.open(.sourceInfo(other))
+        workspace.open(.source(other, highlight: nil))
+        #expect(workspace.tabs.count == 2)
+        #expect(workspace.current == .source(other, highlight: nil))
+    }
+
     @Test func linksFromANoteOpenInTheOtherHalfOfTheScreen() {
         let workspace = Workspace()
         let book = UUID()

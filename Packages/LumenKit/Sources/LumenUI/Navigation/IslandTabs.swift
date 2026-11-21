@@ -7,6 +7,7 @@ import SwiftUI
 /// Вкладки кружками слева от острова (Mac и iPad). Кружок = вкладка: книга видна обложкой,
 /// страница своим значком, вкладка с двумя панелями разрезана пополам. Открытая с ободком акцентом.
 /// Навёл: название и крестик. Не влезают: последний кружок «+N» открывает список всех.
+/// Круглая «+» перед кружками видна всегда, даже пока вкладка одна (тогда только она).
 /// Кружок тянут вдоль ряда (порядок) или к краю окна (разделить экран, `TabEdgeDropDelegate`).
 struct IslandTabs: View {
     let database: AppDatabase
@@ -15,26 +16,26 @@ struct IslandTabs: View {
     let capacity: Int
 
     @Environment(\.lumenTheme) private var theme
-    @State private var isHovered = false
+    @State private var isPlusHovered = false
     @State private var showsAll = false
 
     nonisolated static let size: CGFloat = 46
     nonisolated static let spacing: CGFloat = 8
     nonisolated static let maxShown = 5
-    private nonisolated static let plusSize: CGFloat = 30
     /// Отступ от острова.
     nonisolated static let gap: CGFloat = 14
 
     /// Сколько кружков влезает, если до края окна `space` точек.
     nonisolated static func capacity(space: CGFloat) -> Int {
-        let room = space - gap - plusSize - spacing - 16
+        let room = space - gap - size - spacing - 16
         return max(0, min(maxShown, Int((room + spacing) / (size + spacing))))
     }
 
     var body: some View {
         let tabs = workspace.tabs
-        let shown = Self.shownTabs(tabs, selected: workspace.selectedTabId, capacity: capacity)
-        let hidden = tabs.count - shown.count
+        // Одна вкладка: кружок ей не нужен, остаётся только «+».
+        let shown = tabs.count > 1 ? Self.shownTabs(tabs, selected: workspace.selectedTabId, capacity: capacity) : []
+        let hidden = tabs.count > 1 ? tabs.count - shown.count : 0
         HStack(spacing: Self.spacing) {
             newTabButton
             ForEach(shown) { tab in
@@ -52,7 +53,6 @@ struct IslandTabs: View {
         }
         .animation(LumenMotion.standard, value: tabs.map(\.id))
         .animation(LumenMotion.quick, value: workspace.selectedTabId)
-        .onHover { isHovered = $0 }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Вкладки")
     }
@@ -70,25 +70,24 @@ struct IslandTabs: View {
         return shown
     }
 
-    /// «+» новая вкладка: на Mac виден, когда мышь над кружками.
+    /// «+» новая вкладка: такой же стеклянный кружок, как вкладки, виден всегда.
     private var newTabButton: some View {
         Button {
             withAnimation(LumenMotion.standard) { workspace.newTab() }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(theme.textTertiary)
-                .frame(width: Self.plusSize, height: Self.plusSize)
-                .background(Circle().strokeBorder(theme.textTertiary, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3])))
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(isPlusHovered ? theme.accent : theme.textSecondary)
+                .frame(width: Self.size, height: Self.size)
+                .lumenGlass(Circle())
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        #if os(macOS)
-        .opacity(isHovered ? 1 : 0)
-        #endif
-        .animation(LumenMotion.quick, value: isHovered)
+        .onHover { isPlusHovered = $0 }
+        .animation(LumenMotion.quick, value: isPlusHovered)
         .help("Новая вкладка (⌘T)")
         .accessibilityLabel("Новая вкладка")
+        .accessibilityIdentifier("island.newTab")
         .keyHint("Новая вкладка") { withAnimation(LumenMotion.standard) { workspace.newTab() } }
     }
 
