@@ -18,6 +18,28 @@ struct NeuralVoiceTests {
         #expect(voices[1].details == "мужской · american")
     }
 
+    @Test func libraryVoicesAreMarkedOnTheFreePlan() throws {
+        let json = """
+        {"voices": [
+          {"voice_id": "lib", "name": "Из библиотеки", "category": "professional", "labels": {"use_case": "narration"}},
+          {"voice_id": "std", "name": "Стандартный", "category": "premade", "labels": {}}
+        ]}
+        """
+        let voices = try ElevenLabsClient.parseVoices(Data(json.utf8))
+        #expect(voices.map(\.id) == ["lib", "std"])
+        #expect(!voices[0].isPremade && voices[1].isPremade)
+
+        let free = NeuralVoiceInfo.marking(voices, tier: "free")
+        #expect(free.map(\.id) == ["std", "lib"])
+        #expect(free[1].needsPaidPlan)
+        #expect(free[1].shownDetails == "для книг · нужен платный тариф")
+        #expect(!free[0].needsPaidPlan)
+
+        // На платном тарифе и когда тариф неизвестен ничего не помечается.
+        #expect(NeuralVoiceInfo.marking(voices, tier: "creator").allSatisfy { !$0.needsPaidPlan })
+        #expect(NeuralVoiceInfo.marking(voices, tier: nil).map(\.id) == ["lib", "std"])
+    }
+
     @Test func accountShowsRemainingCharacters() throws {
         let json = #"{"tier": "free", "character_count": 1200, "character_limit": 10000}"#
         let account = try ElevenLabsClient.parseAccount(Data(json.utf8))
@@ -34,6 +56,8 @@ struct NeuralVoiceTests {
         #expect(error(401, #"{"detail": {"status": "quota_exceeded", "message": "..."}}"#) == .quotaExceeded)
         #expect(error(429, #"{"detail": {"status": "too_many_concurrent_requests"}}"#) == .busy)
         #expect(error(429, "") == .busy)
+        #expect(error(402, #"{"detail": {"status": "payment_required", "message": "Free users cannot use library voices via the API."}}"#) == .paidPlanRequired)
+        #expect(error(402, "") == .paidPlanRequired)
         #expect(error(500, #"{"detail": "Внутренняя ошибка"}"#) == .server(500, "Внутренняя ошибка"))
     }
 

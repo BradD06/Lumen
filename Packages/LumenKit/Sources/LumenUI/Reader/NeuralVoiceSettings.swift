@@ -32,7 +32,7 @@ struct NeuralVoiceSettingsSection: View {
                     }
                     if readAloud.elevenVoiceId == nil { Text("Не выбран").tag(String?.none) }
                     ForEach(readAloud.neuralVoices) { voice in
-                        Text(voice.details.isEmpty ? voice.name : "\(voice.name) · \(voice.details)").tag(Optional(voice.id))
+                        Text(voice.shownDetails.isEmpty ? voice.name : "\(voice.name) · \(voice.shownDetails)").tag(Optional(voice.id))
                     }
                 }
                 Picker("Модель", selection: modelBinding) {

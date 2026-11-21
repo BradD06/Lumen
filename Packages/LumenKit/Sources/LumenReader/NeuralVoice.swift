@@ -10,12 +10,34 @@ public struct NeuralVoiceInfo: Codable, Hashable, Sendable, Identifiable {
     public var details: String
     /// Голос хорош для книг (ElevenLabs помечает его как narration / audiobook).
     public var isNarration: Bool
+    /// Стандартный голос ElevenLabs (`premade`): работает на любом тарифе, и на бесплатном.
+    public var isPremade: Bool
+    /// Голос из библиотеки, а тариф бесплатный: через API ElevenLabs его не озвучит (ошибка 402).
+    public var needsPaidPlan = false
 
-    public init(id: String, name: String, details: String = "", isNarration: Bool = false) {
+    public init(id: String, name: String, details: String = "", isNarration: Bool = false, isPremade: Bool = true) {
         self.id = id
         self.name = name
         self.details = details
         self.isNarration = isNarration
+        self.isPremade = isPremade
+    }
+
+    /// Подпись в списке: с пометкой, если голос недоступен на тарифе.
+    public var shownDetails: String {
+        guard needsPaidPlan else { return details }
+        return details.isEmpty ? "нужен платный тариф" : details + " · нужен платный тариф"
+    }
+
+    /// На бесплатном тарифе голоса из библиотеки помечаются и уходят в конец списка.
+    public static func marking(_ voices: [NeuralVoiceInfo], tier: String?) -> [NeuralVoiceInfo] {
+        guard tier?.lowercased() == "free" else { return voices }
+        let marked = voices.map { voice in
+            var voice = voice
+            voice.needsPaidPlan = !voice.isPremade
+            return voice
+        }
+        return marked.filter { !$0.needsPaidPlan } + marked.filter(\.needsPaidPlan)
     }
 }
 
@@ -93,6 +115,8 @@ public enum NeuralVoiceError: Error, Equatable, LocalizedError {
     case badKey
     case missingPermission
     case quotaExceeded
+    /// 402: голос из библиотеки на бесплатном тарифе, или тариф не оплачен.
+    case paidPlanRequired
     case busy
     case offline
     case keychain(Int32)
@@ -105,6 +129,7 @@ public enum NeuralVoiceError: Error, Equatable, LocalizedError {
         case .badKey: "ключ не подходит. Проверьте, что он скопирован целиком."
         case .missingPermission: "у ключа нет нужного права. В ElevenLabs откройте ключ и включите «Text to Speech» и «Voices: Read»."
         case .quotaExceeded: "знаки тарифа на этот месяц кончились."
+        case .paidPlanRequired: "этот голос недоступен на вашем тарифе ElevenLabs или закончились кредиты. На бесплатном тарифе работают только стандартные голоса ElevenLabs, не голоса из библиотеки."
         case .busy: "сервис сейчас перегружен, попробуйте чуть позже."
         case .offline: "нет интернета."
         case .keychain(let status): "не удалось сохранить ключ в Связке ключей (код \(status))."
@@ -253,7 +278,8 @@ public struct ElevenLabsClient: Sendable {
                 labels["age"].map(age),
                 isNarration ? "для книг" : nil,
             ].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
-            return NeuralVoiceInfo(id: id, name: name, details: details, isNarration: isNarration)
+            let category = (item["category"] as? String ?? "premade").lowercased()
+            return NeuralVoiceInfo(id: id, name: name, details: details, isNarration: isNarration, isPremade: category == "premade")
         }
         // Голоса для книг сверху, дальше как в аккаунте.
         return voices.filter(\.isNarration) + voices.filter { !$0.isNarration }
@@ -269,12 +295,14 @@ public struct ElevenLabsClient: Sendable {
         case "invalid_api_key", "api_key_invalid": return .badKey
         case "missing_permissions", "missing_permission": return .missingPermission
         case "quota_exceeded", "insufficient_credits": return .quotaExceeded
+        case "payment_required", "paid_plan_required", "subscription_required", "free_users_not_allowed": return .paidPlanRequired
         case "too_many_concurrent_requests", "system_busy", "rate_limit_exceeded": return .busy
         case "voice_not_found": return .noVoice
         default: break
         }
         switch status {
         case 401: return .badKey
+        case 402: return .paidPlanRequired
         case 429: return .busy
         default: return .server(status, message)
         }

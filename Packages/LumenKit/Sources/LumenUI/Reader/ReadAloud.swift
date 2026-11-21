@@ -487,9 +487,13 @@ final class ReadAloud {
     /// Голоса аккаунта. Если голос ещё не выбран, берётся первый голос для книг.
     func loadNeuralVoices() async throws {
         guard let neuralKey else { throw NeuralVoiceError.noKey }
-        let voices = try await ElevenLabsClient(apiKey: neuralKey).voices()
+        let client = ElevenLabsClient(apiKey: neuralKey)
+        // Тариф нужен, чтобы пометить голоса из библиотеки: на бесплатном они не работают.
+        let account = try? await client.account()
+        let voices = NeuralVoiceInfo.marking(try await client.voices(), tier: account?.tier)
         neuralVoices = voices
-        if elevenVoiceId == nil || !voices.contains(where: { $0.id == elevenVoiceId }), let first = voices.first {
+        let current = voices.first { $0.id == elevenVoiceId }
+        if current == nil || current?.needsPaidPlan == true, let first = voices.first(where: { !$0.needsPaidPlan }) ?? voices.first {
             chooseNeuralVoice(first)
         }
     }

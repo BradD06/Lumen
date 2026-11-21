@@ -356,7 +356,7 @@ struct ReadAloudPanel: View {
             }
         }
         ForEach(readAloud.neuralVoices) { voice in
-            voiceRow(voice.name, voice.details, isOn: voice.id == readAloud.elevenVoiceId) {
+            voiceRow(voice.name, voice.shownDetails, isOn: voice.id == readAloud.elevenVoiceId) {
                 readAloud.chooseNeuralVoice(voice)
             }
         }
