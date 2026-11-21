@@ -31,7 +31,7 @@ public final class NeuralVoicePlayer: NSObject, SpeechPlaying {
     public var apiKey: () -> String? = { nil }
 
     /// `AVAudioPlayer` ускоряет без смены тона только до 2×.
-    public static let rates: ClosedRange<Double> = 0.5...2
+    public nonisolated static let rates: ClosedRange<Double> = 0.5...2
     private static let lookahead = 2
 
     private var audio: AVAudioPlayer?
