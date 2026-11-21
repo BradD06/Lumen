@@ -215,7 +215,9 @@ LumenUI ─┬─> LumenReader ─> LumenCore
 | `PDFTextConverter.swift`, `PDFTextLayout.swift` | режим «Текст» для PDF: `PDFTextIndex`, `PDFTextFinder` |
 | `QuickLookView.swift` | остальные файлы через системный просмотр |
 | `SpeechText.swift` | чтение вслух: куски главы из `ReaderScript.speechBlocks` → части-предложения (`SpeechPart`) с местом в символах главы (UTF-16, как `textOffset`); код → «пример кода пропущен», сноски и номера страниц выкидываются |
-| `SpeechVoice.swift` | голоса Apple (`SpeechVoices`), `SpeechVoicePlayer` поверх `AVSpeechSynthesizer` (очередь на 2 части вперёд, скорость 0.5–3×) |
+| `SpeechVoice.swift` | голоса Apple (`SpeechVoices`), `SpeechVoicePlayer` поверх `AVSpeechSynthesizer` (очередь на 2 части вперёд, скорость 0.5–3×); протокол `SpeechPlaying` для обоих голосов |
+| `NeuralVoice.swift` | ElevenLabs по ключу пользователя: `ElevenLabsClient` (аккаунт, голоса, звук фразы mp3), `NeuralVoiceError`, `NeuralVoiceModel`, кеш озвученного `NeuralVoiceCache` (Caches/LumenReader/voice), ключ в Связке ключей `NeuralVoiceKey` |
+| `NeuralVoicePlayer.swift` | `NeuralVoicePlayer`: фразы через `AVAudioPlayer`, 2 следующие скачиваются по очереди, при ошибке `onFailure` (читалка переходит на Apple); `NeuralVoiceSample` для «Послушать» |
 
 ### 6.4 LumenThemes
 
@@ -300,6 +302,7 @@ LumenUI ─┬─> LumenReader ─> LumenCore
 | `ReaderKeys.swift` | стрелки на Mac |
 | `ReadAloud.swift` | чтение вслух на всё приложение (`ReadAloud.shared`): держит `ReaderModel` звучащей книги, подсветка через `WebReaderController.markSpoken`, место чтения за голосом (`ReaderModel.listened`), следующая глава, таймер сна, экран блокировки (`MPNowPlayingInfoCenter`, `MPRemoteCommandCenter`); открыли книгу снова → `adopt` |
 | `ReadAloudViews.swift` | `ReadAloudBar` (остров-плеер в читалке, `RootView.showsPlayerIsland`), `ReadAloudRing` (кружок у острова), `ReadAloudPanel` (голос, скорость, таймер), `PhoneMiniPlayer`, `PhoneFullPlayer`, `ReadAloudSettingsSection` |
+| `NeuralVoiceSettings.swift` | Настройки → «Нейроголос по своему ключу»: ключ, проверка, голос, модель, «Послушать», кеш |
 | `SourceImporter.swift` | добавление книг из файлов |
 | `SourceDashboardView.swift`, `ReadingOverviewView.swift`, `ReadingWidgets.swift` | дашборд книги, экран «Чтение», цель, тепловая карта |
 

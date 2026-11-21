@@ -458,6 +458,7 @@ struct SettingsSheet: View {
                 AppearanceSection()
                 ScreenOptionsSection()
                 ReadAloudSettingsSection()
+                NeuralVoiceSettingsSection()
                 Section {
                     Toggle("Звуки кабинета", isOn: $soundsEnabled)
                         .keyHint("Звуки") { soundsEnabled.toggle() }

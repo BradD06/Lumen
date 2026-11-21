@@ -120,7 +120,7 @@ struct ReadAloudBar: View {
             playButton
             iconButton("forward.end.fill", "Фраза вперёд") { readAloud.next() }
             chip(ReadAloudFormat.rate(readAloud.rate), isOn: isPanelPresented)
-            chip(voiceName, systemImage: "chevron.down", isOn: isPanelPresented)
+            chip(readAloud.voiceName, systemImage: "chevron.down", isOn: isPanelPresented)
                 .popover(isPresented: $isPanelPresented, arrowEdge: .top) {
                     ReadAloudPanel()
                         .keyHintHost()
@@ -148,12 +148,6 @@ struct ReadAloudBar: View {
     private var status: String {
         if readAloud.isPreparing { return "Готовлю главу…" }
         return "\(ReadAloudFormat.clock(readAloud.elapsed)) · до конца главы \(ReadAloudFormat.minutes(readAloud.remaining))"
-    }
-
-    private var voiceName: String {
-        readAloud.voiceId.flatMap { SpeechVoices.voice(id: $0)?.name }
-            ?? readAloud.language.flatMap { SpeechVoices.best(for: $0)?.name }
-            ?? "Голос"
     }
 
     private var timerTitle: String {
@@ -279,22 +273,29 @@ struct ReadAloudRing: View {
 /// Голос, скорость и таймер сна: панель над чипами плеера.
 struct ReadAloudPanel: View {
     @Environment(\.lumenTheme) private var theme
+    @State private var neuralError: String?
+    @State private var isLoadingVoices = false
     private var readAloud: ReadAloud { .shared }
 
     var body: some View {
         @Bindable var model = ReadAloud.shared
         ScrollView {
             VStack(alignment: .leading, spacing: 6) {
-                label("Голос Apple · бесплатно, без интернета")
-                ForEach(voices) { voice in
-                    voiceRow(voice)
+                if readAloud.hasNeuralKey {
+                    HStack(spacing: 6) {
+                        ForEach(ReadAloud.VoiceEngine.allCases, id: \.self) { engine in
+                            choice(engine.title, isOn: readAloud.engine == engine) {
+                                readAloud.engine = engine
+                            }
+                        }
+                    }
+                    .padding(.bottom, 6)
                 }
-                Text(downloadHint)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(theme.textTertiary)
-                    .padding(.horizontal, 8)
-                    .padding(.top, 2)
-                    .fixedSize(horizontal: false, vertical: true)
+                if readAloud.hasNeuralKey, readAloud.engine == .elevenLabs {
+                    neuralVoices
+                } else {
+                    appleVoices
+                }
 
                 HStack {
                     label("Скорость")
@@ -304,7 +305,7 @@ struct ReadAloudPanel: View {
                         .monospacedDigit()
                 }
                 .padding(.top, 12)
-                Slider(value: $model.rate, in: SpeechVoicePlayer.rates, step: 0.05)
+                Slider(value: $model.rate, in: readAloud.rates, step: 0.05)
                     .tint(theme.accent)
                 HStack(spacing: 6) {
                     ForEach([0.75, 1, 1.25, 1.5, 2], id: \.self) { value in
@@ -328,6 +329,60 @@ struct ReadAloudPanel: View {
         .frame(width: 340)
         .frame(maxHeight: 520)
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private var appleVoices: some View {
+        label("Голос Apple · бесплатно, без интернета")
+        ForEach(voices) { voice in
+            voiceRow(voice.name, "\(voice.quality.title) · \(voice.languageTitle)", isOn: voice.id == selectedVoiceId) {
+                readAloud.voiceId = voice.id
+            }
+        }
+        hint(downloadHint)
+    }
+
+    @ViewBuilder
+    private var neuralVoices: some View {
+        label("ElevenLabs · по вашему ключу, нужен интернет")
+        if readAloud.fallbackToApple {
+            hint("ElevenLabs не ответил, глава звучит голосом Apple. Выберите голос, чтобы попробовать снова.")
+        }
+        if readAloud.neuralVoices.isEmpty {
+            if isLoadingVoices {
+                ProgressView().controlSize(.small).padding(8)
+            } else if let neuralError {
+                hint(neuralError)
+            }
+        }
+        ForEach(readAloud.neuralVoices) { voice in
+            voiceRow(voice.name, voice.details, isOn: voice.id == readAloud.elevenVoiceId) {
+                readAloud.chooseNeuralVoice(voice)
+            }
+        }
+        hint("Скорость нейроголоса до 2×. Уже прочитанное хранится на устройстве и второй раз знаков не тратит.")
+            .task { await loadVoices() }
+    }
+
+    private func loadVoices() async {
+        guard readAloud.neuralVoices.isEmpty, !isLoadingVoices else { return }
+        isLoadingVoices = true
+        defer { isLoadingVoices = false }
+        do {
+            try await readAloud.loadNeuralVoices()
+            neuralError = nil
+        } catch {
+            neuralError = "Не удалось загрузить голоса: \(error.localizedDescription)"
+        }
+    }
+
+    private func hint(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11.5))
+            .foregroundStyle(theme.textTertiary)
+            .padding(.horizontal, 8)
+            .padding(.top, 2)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// Голоса языка книги, лучшие сверху. Если язык не узнали, русские и английские.
@@ -355,21 +410,21 @@ struct ReadAloudPanel: View {
             .foregroundStyle(theme.textTertiary)
     }
 
-    private func voiceRow(_ voice: SpeechVoiceInfo) -> some View {
-        let isOn = voice.id == selectedVoiceId
-        return Button {
-            readAloud.voiceId = voice.id
-        } label: {
+    private func voiceRow(_ name: String, _ details: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.accent)
                     .opacity(isOn ? 1 : 0)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(voice.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.textPrimary)
-                    Text("\(voice.quality.title) · \(voice.languageTitle)")
-                        .font(.system(size: 12))
-                        .foregroundStyle(theme.textTertiary)
+                    Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.textPrimary)
+                    if !details.isEmpty {
+                        Text(details)
+                            .font(.system(size: 12))
+                            .foregroundStyle(theme.textTertiary)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer()
             }
@@ -452,7 +507,7 @@ struct PhoneMiniPlayer: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(theme.textPrimary)
                     .lineLimit(1)
-                Text("\(voiceName) · ещё \(ReadAloudFormat.minutes(readAloud.remaining))")
+                Text("\(readAloud.voiceName) · ещё \(ReadAloudFormat.minutes(readAloud.remaining))")
                     .font(.system(size: 11.5))
                     .foregroundStyle(theme.textTertiary)
                     .lineLimit(1)
@@ -505,12 +560,6 @@ struct PhoneMiniPlayer: View {
                 .presentationCornerRadius(34)
         }
         .accessibilityIdentifier("readAloud.mini")
-    }
-
-    private var voiceName: String {
-        readAloud.voiceId.flatMap { SpeechVoices.voice(id: $0)?.name }
-            ?? readAloud.language.flatMap { SpeechVoices.best(for: $0)?.name }
-            ?? "Голос Apple"
     }
 }
 

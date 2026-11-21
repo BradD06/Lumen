@@ -67,11 +67,38 @@ public enum SpeechVoices {
     }
 }
 
+/// Голос, который читает части главы: Apple (`SpeechVoicePlayer`) или ElevenLabs (`NeuralVoicePlayer`).
+@MainActor
+public protocol SpeechPlaying: AnyObject {
+    /// Началась часть с этим номером.
+    var onPart: ((Int) -> Void)? { get set }
+    /// Части кончились.
+    var onFinish: (() -> Void)? { get set }
+    var isPlaying: Bool { get }
+    var rate: Double { get set }
+    var language: String? { get set }
+    func play(_ parts: [SpeechPart], from index: Int)
+    func pause()
+    func resume()
+    func stop()
+    func jump(to index: Int)
+}
+
+/// Звук книги на iOS: играет в фоне и при выключенном звонке.
+enum SpeechAudio {
+    @MainActor static func activate() {
+        #if os(iOS)
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        #endif
+    }
+}
+
 /// Читает части текста голосом Apple по очереди и говорит, какая звучит.
 /// Держит в очереди синтезатора пару частей вперёд, чтобы между ними не было пауз;
 /// смена скорости или голоса начинает текущую часть заново.
 @MainActor
-public final class SpeechVoicePlayer: NSObject {
+public final class SpeechVoicePlayer: NSObject, SpeechPlaying {
     /// Началась часть с этим номером.
     public var onPart: ((Int) -> Void)?
     /// Части кончились.
@@ -124,7 +151,7 @@ public final class SpeechVoicePlayer: NSObject {
         nextToQueue = index
         isPlaying = true
         isPaused = false
-        activateAudio()
+        SpeechAudio.activate()
         fill()
     }
 
@@ -200,14 +227,6 @@ public final class SpeechVoicePlayer: NSObject {
             ? Double(AVSpeechUtteranceDefaultSpeechRate) * multiplier
             : Double(AVSpeechUtteranceDefaultSpeechRate) + (Double(AVSpeechUtteranceMaximumSpeechRate) - Double(AVSpeechUtteranceDefaultSpeechRate)) * (multiplier - 1) / 2
         return Float(min(max(value, Double(AVSpeechUtteranceMinimumSpeechRate)), Double(AVSpeechUtteranceMaximumSpeechRate)))
-    }
-
-    private func activateAudio() {
-        #if os(iOS)
-        // Книга играет и в фоне, и при выключенном звонке.
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
-        try? AVAudioSession.sharedInstance().setActive(true)
-        #endif
     }
 
     fileprivate func didStart(_ id: ObjectIdentifier) {
