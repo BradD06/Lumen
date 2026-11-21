@@ -136,6 +136,29 @@ struct NeuralVoiceTests {
         #expect(NeuralVoicePlayer.playbackRate(1.25) == 1.25)
     }
 
+    /// Знаки ElevenLabs списывает, как только начал озвучивать: одна фраза просится один раз,
+    /// и отмена ждущего (пауза, переход) не обрывает загрузку.
+    @Test func samePhraseIsFetchedOnceAndCancellingTheWaiterKeepsTheFetch() async throws {
+        actor Counter {
+            var calls = 0
+            func hit() { calls += 1 }
+        }
+        let counter = Counter()
+        let fetches = NeuralVoiceFetches()
+        let make: @Sendable () async throws -> Data = {
+            await counter.hit()
+            try await Task.sleep(for: .milliseconds(200))
+            return Data("mp3".utf8)
+        }
+        let first = Task { try await fetches.data(for: "k", make: make) }
+        try await Task.sleep(for: .milliseconds(20))
+        first.cancel()
+        let second = try await fetches.data(for: "k", make: make)
+        #expect(second == Data("mp3".utf8))
+        #expect(try await first.value == Data("mp3".utf8))
+        #expect(await counter.calls == 1)
+    }
+
     @Test func maskedKeyShowsOnlyTheEnd() {
         #expect(NeuralVoiceKey.masked("sk_abcdef1234") == "…1234")
     }

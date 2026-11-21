@@ -216,7 +216,7 @@ LumenUI ─┬─> LumenReader ─> LumenCore
 | `QuickLookView.swift` | остальные файлы через системный просмотр |
 | `SpeechText.swift` | чтение вслух: куски главы из `ReaderScript.speechBlocks` → части-предложения (`SpeechPart`) с местом в символах главы (UTF-16, как `textOffset`); код → «пример кода пропущен», сноски и номера страниц выкидываются |
 | `SpeechVoice.swift` | голоса Apple (`SpeechVoices`), `SpeechVoicePlayer` поверх `AVSpeechSynthesizer` (очередь на 2 части вперёд, скорость 0.5–3×); протокол `SpeechPlaying` для обоих голосов |
-| `NeuralVoice.swift` | ElevenLabs по ключу пользователя: `ElevenLabsClient` (аккаунт, голоса, звук фразы mp3), `NeuralVoiceError`, `NeuralVoiceModel` (v3 takes no neighbour sentences, v2 no language code), `NeuralVoiceTuning` (stability / style → `voice_settings`, part of the cache key), кеш озвученного `NeuralVoiceCache` (Caches/LumenReader/voice), ключ в Связке ключей `NeuralVoiceKey` |
+| `NeuralVoice.swift` | ElevenLabs по ключу пользователя: `ElevenLabsClient` (аккаунт, голоса, звук фразы mp3), `NeuralVoiceError`, `NeuralVoiceModel` (v3 takes no neighbour sentences, v2 no language code), `NeuralVoiceTuning` (stability / style → `voice_settings`, part of the cache key), кеш озвученного `NeuralVoiceCache` (Caches/LumenReader/voice; `NeuralVoiceFetches` скачивает каждую фразу один раз и доводит загрузку до кеша, даже если плеер её отменил: знаки уже списаны), ключ в Связке ключей `NeuralVoiceKey` |
 | `NeuralVoicePlayer.swift` | `NeuralVoicePlayer`: фразы через `AVAudioPlayer`, 2 следующие скачиваются по очереди, при ошибке `onFailure` (читалка переходит на Apple); `NeuralVoiceSample` для «Послушать» |
 
 ### 6.4 LumenThemes

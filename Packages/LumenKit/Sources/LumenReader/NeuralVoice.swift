@@ -337,22 +337,31 @@ public enum NeuralVoiceCache {
     }
 
     /// Звук фразы: из кеша, а нет — у ElevenLabs (с одной повторной попыткой, если сервис занят).
+    /// Сама загрузка не отменяется вместе с вызвавшим (пауза, переход, смена главы): ElevenLabs
+    /// списывает знаки, как только начал озвучивать, поэтому звук всегда дописывается в кеш.
     public static func audio(for speech: NeuralSpeechRequest, key: String) async throws -> Data {
         let file = directory.appending(path: speech.cacheKey + ".mp3")
-        if let data = try? Data(contentsOf: file), !data.isEmpty {
-            try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
+        if let data = cached(file) { return data }
+        return try await NeuralVoiceFetches.shared.data(for: speech.cacheKey) {
+            // Пока ждали очереди, фраза могла уже лечь в кеш.
+            if let data = cached(file) { return data }
+            let client = ElevenLabsClient(apiKey: key)
+            let data: Data
+            do {
+                data = try await client.speech(speech)
+            } catch NeuralVoiceError.busy {
+                try await Task.sleep(for: .seconds(1.5))
+                data = try await client.speech(speech)
+            }
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? data.write(to: file, options: .atomic)
             return data
         }
-        let client = ElevenLabsClient(apiKey: key)
-        let data: Data
-        do {
-            data = try await client.speech(speech)
-        } catch NeuralVoiceError.busy {
-            try await Task.sleep(for: .seconds(1.5))
-            data = try await client.speech(speech)
-        }
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? data.write(to: file, options: .atomic)
+    }
+
+    private static func cached(_ file: URL) -> Data? {
+        guard let data = try? Data(contentsOf: file), !data.isEmpty else { return nil }
+        try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
         return data
     }
 
@@ -381,6 +390,23 @@ public enum NeuralVoiceCache {
 
     public static func clear() {
         try? FileManager.default.removeItem(at: directory)
+    }
+}
+
+/// Загрузки, которые уже идут, по имени файла в кеше. Одна фраза не просится дважды,
+/// даже если её ждут и проигрыватель, и подготовка следующих фраз, и «Послушать».
+/// Загрузка живёт отдельно от ждущих: их отмена её не останавливает.
+actor NeuralVoiceFetches {
+    static let shared = NeuralVoiceFetches()
+
+    private var running: [String: Task<Data, any Error>] = [:]
+
+    func data(for key: String, make: @escaping @Sendable () async throws -> Data) async throws -> Data {
+        if let task = running[key] { return try await task.value }
+        let task = Task.detached(priority: .userInitiated) { try await make() }
+        running[key] = task
+        defer { running[key] = nil }
+        return try await task.value
     }
 }
 
