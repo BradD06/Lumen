@@ -12,6 +12,7 @@ struct NotebookPDFTests {
     let db: AppDatabase
 
     init() throws {
+        PencilKitTestGuard.install()
         db = try AppDatabase.inMemory()
     }
 

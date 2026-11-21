@@ -324,28 +324,19 @@ final class ReadAloud {
         guard !remoteCommandsInstalled else { return }
         remoteCommandsInstalled = true
         let center = MPRemoteCommandCenter.shared()
-        center.playCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.resume() }
-            return .success
-        }
-        center.pauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.pause() }
-            return .success
-        }
-        center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.togglePause() }
-            return .success
-        }
-        center.nextTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.next() }
-            return .success
-        }
-        center.previousTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.previous() }
-            return .success
-        }
-        center.stopCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.stop() }
+        Self.handle(center.playCommand) { [weak self] in self?.resume() }
+        Self.handle(center.pauseCommand) { [weak self] in self?.pause() }
+        Self.handle(center.togglePlayPauseCommand) { [weak self] in self?.togglePause() }
+        Self.handle(center.nextTrackCommand) { [weak self] in self?.next() }
+        Self.handle(center.previousTrackCommand) { [weak self] in self?.previous() }
+        Self.handle(center.stopCommand) { [weak self] in self?.stop() }
+    }
+
+    /// Обработчик команды создаётся вне главного актора: система зовёт его на своей очереди,
+    /// а замыкание, созданное в коде главного актора, на чужой очереди роняет приложение.
+    private nonisolated static func handle(_ command: MPRemoteCommand, _ action: @escaping @MainActor @Sendable () -> Void) {
+        command.addTarget { _ in
+            Task { @MainActor in action() }
             return .success
         }
     }
@@ -372,9 +363,15 @@ final class ReadAloud {
         if let artwork { return artwork }
         guard let name = source?.shownCover, let url = attachments?.url(for: name),
               let image = PlatformImage(contentsOfFile: url.path) else { return nil }
-        nonisolated(unsafe) let picture = image
-        let made = MPMediaItemArtwork(boundsSize: image.size) { _ in picture }
+        let made = Self.artwork(image)
         artwork = made
         return made
+    }
+
+    /// Картинку система просит на своей очереди, поэтому замыкание создаётся вне главного актора
+    /// (иначе Swift проверяет очередь и приложение падает, как только плеер появился).
+    private nonisolated static func artwork(_ image: PlatformImage) -> MPMediaItemArtwork {
+        nonisolated(unsafe) let picture = image
+        return MPMediaItemArtwork(boundsSize: image.size) { _ in picture }
     }
 }

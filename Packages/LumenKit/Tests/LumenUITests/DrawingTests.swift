@@ -10,6 +10,7 @@ struct DrawingTests {
     let db: AppDatabase
 
     init() throws {
+        PencilKitTestGuard.install()
         db = try AppDatabase.inMemory()
     }
 
@@ -197,6 +198,7 @@ struct NotebookItemsModelTests {
     let db: AppDatabase
 
     init() throws {
+        PencilKitTestGuard.install()
         db = try AppDatabase.inMemory()
     }
 
