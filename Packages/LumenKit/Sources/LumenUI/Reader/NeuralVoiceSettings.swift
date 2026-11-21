@@ -11,6 +11,9 @@ struct NeuralVoiceSettingsSection: View {
     @State private var isWorking = false
     @State private var isConfirmingDelete = false
     @State private var cacheSize = 0
+    /// Ползунки двигаются здесь, а в голос уходят, когда их отпустили: иначе каждый шаг
+    /// перезапускал бы фразу и тратил знаки.
+    @State private var tuning = ReadAloud.shared.elevenTuning
     private var readAloud: ReadAloud { .shared }
 
     var body: some View {
@@ -29,13 +32,29 @@ struct NeuralVoiceSettingsSection: View {
                     }
                     if readAloud.elevenVoiceId == nil { Text("Не выбран").tag(String?.none) }
                     ForEach(readAloud.neuralVoices) { voice in
-                        Text(voice.details.isEmpty ? voice.name : "\(voice.name) · \(voice.details)").tag(Optional(voice.id))
+                        Text(voice.shownDetails.isEmpty ? voice.name : "\(voice.name) · \(voice.shownDetails)").tag(Optional(voice.id))
                     }
                 }
                 Picker("Модель", selection: modelBinding) {
                     ForEach(NeuralVoiceModel.allCases, id: \.self) { model in
                         Text(model.title).tag(model)
                     }
+                }
+                tuningSlider("Ровность", value: $tuning.stability, low: "живее", high: "ровнее")
+                tuningSlider("Выразительность", value: $tuning.style, low: "как диктор", high: "ярче")
+                    .disabled(readAloud.elevenModel == .v3)
+                HStack {
+                    Text(tuningHint)
+                        .font(.callout)
+                        .foregroundStyle(theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Как было") {
+                        tuning = .standard
+                        readAloud.elevenTuning = .standard
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(readAloud.elevenTuning == .standard)
                 }
                 HStack(spacing: 10) {
                     Button("Послушать") { run { try await readAloud.playNeuralSample() } }
@@ -102,6 +121,26 @@ struct NeuralVoiceSettingsSection: View {
         } message: {
             Text("Книги снова будет читать голос Apple. Ключ в самом ElevenLabs останется рабочим.")
         }
+    }
+
+    private func tuningSlider(_ title: String, value: Binding<Double>, low: String, high: String) -> some View {
+        LabeledContent(title) {
+            HStack(spacing: 8) {
+                Text(low).font(.caption).foregroundStyle(theme.textTertiary)
+                Slider(value: value, in: 0...1, step: 0.05, onEditingChanged: { isEditing in
+                    if !isEditing { readAloud.elevenTuning = tuning }
+                })
+                .frame(minWidth: 140)
+                Text(high).font(.caption).foregroundStyle(theme.textTertiary)
+            }
+        }
+    }
+
+    private var tuningHint: String {
+        if readAloud.elevenModel == .v3 {
+            return "У v3 у ровности три ступени, выразительность она подбирает сама. Странные ударения: попробуйте ровность повыше."
+        }
+        return "Странные ударения и скачки интонации: поднимите ровность и опустите выразительность. Новое звучание слышно с текущей фразы."
     }
 
     private var footer: String {

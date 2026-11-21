@@ -10,12 +10,34 @@ public struct NeuralVoiceInfo: Codable, Hashable, Sendable, Identifiable {
     public var details: String
     /// Голос хорош для книг (ElevenLabs помечает его как narration / audiobook).
     public var isNarration: Bool
+    /// Стандартный голос ElevenLabs (`premade`): работает на любом тарифе, и на бесплатном.
+    public var isPremade: Bool
+    /// Голос из библиотеки, а тариф бесплатный: через API ElevenLabs его не озвучит (ошибка 402).
+    public var needsPaidPlan = false
 
-    public init(id: String, name: String, details: String = "", isNarration: Bool = false) {
+    public init(id: String, name: String, details: String = "", isNarration: Bool = false, isPremade: Bool = true) {
         self.id = id
         self.name = name
         self.details = details
         self.isNarration = isNarration
+        self.isPremade = isPremade
+    }
+
+    /// Подпись в списке: с пометкой, если голос недоступен на тарифе.
+    public var shownDetails: String {
+        guard needsPaidPlan else { return details }
+        return details.isEmpty ? "нужен платный тариф" : details + " · нужен платный тариф"
+    }
+
+    /// На бесплатном тарифе голоса из библиотеки помечаются и уходят в конец списка.
+    public static func marking(_ voices: [NeuralVoiceInfo], tier: String?) -> [NeuralVoiceInfo] {
+        guard tier?.lowercased() == "free" else { return voices }
+        let marked = voices.map { voice in
+            var voice = voice
+            voice.needsPaidPlan = !voice.isPremade
+            return voice
+        }
+        return marked.filter { !$0.needsPaidPlan } + marked.filter(\.needsPaidPlan)
     }
 }
 
@@ -28,16 +50,62 @@ public struct NeuralVoiceAccount: Hashable, Sendable {
     public var remaining: Int { max(limit - used, 0) }
 }
 
-/// Модель ElevenLabs. Flash вдвое дешевле по знакам и быстрее отвечает, Multilingual звучит живее.
+/// Модель ElevenLabs. Flash вдвое дешевле по знакам и быстрее отвечает, Multilingual звучит живее,
+/// v3 самая новая: живее всех читает русский и реже путает ударения, но не видит соседних фраз.
 public enum NeuralVoiceModel: String, CaseIterable, Codable, Sendable {
+    case v3 = "eleven_v3"
     case multilingual = "eleven_multilingual_v2"
     case flash = "eleven_flash_v2_5"
 
     public var title: String {
         switch self {
-        case .multilingual: "Лучшее звучание"
-        case .flash: "Быстрее и вдвое дешевле"
+        case .v3: "Новая v3: живее, точнее ударения"
+        case .multilingual: "Многоязычная v2: ровное звучание"
+        case .flash: "Быстрая: вдвое дешевле"
         }
+    }
+
+    /// Соседние фразы для интонации (`previous_text` / `next_text`): v3 их не принимает.
+    var takesNeighbours: Bool { self != .v3 }
+    /// Язык текста явно (`language_code`): Multilingual v2 его не принимает, узнаёт сам.
+    var takesLanguage: Bool { self != .multilingual }
+}
+
+/// Как звучит голос ElevenLabs. Ровность: выше спокойнее и ровнее, без странных акцентов,
+/// ниже живее, но голос чаще «гуляет». Выразительность: 0 как у диктора, выше ярче и театральнее.
+public struct NeuralVoiceTuning: Codable, Hashable, Sendable {
+    public var stability: Double
+    public var style: Double
+
+    public static let standard = NeuralVoiceTuning(stability: 0.65, style: 0)
+
+    public init(stability: Double, style: Double) {
+        self.stability = min(max(stability, 0), 1)
+        self.style = min(max(style, 0), 1)
+    }
+
+    /// `voice_settings` для запроса. v3 понимает только три ступени ровности
+    /// (0 «творческая», 0.5 «естественная», 1 «надёжная») и без остальных полей.
+    func voiceSettings(for model: NeuralVoiceModel) -> [String: Any] {
+        if model == .v3 {
+            let step = stability < 0.25 ? 0.0 : stability < 0.75 ? 0.5 : 1.0
+            return ["stability": step]
+        }
+        return [
+            "stability": Self.rounded(stability),
+            "similarity_boost": 0.75,
+            "style": Self.rounded(style),
+            "use_speaker_boost": true,
+        ]
+    }
+
+    /// Для имени файла в кеше: то же, что уходит в запрос.
+    func cachePart(for model: NeuralVoiceModel) -> String {
+        voiceSettings(for: model).sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+    }
+
+    private static func rounded(_ value: Double) -> Double {
+        (value * 100).rounded() / 100
     }
 }
 
@@ -47,6 +115,8 @@ public enum NeuralVoiceError: Error, Equatable, LocalizedError {
     case badKey
     case missingPermission
     case quotaExceeded
+    /// 402: голос из библиотеки на бесплатном тарифе, или тариф не оплачен.
+    case paidPlanRequired
     case busy
     case offline
     case keychain(Int32)
@@ -59,6 +129,7 @@ public enum NeuralVoiceError: Error, Equatable, LocalizedError {
         case .badKey: "ключ не подходит. Проверьте, что он скопирован целиком."
         case .missingPermission: "у ключа нет нужного права. В ElevenLabs откройте ключ и включите «Text to Speech» и «Voices: Read»."
         case .quotaExceeded: "знаки тарифа на этот месяц кончились."
+        case .paidPlanRequired: "этот голос недоступен на вашем тарифе ElevenLabs или закончились кредиты. На бесплатном тарифе работают только стандартные голоса ElevenLabs, не голоса из библиотеки."
         case .busy: "сервис сейчас перегружен, попробуйте чуть позже."
         case .offline: "нет интернета."
         case .keychain(let status): "не удалось сохранить ключ в Связке ключей (код \(status))."
@@ -79,22 +150,32 @@ public struct NeuralSpeechRequest: Hashable, Sendable {
     public var text: String
     public var voiceId: String
     public var model: NeuralVoiceModel
+    public var tuning: NeuralVoiceTuning
     public var language: String?
     public var previous: String?
     public var next: String?
 
-    public init(text: String, voiceId: String, model: NeuralVoiceModel, language: String? = nil, previous: String? = nil, next: String? = nil) {
+    public init(
+        text: String,
+        voiceId: String,
+        model: NeuralVoiceModel,
+        tuning: NeuralVoiceTuning = .standard,
+        language: String? = nil,
+        previous: String? = nil,
+        next: String? = nil
+    ) {
         self.text = text
         self.voiceId = voiceId
         self.model = model
+        self.tuning = tuning
         self.language = language
         self.previous = previous
         self.next = next
     }
 
-    /// Имя файла в кеше: от голоса, модели и текста.
+    /// Имя файла в кеше: от голоса, модели, настроек звучания и текста.
     public var cacheKey: String {
-        let digest = SHA256.hash(data: Data("\(model.rawValue)|\(voiceId)|\(text)".utf8))
+        let digest = SHA256.hash(data: Data("\(model.rawValue)|\(voiceId)|\(tuning.cachePart(for: model))|\(text)".utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 }
@@ -143,11 +224,16 @@ public struct ElevenLabsClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
-        var body: [String: String] = ["text": speech.text, "model_id": speech.model.rawValue]
-        if let previous = speech.previous { body["previous_text"] = previous }
-        if let next = speech.next { body["next_text"] = next }
-        // Язык явно принимает только Flash; Multilingual сам узнаёт его по тексту.
-        if speech.model == .flash, let language = speech.language?.prefix(2), language.count == 2 {
+        var body: [String: Any] = [
+            "text": speech.text,
+            "model_id": speech.model.rawValue,
+            "voice_settings": speech.tuning.voiceSettings(for: speech.model),
+        ]
+        if speech.model.takesNeighbours {
+            if let previous = speech.previous { body["previous_text"] = previous }
+            if let next = speech.next { body["next_text"] = next }
+        }
+        if speech.model.takesLanguage, let language = speech.language?.prefix(2), language.count == 2 {
             body["language_code"] = String(language).lowercased()
         }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
@@ -192,7 +278,8 @@ public struct ElevenLabsClient: Sendable {
                 labels["age"].map(age),
                 isNarration ? "для книг" : nil,
             ].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
-            return NeuralVoiceInfo(id: id, name: name, details: details, isNarration: isNarration)
+            let category = (item["category"] as? String ?? "premade").lowercased()
+            return NeuralVoiceInfo(id: id, name: name, details: details, isNarration: isNarration, isPremade: category == "premade")
         }
         // Голоса для книг сверху, дальше как в аккаунте.
         return voices.filter(\.isNarration) + voices.filter { !$0.isNarration }
@@ -208,12 +295,14 @@ public struct ElevenLabsClient: Sendable {
         case "invalid_api_key", "api_key_invalid": return .badKey
         case "missing_permissions", "missing_permission": return .missingPermission
         case "quota_exceeded", "insufficient_credits": return .quotaExceeded
+        case "payment_required", "paid_plan_required", "subscription_required", "free_users_not_allowed": return .paidPlanRequired
         case "too_many_concurrent_requests", "system_busy", "rate_limit_exceeded": return .busy
         case "voice_not_found": return .noVoice
         default: break
         }
         switch status {
         case 401: return .badKey
+        case 402: return .paidPlanRequired
         case 429: return .busy
         default: return .server(status, message)
         }
@@ -248,22 +337,31 @@ public enum NeuralVoiceCache {
     }
 
     /// Звук фразы: из кеша, а нет — у ElevenLabs (с одной повторной попыткой, если сервис занят).
+    /// Сама загрузка не отменяется вместе с вызвавшим (пауза, переход, смена главы): ElevenLabs
+    /// списывает знаки, как только начал озвучивать, поэтому звук всегда дописывается в кеш.
     public static func audio(for speech: NeuralSpeechRequest, key: String) async throws -> Data {
         let file = directory.appending(path: speech.cacheKey + ".mp3")
-        if let data = try? Data(contentsOf: file), !data.isEmpty {
-            try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
+        if let data = cached(file) { return data }
+        return try await NeuralVoiceFetches.shared.data(for: speech.cacheKey) {
+            // Пока ждали очереди, фраза могла уже лечь в кеш.
+            if let data = cached(file) { return data }
+            let client = ElevenLabsClient(apiKey: key)
+            let data: Data
+            do {
+                data = try await client.speech(speech)
+            } catch NeuralVoiceError.busy {
+                try await Task.sleep(for: .seconds(1.5))
+                data = try await client.speech(speech)
+            }
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? data.write(to: file, options: .atomic)
             return data
         }
-        let client = ElevenLabsClient(apiKey: key)
-        let data: Data
-        do {
-            data = try await client.speech(speech)
-        } catch NeuralVoiceError.busy {
-            try await Task.sleep(for: .seconds(1.5))
-            data = try await client.speech(speech)
-        }
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? data.write(to: file, options: .atomic)
+    }
+
+    private static func cached(_ file: URL) -> Data? {
+        guard let data = try? Data(contentsOf: file), !data.isEmpty else { return nil }
+        try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
         return data
     }
 
@@ -292,6 +390,23 @@ public enum NeuralVoiceCache {
 
     public static func clear() {
         try? FileManager.default.removeItem(at: directory)
+    }
+}
+
+/// Загрузки, которые уже идут, по имени файла в кеше. Одна фраза не просится дважды,
+/// даже если её ждут и проигрыватель, и подготовка следующих фраз, и «Послушать».
+/// Загрузка живёт отдельно от ждущих: их отмена её не останавливает.
+actor NeuralVoiceFetches {
+    static let shared = NeuralVoiceFetches()
+
+    private var running: [String: Task<Data, any Error>] = [:]
+
+    func data(for key: String, make: @escaping @Sendable () async throws -> Data) async throws -> Data {
+        if let task = running[key] { return try await task.value }
+        let task = Task.detached(priority: .userInitiated) { try await make() }
+        running[key] = task
+        defer { running[key] = nil }
+        return try await task.value
     }
 }
 
