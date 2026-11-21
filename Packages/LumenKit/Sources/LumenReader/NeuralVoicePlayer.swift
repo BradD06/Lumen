@@ -27,6 +27,10 @@ public final class NeuralVoicePlayer: NSObject, SpeechPlaying {
     public var model: NeuralVoiceModel = .multilingual {
         didSet { if model != oldValue { restart() } }
     }
+    /// Ровность и выразительность: новое звучание с текущей фразы.
+    public var tuning: NeuralVoiceTuning = .standard {
+        didSet { if tuning != oldValue { restart() } }
+    }
     /// Ключ берётся при каждой загрузке: его могли сменить в настройках.
     public var apiKey: () -> String? = { nil }
 
@@ -160,6 +164,7 @@ public final class NeuralVoicePlayer: NSObject, SpeechPlaying {
             text: parts[number].spoken,
             voiceId: voiceId,
             model: model,
+            tuning: tuning,
             language: language,
             previous: number > 0 ? parts[number - 1].spoken : nil,
             next: number + 1 < parts.count ? parts[number + 1].spoken : nil
@@ -229,14 +234,14 @@ public final class NeuralVoicePlayer: NSObject, SpeechPlaying {
 /// «Послушать» в настройках: одна фраза выбранным голосом.
 @MainActor
 public final class NeuralVoiceSample {
-    public static let text = "Это голос для ваших книг в Lumen. Так будет звучать каждая глава."
+    public static let text = "Это голос для ваших книг в Lumen. Послушайте ударения: звонит, договор, красивее, торты, километр."
 
     private var player: AVAudioPlayer?
 
     public init() {}
 
-    public func play(voiceId: String, model: NeuralVoiceModel, key: String) async throws {
-        let speech = NeuralSpeechRequest(text: Self.text, voiceId: voiceId, model: model, language: "ru")
+    public func play(voiceId: String, model: NeuralVoiceModel, tuning: NeuralVoiceTuning, key: String) async throws {
+        let speech = NeuralSpeechRequest(text: Self.text, voiceId: voiceId, model: model, tuning: tuning, language: "ru")
         let data = try await NeuralVoiceCache.audio(for: speech, key: key)
         player?.stop()
         SpeechAudio.activate()

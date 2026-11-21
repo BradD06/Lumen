@@ -45,21 +45,53 @@ struct NeuralVoiceTests {
         #expect(request.value(forHTTPHeaderField: "xi-api-key") == "sk_test")
         #expect(request.url?.path() == "/v1/text-to-speech/voice1")
         #expect(request.url?.query()?.contains("output_format=mp3_44100_128") == true)
-        let body = try #require(request.httpBody.flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: String] })
-        #expect(body["text"] == "Вторая фраза.")
-        #expect(body["model_id"] == "eleven_flash_v2_5")
-        #expect(body["previous_text"] == "Первая.")
-        #expect(body["next_text"] == "Третья.")
-        #expect(body["language_code"] == "ru")
+        let body = try #require(json(request))
+        #expect(body["text"] as? String == "Вторая фраза.")
+        #expect(body["model_id"] as? String == "eleven_flash_v2_5")
+        #expect(body["previous_text"] as? String == "Первая.")
+        #expect(body["next_text"] as? String == "Третья.")
+        #expect(body["language_code"] as? String == "ru")
+        let settings = try #require(body["voice_settings"] as? [String: Any])
+        #expect(settings["stability"] as? Double == NeuralVoiceTuning.standard.stability)
+        #expect(settings["style"] as? Double == 0)
 
         // Multilingual сам узнаёт язык: код языка ему не отправляем.
         var multilingual = speech
         multilingual.model = .multilingual
-        let other = try #require(client.speechRequest(multilingual).httpBody.flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: String] })
+        let other = try #require(json(client.speechRequest(multilingual)))
         #expect(other["language_code"] == nil)
+        #expect(other["previous_text"] as? String == "Первая.")
     }
 
-    @Test func cacheKeyDependsOnVoiceModelAndTextOnly() {
+    @Test func v3GetsLanguageNoNeighboursAndAStabilityStep() throws {
+        let client = ElevenLabsClient(apiKey: "sk_test")
+        let speech = NeuralSpeechRequest(
+            text: "Фраза.", voiceId: "v", model: .v3, tuning: NeuralVoiceTuning(stability: 0.65, style: 0.8),
+            language: "ru-RU", previous: "До.", next: "После."
+        )
+        let body = try #require(json(client.speechRequest(speech)))
+        #expect(body["model_id"] as? String == "eleven_v3")
+        #expect(body["previous_text"] == nil)
+        #expect(body["next_text"] == nil)
+        #expect(body["language_code"] as? String == "ru")
+        let settings = try #require(body["voice_settings"] as? [String: Any])
+        #expect(settings["stability"] as? Double == 0.5)
+        #expect(settings.count == 1)
+    }
+
+    @Test func tuningStaysInRangeAndChangesTheCache() {
+        #expect(NeuralVoiceTuning(stability: 1.4, style: -1) == NeuralVoiceTuning(stability: 1, style: 0))
+        let calm = NeuralSpeechRequest(text: "Фраза.", voiceId: "v", model: .multilingual, tuning: NeuralVoiceTuning(stability: 0.9, style: 0))
+        var lively = calm
+        lively.tuning = NeuralVoiceTuning(stability: 0.3, style: 0.4)
+        #expect(calm.cacheKey != lively.cacheKey)
+    }
+
+    private func json(_ request: URLRequest) -> [String: Any]? {
+        request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+    }
+
+    @Test func cacheKeyDependsOnVoiceModelTuningAndTextOnly() {
         let base = NeuralSpeechRequest(text: "Фраза.", voiceId: "v", model: .multilingual, previous: "До.")
         var neighbours = base
         neighbours.previous = "Другое."

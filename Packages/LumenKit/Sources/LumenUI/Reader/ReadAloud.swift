@@ -54,6 +54,8 @@ final class ReadAloud {
     static let elevenVoiceKey = "readAloud.elevenVoice"
     static let elevenVoiceNameKey = "readAloud.elevenVoiceName"
     static let elevenModelKey = "readAloud.elevenModel"
+    static let elevenStabilityKey = "readAloud.elevenStability"
+    static let elevenStyleKey = "readAloud.elevenStyle"
     static let voiceKey = "readAloud.voice"
     static let followKey = "readAloud.follow"
     static let highlightKey = "readAloud.highlight"
@@ -123,6 +125,23 @@ final class ReadAloud {
             neural.model = elevenModel
         }
     }
+    /// Ровность и выразительность голоса ElevenLabs.
+    var elevenTuning: NeuralVoiceTuning = ReadAloud.storedTuning() {
+        didSet {
+            UserDefaults.standard.set(elevenTuning.stability, forKey: Self.elevenStabilityKey)
+            UserDefaults.standard.set(elevenTuning.style, forKey: Self.elevenStyleKey)
+            neural.tuning = elevenTuning
+        }
+    }
+
+    private static func storedTuning() -> NeuralVoiceTuning {
+        let defaults = UserDefaults.standard
+        let standard = NeuralVoiceTuning.standard
+        return NeuralVoiceTuning(
+            stability: defaults.object(forKey: elevenStabilityKey) as? Double ?? standard.stability,
+            style: defaults.object(forKey: elevenStyleKey) as? Double ?? standard.style
+        )
+    }
 
     /// Ключ ElevenLabs лежит в Связке ключей.
     private(set) var hasNeuralKey = false
@@ -187,6 +206,7 @@ final class ReadAloud {
         neural.rate = rate
         neural.voiceId = elevenVoiceId
         neural.model = elevenModel
+        neural.tuning = elevenTuning
         neural.apiKey = { [weak self] in self?.neuralKey }
         neural.onFailure = { [weak self] error in self?.neuralFailed(error) }
         for voice in [apple, neural] as [any SpeechPlaying] {
@@ -485,7 +505,7 @@ final class ReadAloud {
         guard let neuralKey else { throw NeuralVoiceError.noKey }
         guard let elevenVoiceId else { throw NeuralVoiceError.noVoice }
         if isPlaying { pause() }
-        try await sample.play(voiceId: elevenVoiceId, model: elevenModel, key: neuralKey)
+        try await sample.play(voiceId: elevenVoiceId, model: elevenModel, tuning: elevenTuning, key: neuralKey)
     }
 
     // MARK: Экран блокировки, наушники, часы

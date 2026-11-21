@@ -28,16 +28,62 @@ public struct NeuralVoiceAccount: Hashable, Sendable {
     public var remaining: Int { max(limit - used, 0) }
 }
 
-/// Модель ElevenLabs. Flash вдвое дешевле по знакам и быстрее отвечает, Multilingual звучит живее.
+/// Модель ElevenLabs. Flash вдвое дешевле по знакам и быстрее отвечает, Multilingual звучит живее,
+/// v3 самая новая: живее всех читает русский и реже путает ударения, но не видит соседних фраз.
 public enum NeuralVoiceModel: String, CaseIterable, Codable, Sendable {
+    case v3 = "eleven_v3"
     case multilingual = "eleven_multilingual_v2"
     case flash = "eleven_flash_v2_5"
 
     public var title: String {
         switch self {
-        case .multilingual: "Лучшее звучание"
-        case .flash: "Быстрее и вдвое дешевле"
+        case .v3: "Новая v3: живее, точнее ударения"
+        case .multilingual: "Многоязычная v2: ровное звучание"
+        case .flash: "Быстрая: вдвое дешевле"
         }
+    }
+
+    /// Соседние фразы для интонации (`previous_text` / `next_text`): v3 их не принимает.
+    var takesNeighbours: Bool { self != .v3 }
+    /// Язык текста явно (`language_code`): Multilingual v2 его не принимает, узнаёт сам.
+    var takesLanguage: Bool { self != .multilingual }
+}
+
+/// Как звучит голос ElevenLabs. Ровность: выше спокойнее и ровнее, без странных акцентов,
+/// ниже живее, но голос чаще «гуляет». Выразительность: 0 как у диктора, выше ярче и театральнее.
+public struct NeuralVoiceTuning: Codable, Hashable, Sendable {
+    public var stability: Double
+    public var style: Double
+
+    public static let standard = NeuralVoiceTuning(stability: 0.65, style: 0)
+
+    public init(stability: Double, style: Double) {
+        self.stability = min(max(stability, 0), 1)
+        self.style = min(max(style, 0), 1)
+    }
+
+    /// `voice_settings` для запроса. v3 понимает только три ступени ровности
+    /// (0 «творческая», 0.5 «естественная», 1 «надёжная») и без остальных полей.
+    func voiceSettings(for model: NeuralVoiceModel) -> [String: Any] {
+        if model == .v3 {
+            let step = stability < 0.25 ? 0.0 : stability < 0.75 ? 0.5 : 1.0
+            return ["stability": step]
+        }
+        return [
+            "stability": Self.rounded(stability),
+            "similarity_boost": 0.75,
+            "style": Self.rounded(style),
+            "use_speaker_boost": true,
+        ]
+    }
+
+    /// Для имени файла в кеше: то же, что уходит в запрос.
+    func cachePart(for model: NeuralVoiceModel) -> String {
+        voiceSettings(for: model).sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+    }
+
+    private static func rounded(_ value: Double) -> Double {
+        (value * 100).rounded() / 100
     }
 }
 
@@ -79,22 +125,32 @@ public struct NeuralSpeechRequest: Hashable, Sendable {
     public var text: String
     public var voiceId: String
     public var model: NeuralVoiceModel
+    public var tuning: NeuralVoiceTuning
     public var language: String?
     public var previous: String?
     public var next: String?
 
-    public init(text: String, voiceId: String, model: NeuralVoiceModel, language: String? = nil, previous: String? = nil, next: String? = nil) {
+    public init(
+        text: String,
+        voiceId: String,
+        model: NeuralVoiceModel,
+        tuning: NeuralVoiceTuning = .standard,
+        language: String? = nil,
+        previous: String? = nil,
+        next: String? = nil
+    ) {
         self.text = text
         self.voiceId = voiceId
         self.model = model
+        self.tuning = tuning
         self.language = language
         self.previous = previous
         self.next = next
     }
 
-    /// Имя файла в кеше: от голоса, модели и текста.
+    /// Имя файла в кеше: от голоса, модели, настроек звучания и текста.
     public var cacheKey: String {
-        let digest = SHA256.hash(data: Data("\(model.rawValue)|\(voiceId)|\(text)".utf8))
+        let digest = SHA256.hash(data: Data("\(model.rawValue)|\(voiceId)|\(tuning.cachePart(for: model))|\(text)".utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 }
@@ -143,11 +199,16 @@ public struct ElevenLabsClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
-        var body: [String: String] = ["text": speech.text, "model_id": speech.model.rawValue]
-        if let previous = speech.previous { body["previous_text"] = previous }
-        if let next = speech.next { body["next_text"] = next }
-        // Язык явно принимает только Flash; Multilingual сам узнаёт его по тексту.
-        if speech.model == .flash, let language = speech.language?.prefix(2), language.count == 2 {
+        var body: [String: Any] = [
+            "text": speech.text,
+            "model_id": speech.model.rawValue,
+            "voice_settings": speech.tuning.voiceSettings(for: speech.model),
+        ]
+        if speech.model.takesNeighbours {
+            if let previous = speech.previous { body["previous_text"] = previous }
+            if let next = speech.next { body["next_text"] = next }
+        }
+        if speech.model.takesLanguage, let language = speech.language?.prefix(2), language.count == 2 {
             body["language_code"] = String(language).lowercased()
         }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
