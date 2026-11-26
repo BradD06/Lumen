@@ -1,0 +1,16 @@
+name: lumen_player
+description: Плеер Lumen — голос диктора и фоновая музыка. Сам плеер приходит на этапе 3, музыка на этапе 6.
+publish_to: none
+version: 0.1.0
+resolution: workspace
+
+environment:
+  sdk: ^3.14.0
+
+dependencies:
+  lumen_core: any
+  lumen_voice: any
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.0
