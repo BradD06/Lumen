@@ -28,6 +28,7 @@ dependencies:
   path_provider: ^2.1.6
   desktop_drop: ^0.8.4
   lumen_player: any
+  flutter_secure_storage: ^11.2.0
 
 dev_dependencies:
   flutter_test:

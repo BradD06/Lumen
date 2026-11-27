@@ -20,6 +20,21 @@
 | Книги хранятся на устройстве и переживают перезапуск (SQLite в папке приложения, обложки рядом) | Все четыре | `packages/lumen_storage/lib/src/sqlite_book_store.dart`, открывается в `lib/main.dart` |
 | GitHub проверяет каждый PR: формат, анализ, тесты, сборка Android, Windows, macOS и iOS | — | `.github/workflows/ci.yml` |
 
+### Ядро озвучки (этап 1, экранов пока нет)
+
+| Функция | Системы | Где в коде |
+|---|---|---|
+| Текст делится на предложения (свои правила: инициалы, сокращения, «— Да! — сказал он», многоточия); длинное режется по запятым; сноски [12], мягкие переносы, номера страниц и «* * *» не читаются; места в UTF-16 | Все четыре | `packages/lumen_voice/lib/src/sentences.dart`, `speech_text.dart` (`SpeechText.parts`) |
+| Для голоса с сервера части с разгоном: с места старта одно предложение, дальше части растут до абзаца (600 знаков), через абзац не переходят | Все четыре | `SpeechText.ramped` |
+| Вход озвучки — простой текст и места абзацев (`Chapter.text` + `Chapter.paragraphs`) плюс id для места: `NarrationText` | Все четыре | `packages/lumen_voice/lib/src/narration.dart` |
+| Язык текста (ru, en, uk, de, fr, ja, zh, ko…); язык, которого голос сервера не знает, читает системный голос (`serverVoiceSupports`) | Все четыре | `language.dart` (`detectLanguage`, `VoiceLanguages`) |
+| Клиент сервера голоса: `/v1/voices`, `/v1/speak` (таймаут 120 с), `/health`; ошибки «Сервер не отвечает», «Нет интернета», «Ключ не подходит», «Голос запускается» с текстом для окна | Все четыре | `voice_server.dart`, `voice_error.dart` |
+| Адрес и ключ сервера только в защищённом хранилище системы (Связка ключей, Keystore, диспетчер учётных данных) | Все четыре | `server_settings.dart` (`VoiceServerSettings`), `lib/narration/secure_secret_store.dart` |
+| Кеш фраз на устройстве (ключ: сервер, голос, язык, текст), одна загрузка на фразу, начатая загрузка всегда ложится в кеш, предел 400 МБ, «Очистить кеш» и размер | Все четыре | `phrase_cache.dart` (`PhraseCache`) |
+| Очередь озвучки: пока звучит фраза, три следующие готовятся сразу; опоздавшие ответы отбрасываются; при обрыве связи ждёт и пробует снова около минуты; смена голоса — новая озвучка | Все четыре | `phrase_queue.dart` (`PhraseQueue`, `serverPhraseQueue`) |
+| Время слов по громкости звука (wav), подсветка с опережением 0,12 с, предложение под словом; для mp3 — равномерно по длительности (кадры mp3), пока плеер не даст громкость | Все четыре | `speech_alignment.dart`, `speech_timing.dart`, `SpokenPart` в `narration.dart` |
+| Место прослушивания не перезаписывается, пока не сдвинулось (не затирает место с другого устройства) | Все четыре | `PlaceKeeper` в `narration.dart` |
+
 ## Как устроен код
 
 Приложение — Flutter-проект в корне (`lib/` — экраны), логика — в отдельных пакетах `packages/` (Dart workspace, один `flutter pub get` в корне). Зависимости только вниз, это проверяет `test/layers_test.dart`:
@@ -33,7 +48,7 @@
 | Пакет | Что там | Сейчас |
 |---|---|---|
 | `lumen_core` | Модели и чистая логика, ни от чего не зависит | `Book` (один диктор: `narratorVoiceId`; `coverPath`, `addedAt`, `sourceName`), `Chapter` (постоянный `id` = `<книга>/<номер>`, `index`, чистый `text`, абзацы `paragraphs` — места в тексте, абзацы разделены `\n\n`; `paragraphTexts`; `Chapter.fromParagraphs`), `Line` (кусок текста с `speaker` и `emotion`; голос один, персонажи различаются интонацией), `Emotion`, `TextRange` (места в UTF-16) |
-| `lumen_voice` | Озвучка: сервер голоса, фразы, кеш, время слов | `ServerLink` (адрес и ключ из ссылки `https://…/#key=…`, пути `/v1/voices`, `/v1/speak`, `/health`), `ServerState` («не отвечает» и «нет интернета» — разные состояния). Ядро — этап 1 |
+| `lumen_voice` | Озвучка: сервер голоса, фразы, кеш, время слов | `ServerLink`, `ServerState`, `VoiceServer` + `VoiceError`, `VoiceServerSettings` (`SecretStore`), `SpeechText` (фразы и разгон), `SpeechTiming` / `SpeechAlignment` (время слов), `PhraseCache`, `PhraseQueue`, `NarrationText` / `SpokenPart` / `PlaceKeeper`. Зависит от `http`, `crypto` |
 | `lumen_storage` | Хранилище книг | `BookStore` (список без глав, книга целиком, обложки) и две реализации: `SqliteBookStore` (на устройстве: таблицы `book`, `chapter`, `paragraph`, `line`; у абзаца и реплики есть «кто говорит» и «чувство»; миграции только добавляются в конец `_migrations`, номер в `PRAGMA user_version`) и `MemoryBookStore` (тесты) |
 | `lumen_import` | Разбор книг, без Flutter | `importBook(имя файла, байты)` → `ImportedBook` (сведения, главы, обложка) → `toBook(id)`; `parsePlainText` для вставленного текста; `ImportException` с понятным текстом по-русски. PDF и DOCX — позже |
 | `lumen_player` | Плеер: голос и фоновая музыка — две дорожки | `AudioMix` (громкость музыки, приглушение под голосом). Плеер — этап 3, музыка — этап 6 |

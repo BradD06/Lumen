@@ -1,5 +1,5 @@
 name: lumen_voice
-description: Озвучка Lumen — связь с сервером голоса. Ядро (фразы, кеш, время слов) приходит на этапе 1.
+description: Озвучка Lumen — сервер голоса, фразы, кеш, очередь подгрузки и время слов.
 publish_to: none
 version: 0.1.0
 resolution: workspace
@@ -8,6 +8,8 @@ environment:
   sdk: ^3.14.0
 
 dependencies:
+  crypto: ^3.0.6
+  http: ^1.4.0
   lumen_core: any
 
 dev_dependencies:
