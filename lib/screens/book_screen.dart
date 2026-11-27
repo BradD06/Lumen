@@ -3,6 +3,7 @@ import 'package:lumen_core/lumen_core.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../library/book_cover.dart';
+import '../library/chapter_content.dart';
 import '../library/library_scope.dart';
 import '../library/widgets.dart';
 import '../reader/reading_panel.dart';
@@ -243,7 +244,8 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
   @override
   Widget build(BuildContext context) {
     final chapter = _chapters[_index];
-    final paragraphs = chapter.paragraphTexts;
+    // Абзацы и иллюстрации по порядку.
+    final items = chapterItems(chapter);
     final panelBottom = islandClearance(context) + 10;
     return CallbackShortcuts(
       bindings: {
@@ -265,7 +267,7 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
                     key: ValueKey(_index),
                     controller: _scroll,
                     padding: EdgeInsets.fromLTRB(20, _top(context), 20, panelBottom + 110),
-                    itemCount: paragraphs.length + 1,
+                    itemCount: items.length + 1,
                     itemBuilder: (context, i) {
                       final Widget child;
                       if (i == 0) {
@@ -311,17 +313,7 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
                           ),
                         );
                       } else {
-                        child = Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
-                          child: Text(
-                            paragraphs[i - 1],
-                            style: const TextStyle(
-                              fontSize: 17,
-                              height: 1.55,
-                              color: Graphite.text,
-                            ),
-                          ),
-                        );
+                        child = ChapterItemView(item: items[i - 1]);
                       }
                       return Center(
                         child: ConstrainedBox(
