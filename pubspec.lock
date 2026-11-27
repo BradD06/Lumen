@@ -529,10 +529,10 @@ packages:
     dependency: "direct main"
     description:
       name: just_audio_windows
-      sha256: "7d80dfa02a2189f1c26673a56f4d8584a306d3f22735302be6111e9578a40318"
+      sha256: "9dead2d018c7e790c50f445663ed32d10c83d2e6f2b12648e85a901dfb3b7352"
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.3"
+    version: "0.2.4"
   leak_tracker:
     dependency: transitive
     description:

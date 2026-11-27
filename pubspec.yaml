@@ -32,7 +32,7 @@ dependencies:
   lumen_player: any
   flutter_secure_storage: ^11.2.0
   just_audio: ^0.10.5
-  just_audio_windows: 0.2.3
+  just_audio_windows: ^0.2.4
   audio_service: ^0.18.18
   audio_session: ^0.2.2
   flutter_tts: ^4.2.3
