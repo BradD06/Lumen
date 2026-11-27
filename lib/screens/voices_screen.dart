@@ -71,6 +71,16 @@ class _ServerCardState extends State<_ServerCard> {
     await _connect();
   }
 
+  Future<void> _clearCache() async {
+    setState(() => _busy = true);
+    await widget.narration.clearVoiceCache();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(content: Text('Озвучка на устройстве стёрта: фразы придут с сервера заново')),
+    );
+  }
+
   Future<void> _check() async {
     setState(() => _busy = true);
     await widget.narration.refreshServer();
@@ -166,6 +176,8 @@ class _ServerCardState extends State<_ServerCard> {
               _Quiet(label: 'Вставить ссылку', onPressed: _busy ? null : _paste),
               if (link != null) _Quiet(label: 'Проверить', onPressed: _busy ? null : _check),
               if (link != null)
+                _Quiet(label: 'Очистить озвучку', onPressed: _busy ? null : _clearCache),
+              if (link != null)
                 _Quiet(
                   label: 'Отключить',
                   onPressed: _busy
@@ -184,7 +196,8 @@ class _ServerCardState extends State<_ServerCard> {
               style: const TextStyle(fontSize: 13, height: 1.35, color: Graphite.textMuted),
             ),
           const Text(
-            'Ключ хранится только в защищённом хранилище системы.',
+            'Ключ хранится только в защищённом хранилище системы. «Очистить озвучку» стирает '
+            'фразы, сохранённые на устройстве: нужно после обновления сервера.',
             style: TextStyle(fontSize: 12, color: Graphite.textFaint),
           ),
         ],
