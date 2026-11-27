@@ -53,6 +53,14 @@ abstract final class Graphite {
         onSurface: text,
         outline: line,
       ),
+      // Смена экрана как на Windows на всех системах: новый экран чуть
+      // увеличивается и проявляется на месте. Переход Mac и iPhone сдвигал
+      // текст вбок (Брэд, 27.11.2026).
+      pageTransitionsTheme: PageTransitionsTheme(
+        builders: {
+          for (final platform in TargetPlatform.values) platform: ZoomPageTransitionsBuilder(),
+        },
+      ),
       splashFactory: NoSplash.splashFactory,
       highlightColor: Colors.transparent,
       focusColor: const Color(0x33FFFFFF),
