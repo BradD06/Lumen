@@ -14,6 +14,7 @@ class NarrationView {
     this.voiceName,
     this.musicOn = false,
     this.musicVolume = 0.3,
+    this.voiceVolume = 1,
     this.musicTrack = 0,
     this.sleepTimer,
     this.notice,
@@ -29,6 +30,9 @@ class NarrationView {
 
   /// Громкость музыки под голосом, 0…1.
   final double musicVolume;
+
+  /// Громкость диктора, 0…1.
+  final double voiceVolume;
 
   /// Номер дорожки в `musicTracks`.
   final int musicTrack;
@@ -62,6 +66,7 @@ class NarrationView {
       other.voiceName == voiceName &&
       other.musicOn == musicOn &&
       other.musicVolume == musicVolume &&
+      other.voiceVolume == voiceVolume &&
       other.musicTrack == musicTrack &&
       other.sleepTimer?.inMinutes == sleepTimer?.inMinutes &&
       (other.sleepTimer == null) == (sleepTimer == null) &&
@@ -75,6 +80,7 @@ class NarrationView {
     voiceName,
     musicOn,
     musicVolume,
+    voiceVolume,
     musicTrack,
     sleepTimer?.inMinutes,
     notice,
@@ -95,6 +101,7 @@ class NarrationActions {
     this.voice,
     this.music,
     this.musicVolume,
+    this.voiceVolume,
     this.musicTrack,
     this.chapters,
     this.textLook,
@@ -110,6 +117,7 @@ class NarrationActions {
   final VoidCallback? voice;
   final ValueChanged<bool>? music;
   final ValueChanged<double>? musicVolume;
+  final ValueChanged<double>? voiceVolume;
 
   /// Выбрать дорожку музыки (номер в `NarrationView.musicTracks`).
   final ValueChanged<int>? musicTrack;
@@ -507,6 +515,7 @@ class _MusicSheet extends StatefulWidget {
 class _MusicSheetState extends State<_MusicSheet> {
   late bool _on = widget.view.musicOn;
   late double _volume = widget.view.musicVolume;
+  late double _voice = widget.view.voiceVolume;
   late int _track = widget.view.musicTrack;
 
   @override
@@ -521,6 +530,18 @@ class _MusicSheetState extends State<_MusicSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.actions.voiceVolume != null) ...[
+              const Text('Громкость', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              _VolumeRow(
+                label: 'Диктор',
+                value: _voice,
+                onChanged: (v) {
+                  setState(() => _voice = v);
+                  widget.actions.voiceVolume!(v);
+                },
+              ),
+              const SizedBox(height: 4),
+            ],
             Row(
               children: [
                 const Expanded(
@@ -542,30 +563,15 @@ class _MusicSheetState extends State<_MusicSheet> {
                 ),
               ],
             ),
-            Row(
-              children: [
-                const Text('Громкость', style: TextStyle(fontSize: 13, color: Graphite.textMuted)),
-                Expanded(
-                  child: SliderTheme(
-                    data: const SliderThemeData(
-                      activeTrackColor: Graphite.accent,
-                      inactiveTrackColor: Graphite.track,
-                      thumbColor: Graphite.accent,
-                      overlayColor: Color(0x1FFFFFFF),
-                      trackHeight: 3,
-                    ),
-                    child: Slider(
-                      value: _volume,
-                      onChanged: !_on || widget.actions.musicVolume == null
-                          ? null
-                          : (v) {
-                              setState(() => _volume = v);
-                              widget.actions.musicVolume!(v);
-                            },
-                    ),
-                  ),
-                ),
-              ],
+            _VolumeRow(
+              label: 'Музыка',
+              value: _volume,
+              onChanged: !_on || widget.actions.musicVolume == null
+                  ? null
+                  : (v) {
+                      setState(() => _volume = v);
+                      widget.actions.musicVolume!(v);
+                    },
             ),
             if (widget.actions.musicTrack != null)
               Padding(
@@ -595,7 +601,8 @@ class _MusicSheetState extends State<_MusicSheet> {
                 ),
               ),
             const Text(
-              'Тихая музыка под голосом диктора; когда он говорит, она приглушается.',
+              'Тихая музыка под голосом диктора; когда он говорит, она приглушается. Громкость '
+              'диктора и музыки настраивается отдельно.',
               style: TextStyle(fontSize: 12, height: 1.35, color: Graphite.textFaint),
             ),
           ],
@@ -603,4 +610,38 @@ class _MusicSheetState extends State<_MusicSheet> {
       ),
     );
   }
+}
+
+/// Подпись и ползунок громкости в окне музыки.
+class _VolumeRow extends StatelessWidget {
+  const _VolumeRow({required this.label, required this.value, required this.onChanged});
+
+  final String label;
+  final double value;
+  final ValueChanged<double>? onChanged;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      SizedBox(
+        width: 64,
+        child: Text(label, style: const TextStyle(fontSize: 13, color: Graphite.textMuted)),
+      ),
+      Expanded(
+        child: SliderTheme(
+          data: const SliderThemeData(
+            activeTrackColor: Graphite.accent,
+            inactiveTrackColor: Graphite.track,
+            thumbColor: Graphite.accent,
+            overlayColor: Color(0x1FFFFFFF),
+            trackHeight: 3,
+          ),
+          child: Semantics(
+            label: 'Громкость: $label',
+            child: Slider(value: value, onChanged: onChanged),
+          ),
+        ),
+      ),
+    ],
+  );
 }

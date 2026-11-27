@@ -7,9 +7,15 @@ import 'package:just_audio/just_audio.dart';
 import 'package:lumen_player/lumen_player.dart';
 import 'package:lumen_voice/lumen_voice.dart';
 
+/// Громкость голоса диктора, отдельно от музыки на фоне.
+abstract interface class VoiceVolume {
+  /// 0…1, 1 — как есть.
+  Future<void> setVolume(double volume);
+}
+
 /// Фразы голоса сервера через just_audio (на Windows — just_audio_windows).
 /// Звук фразы пишется во временный файл: так он одинаково играет на всех системах.
-final class JustAudioPhrasePlayer implements PhrasePlayer {
+final class JustAudioPhrasePlayer implements PhrasePlayer, VoiceVolume {
   JustAudioPhrasePlayer(this._folder);
 
   final Future<Directory> _folder;
@@ -70,6 +76,9 @@ final class JustAudioPhrasePlayer implements PhrasePlayer {
   Future<void> setSpeed(double speed) => _player.setSpeed(speed);
 
   @override
+  Future<void> setVolume(double volume) => _player.setVolume(volume.clamp(0.0, 1.0));
+
+  @override
   Future<void> stop() async {
     _finish(false);
     await _player.pause();
@@ -80,7 +89,7 @@ final class JustAudioPhrasePlayer implements PhrasePlayer {
 
 /// Системный голос через flutter_tts: AVSpeechSynthesizer на Mac и iPhone, TextToSpeech
 /// на Android, голоса Windows.
-final class FlutterSystemSpeech implements SystemSpeech {
+final class FlutterSystemSpeech implements SystemSpeech, VoiceVolume {
   final _tts = FlutterTts();
   Future<void>? _setup;
   Completer<bool>? _done;
@@ -88,6 +97,11 @@ final class FlutterSystemSpeech implements SystemSpeech {
   var _started = false;
   String? _language;
   double? _rate;
+  double _volume = 1;
+  double? _setVolume;
+
+  @override
+  Future<void> setVolume(double volume) async => _volume = volume.clamp(0.0, 1.0);
 
   Future<void> _prepare() => _setup ??= () async {
     if (Platform.isIOS) {
@@ -160,6 +174,10 @@ final class FlutterSystemSpeech implements SystemSpeech {
       if (rate != _rate) {
         _rate = rate;
         await _tts.setSpeechRate(rate);
+      }
+      if (_volume != _setVolume) {
+        _setVolume = _volume;
+        await _tts.setVolume(_volume);
       }
       if (done.isCompleted) return await done.future;
       await _tts.speak(text);

@@ -31,6 +31,7 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
     this.keepAwake = false,
   }) : _settings = VoiceServerSettings(secrets ?? MemorySecretStore()),
        _prefs = prefs ?? MemoryPrefs(),
+       _voiceOutputs = [player, speech].whereType<VoiceVolume>().toList(),
        narrator = Narrator(player: player, speech: speech) {
     // Сначала все поля, потом подписка на диктора: его первое же изменение (скорость)
     // читает музыку и тишину. Наоборот на iPhone падало, и звук не включался.
@@ -42,6 +43,10 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
       musicVolume: _prefs.getDouble(_musicVolumeKey) ?? 0.3,
     );
     _track = MusicTrack.byId(_prefs.getString(_trackKey));
+    _voiceVolume = _prefs.getDouble(_voiceVolumeKey) ?? 1;
+    for (final output in _voiceOutputs) {
+      unawaited(output.setVolume(_voiceVolume));
+    }
     sleep = SleepTimer(onFire: pause, onChange: notifyListeners);
     narrator
       ..setSpeed(_speed)
@@ -63,6 +68,7 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
   static const _musicKey = 'narration.music';
   static const _musicVolumeKey = 'narration.musicVolume';
   static const _trackKey = 'narration.musicTrack';
+  static const _voiceVolumeKey = 'narration.voiceVolume';
   static const _systemKey = 'narration.systemVoice';
 
   final Narrator narrator;
@@ -384,6 +390,20 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
     _mix = _mix.copyWith(musicVolume: volume);
     _prefs.setDouble(_musicVolumeKey, volume);
     _updateMusic();
+    notifyListeners();
+  }
+
+  /// Громкость диктора (голос сервера и системный), отдельно от музыки.
+  double get voiceVolume => _voiceVolume;
+  late double _voiceVolume;
+  final List<VoiceVolume> _voiceOutputs;
+
+  void setVoiceVolume(double volume) {
+    _voiceVolume = volume.clamp(0.0, 1.0);
+    _prefs.setDouble(_voiceVolumeKey, _voiceVolume);
+    for (final output in _voiceOutputs) {
+      unawaited(output.setVolume(_voiceVolume));
+    }
     notifyListeners();
   }
 
