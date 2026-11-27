@@ -40,44 +40,69 @@ def lowpass(x, cutoff):
     return np.fft.irfft(spectrum, n=x.shape[0], axis=0)
 
 
+def highpass(x, cutoff):
+    """Срез низа: на динамике телефона низкие ноты звучат как гул."""
+    spectrum = np.fft.rfft(x, axis=0)
+    freqs = np.fft.rfftfreq(x.shape[0], 1 / RATE)
+    spectrum *= (1 / (1 + (cutoff / np.maximum(freqs, 1)) ** 4))[:, None]
+    return np.fft.irfft(spectrum, n=x.shape[0], axis=0)
+
+
 def evening():
-    """«Тихий вечер»: медленные аккорды тёплого пэда."""
+    """«Тихий вечер»: редкие мягкие ноты, как фортепиано с войлоком, и едва слышный пэд.
+
+    Раньше это был сплошной низкий аккорд: под голосом его не слышно, а в паузах между
+    предложениями он звучал как гул. Теперь низа нет, а звук — отдельные затухающие ноты."""
     chords = [
-        ["A2", "E3", "A3", "C4", "E4"],
-        ["F2", "C3", "F3", "A3", "C4"],
-        ["C3", "G3", "C4", "E4", "G4"],
-        ["G2", "D3", "G3", "B3", "D4"],
-        ["D3", "A3", "D4", "F4", "A4"],
-        ["F2", "C3", "F3", "A3", "E4"],
-        ["A2", "E3", "A3", "C4", "E4"],
-        ["E2", "B2", "E3", "G#3", "B3"],
+        ["A3", "C4", "E4", "A4"],
+        ["F3", "A3", "C4", "F4"],
+        ["C4", "E4", "G4", "C5"],
+        ["G3", "B3", "D4", "G4"],
+        ["D4", "F4", "A4", "D5"],
+        ["F3", "A3", "C4", "E4"],
+        ["A3", "C4", "E4", "A4"],
+        ["E3", "G#3", "B3", "E4"],
     ]
-    step = 12.0
+    step = 8.0
     length = int(step * len(chords) * RATE)
     t = np.arange(length) / RATE
     mix = np.zeros((length, 2))
     rng = np.random.default_rng(7)
+    # Порядок нот в аккорде: вверх и обратно, с небольшой «живой» неровностью.
+    pattern = [0, 1, 2, 3, 2, 1]
     for i, chord in enumerate(chords):
-        center = (i + 0.5) * step
-        # Колокол по кругу: аккорд плавно входит и уходит, соседние перекрываются.
+        begin = i * step
+        for k, n in enumerate(pattern):
+            at = begin + k * (step / len(pattern)) + rng.uniform(-0.04, 0.04)
+            f = note(chord[n])
+            dur = 3.2
+            count = int(dur * RATE)
+            tt = np.arange(count) / RATE
+            # Мягкая атака (без щелчка) и долгое затухание; верхние гармоники гаснут быстрее.
+            attack = 1 - np.exp(-tt / 0.012)
+            tone = (np.sin(2 * np.pi * f * tt) * np.exp(-tt / 1.1)
+                    + 0.35 * np.sin(4 * np.pi * f * tt) * np.exp(-tt / 0.45)
+                    + 0.12 * np.sin(6 * np.pi * f * tt) * np.exp(-tt / 0.25))
+            tone *= attack * rng.uniform(0.75, 1.0)
+            side = 0.5 + 0.25 * np.sin(k + i)
+            idx = (int(at * RATE) + np.arange(count)) % length
+            mix[idx, 0] += tone * (1 - side)
+            mix[idx, 1] += tone * side
+        # Тихий пэд того же аккорда, чтобы ноты не висели в пустоте.
+        center = begin + step / 2
         dist = (t - center + length / RATE / 2) % (length / RATE) - length / RATE / 2
-        env = np.exp(-0.5 * (dist / (step * 0.42)) ** 2)
+        env = np.exp(-0.5 * (dist / (step * 0.45)) ** 2) * 0.08
         for name in chord:
             f = note(name)
-            for side, detune in ((0, -0.9), (1, 0.9)):
-                phase = rng.uniform(0, 2 * np.pi)
-                ff = f * (1 + detune / 1200)
-                tone = np.sin(2 * np.pi * ff * t + phase) + 0.18 * np.sin(4 * np.pi * ff * t + phase)
-                mix[:, side] += env * tone / len(chord)
-    # Медленное дыхание громкости.
-    mix *= (0.85 + 0.15 * np.sin(2 * np.pi * t / (length / RATE) * 4))[:, None]
-    mix = lowpass(mix, 1800)
-    mix = circular_echo(mix, [0.31, 0.47, 0.73, 1.1], [0.35, 0.25, 0.18, 0.12])
+            mix += (env * np.sin(2 * np.pi * f * t + rng.uniform(0, 2 * np.pi)))[:, None] / len(chord)
+    mix = highpass(mix, 180)
+    mix = lowpass(mix, 3500)
+    mix = circular_echo(mix, [0.29, 0.43, 0.71, 1.07], [0.3, 0.22, 0.15, 0.1])
     return mix
 
 
 def rain():
-    """«Дождь»: шум капель за окном и далёкий низкий гул."""
+    """«Дождь»: шум капель за окном."""
     seconds = 64
     length = seconds * RATE
     rng = np.random.default_rng(11)
@@ -107,9 +132,8 @@ def rain():
         drop[idx, 0] += click * (1 - side)
         drop[idx, 1] += click * side
     mix += drop
-    hum = 0.08 * np.sin(2 * np.pi * 55 * t) * (0.6 + 0.4 * np.sin(2 * np.pi * t / seconds * 2))
-    mix += hum[:, None]
-    return circular_echo(mix, [0.05, 0.11], [0.3, 0.15])
+    # Без низкого гула: на телефоне он слышен в паузах голоса как помеха.
+    return highpass(circular_echo(mix, [0.05, 0.11], [0.3, 0.15]), 150)
 
 
 def write(name, samples):
