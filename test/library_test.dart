@@ -40,6 +40,25 @@ void main() {
     expect(find.text('Наступило утро.'), findsOneWidget);
   });
 
+  testWidgets('сетка книг сразу под поиском, даже с «чёлкой» iPhone', (tester) async {
+    tester.view.physicalSize = const Size(1179, 2556);
+    tester.view.devicePixelRatio = 3;
+    tester.view.padding = const FakeViewPadding(top: 59 * 3, bottom: 34 * 3);
+    tester.view.viewPadding = const FakeViewPadding(top: 59 * 3, bottom: 34 * 3);
+    addTearDown(tester.view.reset);
+
+    final store = MemoryBookStore();
+    await store.save(const Book(id: 'a', title: 'Мёртвые души', author: 'Гоголь'));
+    await tester.pumpWidget(LumenApp(store: store));
+    await tester.tap(find.bySemanticsLabel(AppTab.library.label));
+    await tester.pumpAndSettle();
+
+    final search = tester.getRect(find.byType(TextField));
+    final cover = tester.getRect(find.byType(BookCover).first);
+    // Поле 46 pt, текст в нём по центру: от текста до обложки — не больше обычного зазора.
+    expect(cover.top - search.bottom, lessThan(40));
+  });
+
   testWidgets('поиск по названию и автору', (tester) async {
     final store = MemoryBookStore();
     await store.save(const Book(id: 'a', title: 'Мёртвые души', author: 'Гоголь'));
