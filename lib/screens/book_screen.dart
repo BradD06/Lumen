@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import '../library/book_cover.dart';
 import '../library/library_scope.dart';
 import '../library/widgets.dart';
+import '../reader/narration_controls.dart';
 import '../reader/reading_panel.dart';
 import '../shell/app_shell.dart';
 import '../shell/profile_button.dart';
@@ -209,7 +210,12 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
   final _progress = ValueNotifier<double>(0);
   late int _index = widget.index;
 
+  /// Блок озвучки пока только для вида: кнопки меняют то, что видно,
+  /// звук подключит плеер (этап 3).
+  var _narration = const NarrationView();
+
   static const _column = 760.0;
+  static const _panelWidth = 680.0;
 
   List<Chapter> get _chapters => widget.book.chapters;
 
@@ -233,6 +239,69 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
     _scroll.jumpTo(fraction * position.maxScrollExtent);
   }
 
+  void _narrate(NarrationView view) => setState(() => _narration = view);
+
+  // Перемотка и фразы появятся с плеером (этап 3).
+  static void _soon() {}
+
+  NarrationActions get _actions => NarrationActions(
+    playPause: () => _narrate(_narration.copyWith(playing: !_narration.playing)),
+    back15: _soon,
+    forward15: _soon,
+    previousPhrase: _soon,
+    nextPhrase: _soon,
+    speed: (v) => _narrate(_narration.copyWith(speed: v)),
+    sleepTimer: _soon,
+    voice: _soon,
+    music: (on) => _narrate(_narration.copyWith(musicOn: on)),
+    musicVolume: (v) => _narrate(_narration.copyWith(musicVolume: v)),
+    chapters: _pickChapter,
+    textLook: _soon,
+  );
+
+  Future<void> _pickChapter() async {
+    final picked = await showDialog<int>(
+      context: context,
+      barrierColor: const Color(0x99000000),
+      builder: (context) => Dialog(
+        backgroundColor: const Color(0xF21A1A22),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440, maxHeight: 520),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 18, 20, 8),
+                child: Text('Главы', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+              ),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.only(bottom: 10),
+                  itemCount: _chapters.length,
+                  itemBuilder: (context, i) => ListTile(
+                    selected: i == _index,
+                    selectedColor: Graphite.text,
+                    selectedTileColor: Graphite.islandOn,
+                    leading: Text(
+                      '${i + 1}',
+                      style: const TextStyle(fontSize: 13, color: Graphite.textMuted),
+                    ),
+                    title: Text(_chapters[i].title, maxLines: 2, overflow: TextOverflow.ellipsis),
+                    onTap: () => Navigator.of(context).pop(i),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked != null) _go(picked);
+  }
+
   bool _onMetrics(ScrollMetrics m) {
     // Глава целиком на экране — прочитана.
     final value = m.maxScrollExtent <= 0 ? 1.0 : (m.pixels / m.maxScrollExtent).clamp(0.0, 1.0);
@@ -245,114 +314,124 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
     final chapter = _chapters[_index];
     final paragraphs = chapter.paragraphTexts;
     final panelBottom = islandClearance(context) + 10;
+    final panelWidth = (MediaQuery.sizeOf(context).width - 24).clamp(0.0, _panelWidth);
+    // Текст прокручивается до конца над панелью: прогресс 56 + блок озвучки.
+    final textBottom = panelBottom + 56 + NarrationControls.heightFor(panelWidth) + 40;
     return CallbackShortcuts(
       bindings: {
         // ⌥← / ⌥→ (Alt на Windows) — соседняя глава.
         const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): () => _go(_index - 1),
         const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true): () => _go(_index + 1),
+        const SingleActivator(LogicalKeyboardKey.space): () => _actions.playPause!(),
       },
-      child: Material(
-        type: MaterialType.transparency,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: NotificationListener<ScrollMetricsNotification>(
-                onNotification: (n) => _onMetrics(n.metrics),
-                child: NotificationListener<ScrollNotification>(
+      // Свой фокус, чтобы клавиши экрана работали; ⌘1…⌘5 окна выше по дереву.
+      child: Focus(
+        autofocus: true,
+        child: Material(
+          type: MaterialType.transparency,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: NotificationListener<ScrollMetricsNotification>(
                   onNotification: (n) => _onMetrics(n.metrics),
-                  child: ListView.builder(
-                    // Новая глава — новый список, без следов прошлой прокрутки.
-                    key: ValueKey(_index),
-                    controller: _scroll,
-                    padding: EdgeInsets.fromLTRB(20, _top(context), 20, panelBottom + 110),
-                    itemCount: paragraphs.length + 1,
-                    itemBuilder: (context, i) {
-                      final Widget child;
-                      if (i == 0) {
-                        child = Padding(
-                          padding: const EdgeInsets.only(bottom: 18),
-                          child: ClearOfProfile(
-                            maxWidth: _column,
-                            child: Row(
-                              spacing: 14,
-                              children: [
-                                GlassIconButton(
-                                  icon: Icons24.back,
-                                  label: 'Назад',
-                                  onPressed: () => Navigator.of(context).maybePop(),
-                                ),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        widget.book.title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Graphite.textMuted,
-                                        ),
-                                      ),
-                                      Text(
-                                        chapter.title,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ],
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (n) => _onMetrics(n.metrics),
+                    child: ListView.builder(
+                      // Новая глава — новый список, без следов прошлой прокрутки.
+                      key: ValueKey(_index),
+                      controller: _scroll,
+                      padding: EdgeInsets.fromLTRB(20, _top(context), 20, textBottom),
+                      itemCount: paragraphs.length + 1,
+                      itemBuilder: (context, i) {
+                        final Widget child;
+                        if (i == 0) {
+                          child = Padding(
+                            padding: const EdgeInsets.only(bottom: 18),
+                            child: ClearOfProfile(
+                              maxWidth: _column,
+                              child: Row(
+                                spacing: 14,
+                                children: [
+                                  GlassIconButton(
+                                    icon: Icons24.back,
+                                    label: 'Назад',
+                                    onPressed: () => Navigator.of(context).maybePop(),
                                   ),
-                                ),
-                              ],
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          widget.book.title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: Graphite.textMuted,
+                                          ),
+                                        ),
+                                        Text(
+                                          chapter.title,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
+                          );
+                        } else {
+                          child = Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: Text(
+                              paragraphs[i - 1],
+                              style: const TextStyle(
+                                fontSize: 17,
+                                height: 1.55,
+                                color: Graphite.text,
+                              ),
+                            ),
+                          );
+                        }
+                        return Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: _column),
+                            child: child,
                           ),
                         );
-                      } else {
-                        child = Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
-                          child: Text(
-                            paragraphs[i - 1],
-                            style: const TextStyle(
-                              fontSize: 17,
-                              height: 1.55,
-                              color: Graphite.text,
-                            ),
-                          ),
-                        );
-                      }
-                      return Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: _column),
-                          child: child,
-                        ),
-                      );
-                    },
+                      },
+                    ),
                   ),
                 ),
               ),
-            ),
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: panelBottom,
-              child: Center(
-                child: ValueListenableBuilder<double>(
-                  valueListenable: _progress,
-                  builder: (context, value, _) => ReadingPanel(
-                    title: 'Глава ${_index + 1} из ${_chapters.length}',
-                    trailing: '${(value * 100).round()} %',
-                    value: value,
-                    onSeek: _seek,
-                    onPrevious: _index > 0 ? () => _go(_index - 1) : null,
-                    onNext: _index < _chapters.length - 1 ? () => _go(_index + 1) : null,
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: panelBottom,
+                child: Center(
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _progress,
+                    builder: (context, value, _) => ReadingPanel(
+                      title: 'Глава ${_index + 1} из ${_chapters.length}',
+                      trailing: '${(value * 100).round()} %',
+                      value: value,
+                      onSeek: _seek,
+                      onPrevious: _index > 0 ? () => _go(_index - 1) : null,
+                      onNext: _index < _chapters.length - 1 ? () => _go(_index + 1) : null,
+                      maxWidth: _panelWidth,
+                      controls: NarrationControls(view: _narration, actions: _actions),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -76,8 +76,8 @@ class ReadingProgressBar extends StatelessWidget {
 }
 
 /// Стеклянная панель над островом: «предыдущая», подпись и прогресс, «следующая».
-/// В тексте главы кнопки листают главы; плеер (этап 3) поставит сюда свои
-/// кнопки и добавит ряд управления сверху через [top].
+/// Кнопки по краям листают главы; под прогрессом — [controls]
+/// (управление озвучкой, `NarrationControls`).
 class ReadingPanel extends StatelessWidget {
   const ReadingPanel({
     super.key,
@@ -89,7 +89,8 @@ class ReadingPanel extends StatelessWidget {
     this.onNext,
     this.previousLabel = 'Предыдущая глава',
     this.nextLabel = 'Следующая глава',
-    this.top,
+    this.controls,
+    this.maxWidth = 560,
   });
 
   /// Слева над полосой: «Глава 3 из 22».
@@ -106,16 +107,15 @@ class ReadingPanel extends StatelessWidget {
   final String previousLabel;
   final String nextLabel;
 
-  /// Ряд над прогрессом (для плеера).
-  final Widget? top;
-
-  static const maxWidth = 560.0;
+  /// Ряды под прогрессом: кнопки озвучки.
+  final Widget? controls;
+  final double maxWidth;
 
   @override
   Widget build(BuildContext context) {
     const small = TextStyle(fontSize: 12, color: Graphite.textMuted);
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: maxWidth),
+      constraints: BoxConstraints(maxWidth: maxWidth),
       child: Glass(
         radius: 26,
         fill: Graphite.islandFill,
@@ -124,7 +124,6 @@ class ReadingPanel extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ?top,
             Row(
               spacing: 6,
               children: [
@@ -154,6 +153,7 @@ class ReadingPanel extends StatelessWidget {
                 _StepButton(icon: Icons24.forward, label: nextLabel, onPressed: onNext),
               ],
             ),
+            ?controls,
           ],
         ),
       ),
