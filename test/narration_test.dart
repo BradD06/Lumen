@@ -25,9 +25,8 @@ Future<void> _openChapter(WidgetTester tester) async {
   await tester.pumpWidget(LumenApp(store: store));
   await tester.tap(find.bySemanticsLabel(AppTab.library.label));
   await tester.pumpAndSettle();
+  // Книга сразу открывается текстом первой главы.
   await tester.tap(find.bySemanticsLabel('Тихая ночь'));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Глава 1').first);
   await tester.pumpAndSettle();
 }
 
@@ -56,8 +55,6 @@ void main() {
     expect(find.byTooltip('Пауза  Пробел'), findsOneWidget);
 
     // Выходим к списку книг: книга играет дальше, над островом мини-плеер.
-    await tester.tap(find.byTooltip('Назад').last);
-    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Назад').last);
     await tester.pumpAndSettle();
     expect(find.byType(MiniPlayer).hitTestable(), findsOneWidget);

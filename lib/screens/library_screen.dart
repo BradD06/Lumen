@@ -32,6 +32,8 @@ void openBookInLibrary(Book book, int chapter) {
   navigator.popUntil((route) => route.isFirst);
   navigator.push(
     BlurPageRoute<void>(
+      duration: const Duration(milliseconds: 650),
+      pageFrom: .5,
       builder: (_) => BookScreen(bookId: book.id, preview: book, openChapter: chapter),
     ),
   );
@@ -252,7 +254,7 @@ class _BookGrid extends StatelessWidget {
   }
 }
 
-/// Книга в сетке: обложка, название, автор. Нажатие — карточка книги;
+/// Книга в сетке: обложка, название, автор. Нажатие — текст книги с места чтения;
 /// правая кнопка или долгое нажатие — меню книги.
 class BookTile extends StatelessWidget {
   const BookTile({super.key, required this.book});
@@ -261,9 +263,9 @@ class BookTile extends StatelessWidget {
 
   void _open(BuildContext context) => Navigator.of(context).push(
     BlurPageRoute<void>(
-      // Обложка растёт до середины пути, потом встаёт на место — список глав следом.
-      duration: const Duration(milliseconds: 900),
-      pageFrom: .6,
+      // Обложка вырастает посреди размытого экрана, потом проявляется текст.
+      duration: const Duration(milliseconds: 650),
+      pageFrom: .5,
       builder: (_) => BookScreen(bookId: book.id, preview: book),
     ),
   );

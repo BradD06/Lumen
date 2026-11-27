@@ -33,7 +33,7 @@ class FlyingCover extends StatelessWidget {
       tag: coverHeroTag(book.id),
       createRectTween: (begin, end) =>
           _ViaCenterRectTween(begin: begin, end: end, middle: bigCoverRect(screen)),
-      flightShuttleBuilder: (_, _, _, _, _) => _BigCover(book: book),
+      flightShuttleBuilder: (_, _, _, _, _) => BigCover(book: book),
       child: child,
     );
   }
@@ -59,8 +59,16 @@ class _ViaCenterRectTween extends RectTween {
   static const _grown = .5;
   static const _hold = .6;
 
+  static bool _near(Rect? a, Rect b) =>
+      a != null && (a.topLeft - b.topLeft).distance < 1 && (a.size - b.size as Offset).distance < 1;
+
   @override
   Rect? lerp(double t) {
+    // Обложка летит прямо в середину экрана (книга сразу открывает текст)
+    // или из середины обратно: без паузы, одним движением.
+    if (_near(end, middle) || _near(begin, middle)) {
+      return Rect.lerp(begin, end, Curves.easeInOutCubic.transform(t));
+    }
     if (t <= _grown) {
       return Rect.lerp(begin, middle, Curves.easeInOutCubic.transform(t / _grown));
     }
@@ -69,10 +77,10 @@ class _ViaCenterRectTween extends RectTween {
   }
 }
 
-/// Обложка в полёте: рисованная масштабируется целиком, картинка — в высоком
+/// Обложка крупно (в полёте и посреди экрана при открытии книги): рисованная масштабируется целиком, картинка — в высоком
 /// разрешении поверх уже готовой маленькой (пока большая грузится, видна она).
-class _BigCover extends StatelessWidget {
-  const _BigCover({required this.book});
+class BigCover extends StatelessWidget {
+  const BigCover({super.key, required this.book});
 
   final Book book;
 

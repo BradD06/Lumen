@@ -10,7 +10,7 @@ import 'package:lumen_import/lumen_import.dart';
 import 'package:lumen_storage/lumen_storage.dart';
 
 void main() {
-  testWidgets('добавленная книга видна в библиотеке, открывается с главами', (tester) async {
+  testWidgets('добавленная книга видна в библиотеке и сразу открывается текстом', (tester) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
@@ -27,15 +27,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Тихая ночь'), findsWidgets);
 
+    // Списка глав нет: сразу текст первой главы.
     await tester.tap(find.bySemanticsLabel('Тихая ночь'));
     await tester.pumpAndSettle();
-    expect(find.text('Главы'), findsOneWidget);
-    expect(find.text('Глава 1'), findsWidgets);
-    expect(find.textContaining('TXT · 2 главы'), findsOneWidget);
-    // Остров остаётся внизу и в карточке книги.
-    expect(find.bySemanticsLabel(AppTab.home.label), findsOneWidget);
+    expect(find.text('Ночь была тиха.'), findsOneWidget);
 
-    await tester.tap(find.text('Глава 2').first);
+    // Вторая глава — через «Главы» в плеере.
+    await tester.tap(find.byTooltip('Главы'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Глава 2').last);
     await tester.pumpAndSettle();
     expect(find.text('Наступило утро.'), findsOneWidget);
   });
