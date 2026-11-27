@@ -6,7 +6,7 @@ Lumen turns text books into audiobooks with a neural voice (Qwen3-TTS): one narr
 
 - Runs on macOS, iOS, Windows and Android with the app icon from Lumen_exemple.
 - «Графит» look: dark graphite background with soft grey glows, frosted-glass cards, Onest font.
-- Floating glass island at the bottom with five sections: Home, Library, Add book, Voices, Profile. ⌘1…⌘5 (Ctrl on Windows) switch sections.
+- Floating glass island at the bottom with five sections: Home, Catalog, Add book, Library, Voices; ⌘1…⌘5 (Ctrl on Windows) switch them. Profile is a round button in the top-left corner (⌘,).
 - CI checks formatting, analysis and tests and builds all four platforms on every pull request.
 
 The plan is in [docs/ROADMAP.md](docs/ROADMAP.md) (in Russian), and what is done goes to [docs/FEATURES.md](docs/FEATURES.md).
