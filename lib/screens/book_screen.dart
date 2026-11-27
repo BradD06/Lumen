@@ -451,11 +451,12 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _endRestore());
       return;
     }
-    final started = DateTime.now();
-    DateTime? found;
-    void frame(Duration _) {
+    // Время кадров, а не часов: в тестах и при паузах оно идёт вместе с кадрами.
+    Duration? started;
+    Duration? found;
+    void frame(Duration now) {
       if (!mounted || !_restoring) return;
-      final now = DateTime.now();
+      started ??= now;
       bool ok;
       if (place != null) {
         ok = _showPlace(place);
@@ -465,8 +466,8 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
       }
       if (ok) found ??= now;
       final done =
-          (found != null && now.difference(found!) > const Duration(seconds: 2)) ||
-          now.difference(started) > const Duration(seconds: 6);
+          (found != null && now - found! > const Duration(seconds: 2)) ||
+          now - started! > const Duration(seconds: 6);
       if (done) {
         _endRestore();
       } else {
