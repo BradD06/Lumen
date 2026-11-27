@@ -90,6 +90,8 @@ void main() {
     final back = tester.getRect(find.byTooltip('Назад').last);
     final cover = tester.getRect(find.byType(BookCover).last);
     expect(back.left, closeTo(cover.left, 1));
+    // В списке глав острова тоже нет.
+    expect(find.byType(NavIsland).hitTestable(), findsNothing);
   });
 
   for (final (name, size) in [('телефон', Size(390, 844)), ('окно', Size(1440, 900))]) {
