@@ -165,6 +165,9 @@ Windows: проверьте, что есть файл `C:\src\flutter\bin\flutte
 **`No profiles for 'io.github.bradd06.lumen' were found`** или «идентификатор недоступен».
 Не выбран Team в Signing & Capabilities, или идентификатор занят: допишите хвост к Bundle Identifier (шаг 2 раздела «iPhone»).
 
+**На iPhone всё подтормаживает: книги и главы открываются рывками.**
+Скорее всего, запущена отладочная сборка (`flutter run` без `--release`, или ▶ в Xcode со схемой Debug). На iPhone она работает в разы медленнее настоящей. Проверять плавность нужно так: `flutter run --release` (или `flutter run --profile`, если хочется смотреть кадры в DevTools).
+
 **Приложение на iPhone перестало открываться через неделю.**
 Закончились 7 дней бесплатной подписи. Подключите iPhone и снова выполните `flutter run --release`.
 

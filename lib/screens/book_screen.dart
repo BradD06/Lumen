@@ -220,6 +220,17 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
 
   List<Chapter> get _chapters => widget.book.chapters;
 
+  Chapter? _itemsChapter;
+  List<ChapterItem> _items = const [];
+
+  List<ChapterItem> _itemsOf(Chapter chapter) {
+    if (!identical(chapter, _itemsChapter)) {
+      _itemsChapter = chapter;
+      _items = chapterItems(chapter);
+    }
+    return _items;
+  }
+
   @override
   void dispose() {
     _scroll.dispose();
@@ -313,8 +324,8 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
   @override
   Widget build(BuildContext context) {
     final chapter = _chapters[_index];
-    // Абзацы и иллюстрации по порядку.
-    final items = chapterItems(chapter);
+    // Абзацы и иллюстрации по порядку; считаем один раз на главу.
+    final items = _itemsOf(chapter);
     final panelBottom = islandClearance(context) + 10;
     final panelWidth = (MediaQuery.sizeOf(context).width - 24).clamp(0.0, _panelWidth);
     // Текст прокручивается до конца над панелью: прогресс 56 + блок озвучки.
@@ -409,7 +420,10 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
                 child: Center(
                   child: ValueListenableBuilder<double>(
                     valueListenable: _progress,
-                    builder: (context, value, _) => ReadingPanel(
+                    // Блок озвучки строится один раз на кадр экрана, а не на каждый
+                    // шаг прокрутки: прогресс меняется 60 раз в секунду.
+                    child: NarrationControls(view: _narration, actions: _actions),
+                    builder: (context, value, controls) => ReadingPanel(
                       title: 'Глава ${_index + 1} из ${_chapters.length}',
                       trailing: '${(value * 100).round()} %',
                       value: value,
@@ -417,7 +431,7 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
                       onPrevious: _index > 0 ? () => _go(_index - 1) : null,
                       onNext: _index < _chapters.length - 1 ? () => _go(_index + 1) : null,
                       maxWidth: _panelWidth,
-                      controls: NarrationControls(view: _narration, actions: _actions),
+                      controls: controls,
                     ),
                   ),
                 ),

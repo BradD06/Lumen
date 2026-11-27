@@ -123,17 +123,21 @@ class ClearOfProfile extends StatelessWidget {
   final double sidePadding;
   final Widget child;
 
-  /// Насколько сдвинуть строку вправо при ширине области [available].
+  /// Насколько сдвинуть строку вправо при ширине области [available]
+  /// (окно без полей [sidePadding]).
   static double indent(double available, double maxWidth, double sidePadding) {
     final columnLeft = sidePadding + (available - maxWidth).clamp(0, double.infinity) / 2;
     return (ProfileButton.clearance - columnLeft).clamp(0, double.infinity).toDouble();
   }
 
+  // Ширина окна, а не места внутри колонки: колонка уже сужена до [maxWidth],
+  // и по ней нельзя понять, далеко ли она от кружка (экран идёт во всю ширину окна).
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) => Padding(
-      padding: EdgeInsets.only(left: indent(constraints.maxWidth, maxWidth, sidePadding)),
+  Widget build(BuildContext context) {
+    final available = MediaQuery.sizeOf(context).width - sidePadding * 2;
+    return Padding(
+      padding: EdgeInsets.only(left: indent(available, maxWidth, sidePadding)),
       child: child,
-    ),
-  );
+    );
+  }
 }

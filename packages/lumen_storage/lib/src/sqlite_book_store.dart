@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:lumen_core/lumen_core.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -12,18 +13,19 @@ import 'book_store.dart';
 /// для анализа, этап 9) и `line` (реплики). Миграции только добавляются в конец
 /// `_migrations`, номер — `PRAGMA user_version`.
 final class SqliteBookStore implements BookStore {
-  SqliteBookStore._(this._db, this._coverDir);
+  SqliteBookStore._(this._db, this._coverDir, [this._dbPath]);
 
   /// Открыть (или создать) библиотеку в папке [directory].
   factory SqliteBookStore.open(String directory) {
     Directory(directory).createSync(recursive: true);
     final coverDir = Directory('$directory${Platform.pathSeparator}covers')
       ..createSync(recursive: true);
-    final db = sqlite3.open('$directory${Platform.pathSeparator}lumen.db');
+    final path = '$directory${Platform.pathSeparator}lumen.db';
+    final db = sqlite3.open(path);
     db.execute('PRAGMA foreign_keys = ON');
     db.execute('PRAGMA journal_mode = WAL');
     _migrate(db);
-    return SqliteBookStore._(db, coverDir);
+    return SqliteBookStore._(db, coverDir, path);
   }
 
   /// База в памяти для тестов; обложки — во временной папке.
@@ -37,6 +39,9 @@ final class SqliteBookStore implements BookStore {
 
   final Database _db;
   final Directory _coverDir;
+
+  /// Файл базы; `null` — база в памяти (тесты).
+  final String? _dbPath;
   final _changes = StreamController<List<Book>>.broadcast();
 
   static final _migrations = <void Function(Database)>[
@@ -111,7 +116,10 @@ final class SqliteBookStore implements BookStore {
     for (final row in _db.select('SELECT * FROM book ORDER BY added_at DESC, title')) _bookOf(row),
   ];
 
-  Book _bookOf(Row row, [List<Chapter> chapters = const []]) {
+  Book _bookOf(Row row) => _bookFrom(row, _coverDir.path);
+
+  /// Книга из строки таблицы `book`; статическая, чтобы работать и в фоновом потоке.
+  static Book _bookFrom(Row row, String coverDir, [List<Chapter> chapters = const []]) {
     final coverFile = row['cover_file'] as String?;
     return Book(
       id: row['id'] as String,
@@ -119,7 +127,7 @@ final class SqliteBookStore implements BookStore {
       author: row['author'] as String?,
       language: row['language'] as String,
       narratorVoiceId: row['narrator_voice_id'] as String?,
-      coverPath: coverFile == null ? null : _coverPath(coverFile),
+      coverPath: coverFile == null ? null : '$coverDir${Platform.pathSeparator}$coverFile',
       sourceName: row['source_name'] as String?,
       addedAt: DateTime.fromMillisecondsSinceEpoch(row['added_at'] as int),
       chapters: chapters,
@@ -129,8 +137,10 @@ final class SqliteBookStore implements BookStore {
   String _coverPath(String file) => '${_coverDir.path}${Platform.pathSeparator}$file';
 
   /// Папка иллюстраций книги: рядом с папкой обложек.
-  Directory _imageDir(String bookId) => Directory(
-    '${_coverDir.parent.path}${Platform.pathSeparator}images${Platform.pathSeparator}$bookId',
+  Directory _imageDir(String bookId) => _imageDirOf(_coverDir.path, bookId);
+
+  static Directory _imageDirOf(String coverDir, String bookId) => Directory(
+    '${Directory(coverDir).parent.path}${Platform.pathSeparator}images${Platform.pathSeparator}$bookId',
   );
 
   @override
@@ -139,52 +149,81 @@ final class SqliteBookStore implements BookStore {
     yield* _changes.stream;
   }
 
+  /// Книга целиком. Главы большой книги — это тысячи строк базы: читаем их
+  /// в фоновом потоке по своему соединению, чтобы экран не замирал, пока
+  /// открывается карточка книги (на телефоне это было заметно).
   @override
   Future<Book?> book(String id) async {
-    final rows = _db.select('SELECT * FROM book WHERE id = ?', [id]);
+    final path = _dbPath;
+    if (path == null) return _readBook(_db, id, _coverDir.path);
+    final coverDir = _coverDir.path;
+    return Isolate.run(() {
+      final db = sqlite3.open(path, mode: OpenMode.readOnly);
+      try {
+        return _readBook(db, id, coverDir);
+      } finally {
+        db.close();
+      }
+    });
+  }
+
+  /// Читает книгу с главами четырьмя запросами (а не тремя на каждую главу).
+  static Book? _readBook(Database db, String id, String coverDir) {
+    final rows = db.select('SELECT * FROM book WHERE id = ?', [id]);
     if (rows.isEmpty) return null;
-    final chapters = <Chapter>[];
-    for (final c in _db.select('SELECT * FROM chapter WHERE book_id = ? ORDER BY idx', [id])) {
-      final chapterId = c['id'] as String;
-      chapters.add(
-        Chapter(
-          id: chapterId,
-          index: c['idx'] as int,
-          title: c['title'] as String,
-          text: c['text'] as String,
-          paragraphs: [
-            for (final p in _db.select(
-              'SELECT start, length FROM paragraph WHERE chapter_id = ? ORDER BY idx',
-              [chapterId],
-            ))
-              TextRange(p['start'] as int, p['length'] as int),
-          ],
-          lines: [
-            for (final l in _db.select('SELECT * FROM line WHERE chapter_id = ? ORDER BY idx', [
-              chapterId,
-            ]))
-              Line(
-                range: TextRange(l['start'] as int, l['length'] as int),
-                speaker: l['speaker'] as String?,
-                emotion: Emotion.parse(l['emotion'] as String?),
-                confidence: (l['confidence'] as num?)?.toDouble(),
-              ),
-          ],
-          images: [
-            for (final i in _db.select(
-              'SELECT position, name FROM chapter_image WHERE chapter_id = ? ORDER BY idx',
-              [chapterId],
-            ))
-              ChapterImage(
-                position: i['position'] as int,
-                name: i['name'] as String,
-                path: '${_imageDir(id).path}${Platform.pathSeparator}${i['name']}',
-              ),
-          ],
+    final paragraphs = <String, List<TextRange>>{};
+    for (final p in db.select(
+      'SELECT p.chapter_id, p.start, p.length FROM paragraph p '
+      'JOIN chapter c ON c.id = p.chapter_id WHERE c.book_id = ? ORDER BY p.chapter_id, p.idx',
+      [id],
+    )) {
+      (paragraphs[p['chapter_id'] as String] ??= []).add(
+        TextRange(p['start'] as int, p['length'] as int),
+      );
+    }
+    final lines = <String, List<Line>>{};
+    for (final l in db.select(
+      'SELECT l.* FROM line l JOIN chapter c ON c.id = l.chapter_id '
+      'WHERE c.book_id = ? ORDER BY l.chapter_id, l.idx',
+      [id],
+    )) {
+      (lines[l['chapter_id'] as String] ??= []).add(
+        Line(
+          range: TextRange(l['start'] as int, l['length'] as int),
+          speaker: l['speaker'] as String?,
+          emotion: Emotion.parse(l['emotion'] as String?),
+          confidence: (l['confidence'] as num?)?.toDouble(),
         ),
       );
     }
-    return _bookOf(rows.first, chapters);
+    final imageDir = _imageDirOf(coverDir, id).path;
+    final images = <String, List<ChapterImage>>{};
+    for (final i in db.select(
+      'SELECT i.chapter_id, i.position, i.name FROM chapter_image i '
+      'JOIN chapter c ON c.id = i.chapter_id WHERE c.book_id = ? ORDER BY i.chapter_id, i.idx',
+      [id],
+    )) {
+      (images[i['chapter_id'] as String] ??= []).add(
+        ChapterImage(
+          position: i['position'] as int,
+          name: i['name'] as String,
+          path: '$imageDir${Platform.pathSeparator}${i['name']}',
+        ),
+      );
+    }
+    final chapters = [
+      for (final c in db.select('SELECT * FROM chapter WHERE book_id = ? ORDER BY idx', [id]))
+        Chapter(
+          id: c['id'] as String,
+          index: c['idx'] as int,
+          title: c['title'] as String,
+          text: c['text'] as String,
+          paragraphs: paragraphs[c['id']] ?? const [],
+          lines: lines[c['id']] ?? const [],
+          images: images[c['id']] ?? const [],
+        ),
+    ];
+    return _bookFrom(rows.first, coverDir, chapters);
   }
 
   /// Сохраняет сведения книги. Главы переписываются, только если они в `book`
