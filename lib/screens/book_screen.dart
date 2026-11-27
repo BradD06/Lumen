@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/services.dart';
 import 'package:lumen_core/lumen_core.dart';
@@ -12,8 +11,8 @@ import '../library/library_scope.dart';
 import '../library/widgets.dart';
 import '../reader/narration_controls.dart';
 import '../reader/reading_panel.dart';
-import '../shell/app_shell.dart';
 import '../shell/profile_button.dart';
+import '../theme/fading_glass.dart';
 import '../theme/glass.dart';
 import '../theme/graphite.dart';
 import 'library_screen.dart' show removeBook;
@@ -514,11 +513,13 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
     final chapter = _chapters[_index];
     // Абзацы и иллюстрации по порядку; считаем один раз на главу.
     final items = _itemsOf(chapter);
-    // Остров в открытой книге спрятан: плеер стоит на его месте.
-    final panelBottom = islandBottom(context);
+    // Плеер — полоса во всю ширину у низа окна (остров в книге спрятан).
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    final panelInset = safeBottom > 0 ? safeBottom : 12.0;
     final panelWidth = (MediaQuery.sizeOf(context).width - 24).clamp(0.0, _panelWidth);
-    // Текст прокручивается до конца над панелью: прогресс 56 + блок озвучки.
-    final textBottom = panelBottom + 56 + NarrationControls.heightFor(panelWidth) + 40;
+    // Текст прокручивается до конца над плеером: прогресс 56 + блок озвучки;
+    // по пути он проходит под стеклянной кромкой и размывается.
+    final textBottom = panelInset + 12 + 56 + NarrationControls.heightFor(panelWidth) + 24;
     return CallbackShortcuts(
       bindings: {
         // ⌥← / ⌥→ (Alt на Windows) — соседняя глава.
@@ -579,9 +580,9 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
                   ),
                 ),
                 Positioned(
-                  left: 12,
-                  right: 12,
-                  bottom: panelBottom,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
                   child: Center(
                     child: ValueListenableBuilder<double>(
                       valueListenable: _progress,
@@ -596,6 +597,7 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
                         onPrevious: _index > 0 ? () => _go(_index - 1) : null,
                         onNext: _index < _chapters.length - 1 ? () => _go(_index + 1) : null,
                         maxWidth: _panelWidth,
+                        bottomInset: panelInset,
                         controls: controls,
                       ),
                     ),
@@ -632,9 +634,6 @@ class _ChapterHeader extends StatelessWidget {
   /// Полоса, где стекло сходит на нет.
   static const _fade = 30.0;
 
-  /// Размытие полос в нижней кромке: мелкие шаги, чтобы край не читался полосой.
-  static const _fadeSigmas = [11.0, 8.0, 6.0, 4.0, 2.5, 1.2];
-
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
@@ -649,33 +648,8 @@ class _ChapterHeader extends StatelessWidget {
       child: Stack(
         children: [
           // Стекло: сильное размытие под шапкой и всё слабее в полосе снизу.
-          Positioned(left: 0, right: 0, top: 0, height: height, child: _Blur(sigma: 14)),
-          for (final (i, sigma) in _fadeSigmas.indexed)
-            Positioned(
-              left: 0,
-              right: 0,
-              top: height + i * _fade / _fadeSigmas.length,
-              height: _fade / _fadeSigmas.length,
-              child: _Blur(sigma: sigma),
-            ),
-          // Затемнение фоном приложения: сверху плотнее, к низу прозрачное.
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    stops: [0, height / (height + _fade), 1],
-                    colors: [
-                      Graphite.background.withValues(alpha: .72),
-                      Graphite.background.withValues(alpha: .45),
-                      Graphite.background.withValues(alpha: 0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+          const Positioned.fill(
+            child: FadingGlass(fadeEdge: AxisDirection.down, fade: _fade),
           ),
           Positioned(
             left: backLeft,
@@ -715,20 +689,6 @@ class _ChapterHeader extends StatelessWidget {
       ),
     );
   }
-}
-
-class _Blur extends StatelessWidget {
-  const _Blur({required this.sigma});
-
-  final double sigma;
-
-  @override
-  Widget build(BuildContext context) => ClipRect(
-    child: BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma, tileMode: TileMode.mirror),
-      child: const SizedBox.expand(),
-    ),
-  );
 }
 
 /// Стеклянная плашка «подпись / значение» (Формат, Глав, Звука).

@@ -4,8 +4,8 @@ import 'package:lumen/app.dart';
 import 'package:lumen/library/book_cover.dart';
 import 'package:lumen/reader/narration_controls.dart';
 import 'package:lumen/reader/reading_panel.dart';
-import 'package:lumen/shell/app_shell.dart';
 import 'package:lumen/shell/island.dart';
+import 'package:lumen/theme/fading_glass.dart';
 import 'package:lumen/shell/profile_button.dart';
 import 'package:lumen/shell/tabs.dart';
 import 'package:lumen_import/lumen_import.dart';
@@ -153,9 +153,12 @@ void main() {
     final panel = find.byType(ReadingPanel);
     expect(find.text('Глава 2 из 3'), findsOneWidget);
     expect(find.text('0 %'), findsOneWidget);
-    // Остров спрятан, плеер стоит на его месте у низа окна.
+    // Остров спрятан, плеер — полоса во всю ширину у низа окна.
     expect(find.byType(NavIsland).hitTestable(), findsNothing);
-    expect(_rect(tester, panel).bottom, closeTo(844 - islandBottom(tester.element(panel)), 1));
+    final bar = _rect(tester, panel);
+    expect((bar.left, bar.right, bar.bottom), (0, 390, 844));
+    // Над кнопками — стеклянная кромка, через неё виден (размытый) текст.
+    expect(find.byType(FadingGlass), findsNWidgets(2));
 
     // Прокрутка двигает прогресс.
     await tester.drag(find.byType(ListView).last, const Offset(0, -600));

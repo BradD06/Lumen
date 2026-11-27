@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../library/widgets.dart';
+import '../theme/fading_glass.dart';
 import '../theme/glass.dart';
 import '../theme/graphite.dart';
 
@@ -75,9 +76,13 @@ class ReadingProgressBar extends StatelessWidget {
   }
 }
 
-/// Стеклянная панель над островом: «предыдущая», подпись и прогресс, «следующая».
+/// Панель чтения: «предыдущая», подпись и прогресс, «следующая».
 /// Кнопки по краям листают главы; под прогрессом — [controls]
 /// (управление озвучкой, `NarrationControls`).
+///
+/// Без [bottomInset] — стеклянный остров со скруглёнными углами. С ним —
+/// полоса во всю ширину у низа экрана, как шапка главы: стекло сверху
+/// растворяется, и текст под ним размывается (Брэд, 27.11.2026).
 class ReadingPanel extends StatelessWidget {
   const ReadingPanel({
     super.key,
@@ -91,7 +96,11 @@ class ReadingPanel extends StatelessWidget {
     this.nextLabel = 'Следующая глава',
     this.controls,
     this.maxWidth = 560,
+    this.bottomInset,
   });
+
+  /// Высота стеклянной кромки над полосой.
+  static const fade = 30.0;
 
   /// Слева над полосой: «Глава 3 из 22».
   final String title;
@@ -111,52 +120,75 @@ class ReadingPanel extends StatelessWidget {
   final Widget? controls;
   final double maxWidth;
 
+  /// Отступ снизу внутри полосы (системная полоса жестов); `null` — остров.
+  final double? bottomInset;
+
   @override
   Widget build(BuildContext context) {
     const small = TextStyle(fontSize: 12, color: Graphite.textMuted);
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxWidth),
-      child: Glass(
-        radius: 26,
-        fill: Graphite.islandFill,
-        border: Graphite.islandBorder,
-        padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          spacing: 6,
           children: [
-            Row(
-              spacing: 6,
-              children: [
-                _StepButton(icon: Icons24.back, label: previousLabel, onPressed: onPrevious),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+            _StepButton(icon: Icons24.back, label: previousLabel, onPressed: onPrevious),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: small,
-                            ),
-                          ),
-                          if (trailing != null) Text(trailing!, style: small),
-                        ],
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: small,
+                        ),
                       ),
-                      ReadingProgressBar(value: value, onSeek: onSeek, label: title),
+                      if (trailing != null) Text(trailing!, style: small),
                     ],
                   ),
-                ),
-                _StepButton(icon: Icons24.forward, label: nextLabel, onPressed: onNext),
-              ],
+                  ReadingProgressBar(value: value, onSeek: onSeek, label: title),
+                ],
+              ),
             ),
-            ?controls,
+            _StepButton(icon: Icons24.forward, label: nextLabel, onPressed: onNext),
           ],
         ),
-      ),
+        ?controls,
+      ],
+    );
+    final inset = bottomInset;
+    if (inset == null) {
+      return ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: Glass(
+          radius: 26,
+          fill: Graphite.islandFill,
+          border: Graphite.islandBorder,
+          padding: const EdgeInsets.all(6),
+          child: content,
+        ),
+      );
+    }
+    return Stack(
+      children: [
+        const Positioned.fill(
+          child: FadingGlass(fadeEdge: AxisDirection.up, fade: fade),
+        ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(12, fade, 12, inset),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: Padding(padding: const EdgeInsets.all(6), child: content),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
