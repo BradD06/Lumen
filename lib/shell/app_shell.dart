@@ -25,6 +25,15 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   AppTab _tab = AppTab.home;
 
+  /// В библиотеке открыта книга или глава: тогда в углу «Назад», а не профиль.
+  final _bookOpen = ValueNotifier<bool>(false);
+
+  @override
+  void dispose() {
+    _bookOpen.dispose();
+    super.dispose();
+  }
+
   void _select(AppTab tab) {
     if (tab != _tab) setState(() => _tab = tab);
   }
@@ -48,6 +57,7 @@ class _AppShellState extends State<AppShell> {
         autofocus: true,
         child: TabSwitcher(
           select: _select,
+          bookOpen: _bookOpen,
           child: Scaffold(
             body: GlowBackground(
               child: Stack(
@@ -65,20 +75,63 @@ class _AppShellState extends State<AppShell> {
                       ],
                     ),
                   ),
+                  // Профиль — только в разделах; в открытой книге на его месте «Назад»
+                  // (Брэд, 27.11.2026).
                   Positioned(
                     left: ProfileButton.left,
                     top: top + ProfileButton.top,
-                    child: ProfileButton(
-                      selected: _tab == AppTab.profile,
-                      onTap: () => _select(AppTab.profile),
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: _bookOpen,
+                      builder: (context, bookOpen, button) {
+                        final hidden = bookOpen && _tab == AppTab.library;
+                        return IgnorePointer(
+                          ignoring: hidden,
+                          child: ExcludeSemantics(
+                            excluding: hidden,
+                            child: AnimatedOpacity(
+                              opacity: hidden ? 0 : 1,
+                              duration: const Duration(milliseconds: 160),
+                              child: button,
+                            ),
+                          ),
+                        );
+                      },
+                      child: ProfileButton(
+                        selected: _tab == AppTab.profile,
+                        onTap: () => _select(AppTab.profile),
+                      ),
                     ),
                   ),
+                  // В открытой книге остров уезжает вниз, его место занимает плеер
+                  // (Брэд, 27.11.2026).
                   Positioned(
                     left: 12,
                     right: 12,
                     bottom: islandBottom(context),
-                    child: Center(
-                      child: NavIsland(selected: _tab, onSelect: _select),
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: _bookOpen,
+                      builder: (context, bookOpen, island) {
+                        final hidden = bookOpen && _tab == AppTab.library;
+                        return IgnorePointer(
+                          ignoring: hidden,
+                          child: ExcludeSemantics(
+                            excluding: hidden,
+                            child: AnimatedSlide(
+                              offset: hidden ? const Offset(0, 1.6) : Offset.zero,
+                              duration: const Duration(milliseconds: 260),
+                              curve: Curves.easeOutCubic,
+                              child: AnimatedOpacity(
+                                opacity: hidden ? 0 : 1,
+                                duration: const Duration(milliseconds: 200),
+                                child: island,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                      child: Center(
+                        child: NavIsland(selected: _tab, onSelect: _select),
+                      ),
                     ),
                   ),
                 ],
@@ -102,14 +155,26 @@ double islandBottom(BuildContext context) {
 double islandClearance(BuildContext context) =>
     islandBottom(context) + IslandMetrics.height + IslandMetrics.lift;
 
-/// Даёт экранам переключить раздел (например, «Добавить книгу» с главной).
+/// Даёт экранам переключить раздел (например, «Добавить книгу» с главной)
+/// и сказать окну, что в библиотеке открыта книга.
 class TabSwitcher extends InheritedWidget {
-  const TabSwitcher({super.key, required this.select, required super.child});
+  const TabSwitcher({
+    super.key,
+    required this.select,
+    required this.bookOpen,
+    required super.child,
+  });
 
   final ValueChanged<AppTab> select;
 
+  /// `true`, пока в библиотеке открыта карточка книги или текст главы.
+  final ValueNotifier<bool> bookOpen;
+
   static ValueChanged<AppTab> of(BuildContext context) =>
       context.getInheritedWidgetOfExactType<TabSwitcher>()!.select;
+
+  static ValueNotifier<bool>? bookOpenOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<TabSwitcher>()?.bookOpen;
 
   @override
   bool updateShouldNotify(TabSwitcher oldWidget) => false;

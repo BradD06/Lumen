@@ -23,6 +23,12 @@ class LibraryScreen extends StatefulWidget {
 
 class _LibraryScreenState extends State<LibraryScreen> {
   final _navigator = GlobalKey<NavigatorState>();
+  late final _depth = _DepthObserver(() {
+    // Окно прячет профиль, пока над списком книг открыт экран книги.
+    final open = _navigator.currentState?.canPop() ?? false;
+    final notifier = TabSwitcher.bookOpenOf(context);
+    if (notifier != null && notifier.value != open) notifier.value = open;
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +38,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         key: _navigator,
         // Фокус остаётся у окна, иначе ⌘1…⌘5 перестают работать.
         requestFocus: false,
+        observers: [_depth],
         onGenerateRoute: (_) => PageRouteBuilder<void>(
           pageBuilder: (_, _, _) => const _LibraryList(),
           transitionDuration: Duration.zero,
@@ -39,6 +46,28 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ),
     );
   }
+}
+
+/// Сообщает о каждом переходе в стеке библиотеки.
+class _DepthObserver extends NavigatorObserver {
+  _DepthObserver(this.changed);
+
+  final VoidCallback changed;
+
+  // Во время перехода Navigator занят: проверяем глубину после кадра.
+  void _later() => WidgetsBinding.instance.addPostFrameCallback((_) => changed());
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) => _later();
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => _later();
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) => _later();
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) => _later();
 }
 
 class _LibraryList extends StatefulWidget {
