@@ -144,6 +144,30 @@ void main() {
     expect((a - b).abs(), lessThanOrEqualTo(5));
   });
 
+  for (final (name, size) in [('телефон', Size(390, 844)), ('окно', Size(1440, 900))]) {
+    testWidgets('$name: начало и конец главы не прячутся под шапку и плеер', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      tester.view.padding = const FakeViewPadding(top: 59, bottom: 34);
+      addTearDown(tester.view.reset);
+      await _openChapter(tester, 'Глава 2');
+
+      // Шапка и плеер вместе со стеклянными кромками.
+      final header = tester.getRect(find.byType(FadingGlass).first);
+      final player = tester.getRect(find.byType(ReadingPanel));
+      final first = tester.getRect(find.textContaining('Абзац 0 главы 2.'));
+      expect(first.top, greaterThanOrEqualTo(header.bottom));
+
+      // Длина списка уточняется по мере прокрутки: листаем до упора.
+      for (var i = 0; i < 6; i++) {
+        await tester.drag(find.byType(ListView).last, const Offset(0, -5000));
+        await tester.pumpAndSettle();
+      }
+      final last = tester.getRect(find.textContaining('Абзац 39 главы 2.'));
+      expect(last.bottom, lessThanOrEqualTo(player.top));
+    });
+  }
+
   testWidgets('прогресс над островом, кнопки листают главы', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;

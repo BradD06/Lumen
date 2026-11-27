@@ -119,7 +119,7 @@ void main() {
     await store.save(sample('b1'));
     expect((await store.progress('b1')).current, isNull);
     await store.saveProgress('b1', 0, 1);
-    await store.saveProgress('b1', 1, 0.4);
+    await store.saveProgress('b1', 1, 0.4, place: const ChapterPlace(item: 7, within: 0.25));
     store.close();
 
     store = SqliteBookStore.open(dir.path);
@@ -127,6 +127,8 @@ void main() {
     expect(progress.current, 1);
     expect(progress.of(0), 1);
     expect(progress.of(1), closeTo(0.4, 1e-9));
+    expect(progress.places[1], const ChapterPlace(item: 7, within: 0.25));
+    expect(progress.places[0], isNull);
 
     // Вернулись к первой главе — она снова текущая.
     await store.saveProgress('b1', 0, 0.2);

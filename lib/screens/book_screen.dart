@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:lumen_core/lumen_core.dart';
 import 'package:lumen_storage/lumen_storage.dart';
@@ -332,6 +333,13 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
   Timer? _saveTimer;
   late BookStore _store;
 
+  /// Построенные сейчас абзацы и картинки (номер → их место в дереве):
+  /// по ним считается и восстанавливается точное место в главе.
+  final _built = <int, BuildContext>{};
+
+  /// Сверху место под шапку: верх видимого текста — «линия чтения».
+  double _topInset = 0;
+
   /// Блок озвучки пока только для вида: кнопки меняют то, что видно,
   /// звук подключит плеер (этап 3).
   var _narration = const NarrationView();
@@ -379,42 +387,102 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
     _saveTimer = null;
     if (_restoring) return;
     final fraction = _progress.value;
-    _places = _places.withChapter(_index, fraction);
+    // При закрытии экрана абзацы уже убраны: тогда остаётся последнее известное место.
+    final place = notify ? _placeNow() : _places.places[_index];
+    _places = _places.withChapter(_index, fraction, place: place);
     // При закрытии экрана дерево виджетов уже нельзя перестраивать.
     if (notify) widget.onProgress?.call(_places);
-    _store.saveProgress(widget.book.id, _index, fraction);
+    _store.saveProgress(widget.book.id, _index, fraction, place: place);
+  }
+
+  /// Абзац под линией чтения и сколько его уже ушло под шапку.
+  ChapterPlace? _placeNow() {
+    if (!_scroll.hasClients) return null;
+    final line = _scroll.position.pixels + _topInset;
+    ChapterPlace? below;
+    var belowItem = 1 << 30;
+    for (final MapEntry(key: i, value: context) in _built.entries) {
+      final box = context.findRenderObject();
+      if (box is! RenderBox || !box.attached || !box.hasSize) continue;
+      final top = RenderAbstractViewport.of(box).getOffsetToReveal(box, 0).offset;
+      final height = box.size.height;
+      if (line >= top && line < top + height) {
+        return ChapterPlace(item: i, within: height > 0 ? (line - top) / height : 0);
+      }
+      if (top >= line && i < belowItem) {
+        belowItem = i;
+        below = ChapterPlace(item: i);
+      }
+    }
+    return below;
+  }
+
+  /// Поставить [place] на линию чтения. `false` — абзац ещё не построен:
+  /// тогда прыгаем примерно к нему, точное место — в следующем кадре.
+  bool _showPlace(ChapterPlace place) {
+    if (!_scroll.hasClients) return false;
+    final position = _scroll.position;
+    final box = _built[place.item]?.findRenderObject();
+    if (box is RenderBox && box.attached && box.hasSize) {
+      final top = RenderAbstractViewport.of(box).getOffsetToReveal(box, 0).offset;
+      final target = top + place.within * box.size.height - _topInset;
+      final clamped = target.clamp(position.minScrollExtent, position.maxScrollExtent);
+      if ((clamped - position.pixels).abs() > 0.5) _scroll.jumpTo(clamped);
+      return true;
+    }
+    final count = _itemsOf(_chapters[_index]).length;
+    if (count > 0) _scroll.jumpTo(position.maxScrollExtent * place.item / count);
+    return false;
   }
 
   /// Глава открывается там, где её оставили; дочитанная — с начала.
-  /// Длина списка уточняется по мере отрисовки абзацев, поэтому прыгаем,
-  /// пока она не перестанет меняться (не больше десятка кадров).
+  /// Абзацы и картинки достраиваются после первого кадра (картинки ещё и
+  /// грузятся), и высота текста выше места меняется. Поэтому место держим
+  /// каждый кадр, пока всё не уляжется (~2 с после того, как абзац нашёлся),
+  /// или пока читатель сам не начнёт листать.
   void _restore() {
     _restoring = true;
-    final saved = _places.of(_index);
-    final target = saved >= 0.99 ? 0.0 : saved;
-    var lastExtent = -1.0;
-    void jump(int left) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        var settled = true;
-        if (target > 0 && _scroll.hasClients) {
-          final extent = _scroll.position.maxScrollExtent;
-          settled = (extent - lastExtent).abs() < 1;
-          lastExtent = extent;
-          _scroll.jumpTo(target * extent);
-        }
-        if (!settled && left > 0) {
-          jump(left - 1);
-          WidgetsBinding.instance.scheduleFrame();
-        } else {
-          _restoring = false;
-          // Открытая глава сразу становится текущей.
-          _save();
-        }
-      });
+    final fraction = _places.of(_index);
+    final finished = fraction >= 0.99;
+    final place = finished ? null : _places.places[_index];
+    // Старые записи без точного места — по доле главы.
+    final estimate = finished || place != null ? 0.0 : fraction;
+    if (place == null && estimate == 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _endRestore());
+      return;
+    }
+    final started = DateTime.now();
+    DateTime? found;
+    void frame(Duration _) {
+      if (!mounted || !_restoring) return;
+      final now = DateTime.now();
+      bool ok;
+      if (place != null) {
+        ok = _showPlace(place);
+      } else {
+        ok = _scroll.hasClients;
+        if (ok) _scroll.jumpTo(estimate * _scroll.position.maxScrollExtent);
+      }
+      if (ok) found ??= now;
+      final done =
+          (found != null && now.difference(found!) > const Duration(seconds: 2)) ||
+          now.difference(started) > const Duration(seconds: 6);
+      if (done) {
+        _endRestore();
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback(frame);
+        WidgetsBinding.instance.scheduleFrame();
+      }
     }
 
-    jump(10);
+    WidgetsBinding.instance.addPostFrameCallback(frame);
+  }
+
+  void _endRestore() {
+    if (!mounted || !_restoring) return;
+    _restoring = false;
+    // Открытая глава сразу становится текущей.
+    _save();
   }
 
   void _go(int index) {
@@ -495,6 +563,12 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
     if (picked != null) _go(picked);
   }
 
+  bool _onScroll(ScrollNotification n) {
+    // Читатель сам начал листать — место больше не держим.
+    if (n is ScrollStartNotification && n.dragDetails != null) _endRestore();
+    return _onMetrics(n.metrics);
+  }
+
   bool _onMetrics(ScrollMetrics m) {
     // Глава целиком на экране — прочитана.
     final value = m.maxScrollExtent <= 0 ? 1.0 : (m.pixels / m.maxScrollExtent).clamp(0.0, 1.0);
@@ -511,15 +585,17 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
   @override
   Widget build(BuildContext context) {
     final chapter = _chapters[_index];
+    _topInset = _ChapterHeader.heightOf(context) + _ChapterHeader._fade + 4;
     // Абзацы и иллюстрации по порядку; считаем один раз на главу.
     final items = _itemsOf(chapter);
     // Плеер — полоса во всю ширину у низа окна (остров в книге спрятан).
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     final panelInset = safeBottom > 0 ? safeBottom : 12.0;
     final panelWidth = (MediaQuery.sizeOf(context).width - 24).clamp(0.0, _panelWidth);
-    // Текст прокручивается до конца над плеером: прогресс 56 + блок озвучки;
-    // по пути он проходит под стеклянной кромкой и размывается.
-    final textBottom = panelInset + 12 + 56 + NarrationControls.heightFor(panelWidth) + 24;
+    // Строка прогресса 44 + блок озвучки + отступы: последние строки встают
+    // целиком над плеером, вместе с его стеклянной кромкой.
+    final textBottom =
+        panelInset + 12 + 44 + NarrationControls.heightFor(panelWidth) + ReadingPanel.fade + 12;
     return CallbackShortcuts(
       bindings: {
         // ⌥← / ⌥→ (Alt на Windows) — соседняя глава.
@@ -543,25 +619,24 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
                   child: NotificationListener<ScrollMetricsNotification>(
                     onNotification: (n) => _onMetrics(n.metrics),
                     child: NotificationListener<ScrollNotification>(
-                      onNotification: (n) => _onMetrics(n.metrics),
+                      onNotification: _onScroll,
                       child: ListView.builder(
                         // Новая глава — новый список, без следов прошлой прокрутки.
                         key: ValueKey(_index),
                         controller: _scroll,
-                        // Сверху место под закреплённую шапку: текст уходит под неё.
-                        padding: EdgeInsets.fromLTRB(
-                          20,
-                          _ChapterHeader.heightOf(context) + 8,
-                          20,
-                          textBottom,
-                        ),
+                        // Сверху место под шапку вместе с её стеклянной кромкой: в начале
+                        // главы ничего не размыто, при прокрутке текст уходит под шапку.
+                        padding: EdgeInsets.fromLTRB(20, _topInset, 20, textBottom),
                         itemCount: items.length,
                         itemBuilder: (context, i) {
-                          final child = ChapterItemView(item: items[i]);
-                          return Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: _column),
-                              child: child,
+                          return _ItemSlot(
+                            index: i,
+                            built: _built,
+                            child: Center(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: _column),
+                                child: ChapterItemView(item: items[i]),
+                              ),
                             ),
                           );
                         },
@@ -610,6 +685,45 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
       ),
     );
   }
+}
+
+/// Абзац или картинка в списке главы: пока построены, отмечены в [built],
+/// чтобы экран мог найти и восстановить место чтения.
+class _ItemSlot extends StatefulWidget {
+  const _ItemSlot({required this.index, required this.built, required this.child});
+
+  final int index;
+  final Map<int, BuildContext> built;
+  final Widget child;
+
+  @override
+  State<_ItemSlot> createState() => _ItemSlotState();
+}
+
+class _ItemSlotState extends State<_ItemSlot> {
+  @override
+  void initState() {
+    super.initState();
+    widget.built[widget.index] = context;
+  }
+
+  @override
+  void didUpdateWidget(_ItemSlot old) {
+    super.didUpdateWidget(old);
+    if (old.index != widget.index) {
+      if (identical(old.built[old.index], context)) old.built.remove(old.index);
+      widget.built[widget.index] = context;
+    }
+  }
+
+  @override
+  void dispose() {
+    if (identical(widget.built[widget.index], context)) widget.built.remove(widget.index);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// Шапка текста главы, закреплённая сверху (Брэд, 27.11.2026): «Назад» в строке
