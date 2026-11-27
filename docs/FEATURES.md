@@ -6,7 +6,7 @@
 |---|---|---|
 | Приложение «Lumen» с иконкой из Lumen_exemple (на Windows — .ico 16–256, плитка во весь квадрат, лист как в Lumen_exemple) | Все четыре | все иконки рисует `tool/make_icons.py` (`python3 tool/make_icons.py`, нужен Pillow); крупные PNG в `assets/icon/` |
 | Тема «Графит»: тёмный фон с серыми свечениями, стеклянные карточки, шрифт Onest | Все четыре | `lib/theme/graphite.dart` (цвета), `lib/theme/glass.dart` (`Glass`, `GlowBackground`), `assets/fonts/` |
-| Плавающий остров внизу с пятью разделами: Главная, Библиотека, Каталог, Добавить, Голоса | Все четыре | `lib/shell/island.dart`, `lib/shell/tabs.dart`, `lib/shell/app_shell.dart` |
+| Плавающий остров внизу с пятью разделами: Главная, Каталог, Добавить, Библиотека, Голоса (⌘1…⌘5 по порядку) | Все четыре | `lib/shell/island.dart`, `lib/shell/tabs.dart`, `lib/shell/app_shell.dart` |
 | Профиль — кружок в левом верхнем углу (открытый белый) | Все четыре | `lib/shell/profile_button.dart` |
 | Раздел «Каталог» (книги, заранее добавленные в приложение): пока заглушка | Все четыре | `lib/screens/catalog_screen.dart` |
 | Открытый раздел — белый кружок над островом с вырезом под ним; при переключении (мышью, касанием или ⌘1…⌘5) кружок с вырезом плавно едет по острову, значок раздела уходит в кружок | Все четыре | `lib/shell/island.dart` (`NavIsland`, `IslandMetrics`, `notchedIsland`) |
