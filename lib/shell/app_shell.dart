@@ -37,7 +37,6 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.paddingOf(context).bottom;
     final top = MediaQuery.paddingOf(context).top + TabPage.windowBar;
     return CallbackShortcuts(
       bindings: {
@@ -67,8 +66,8 @@ class _AppShellState extends State<AppShell> {
                     ),
                   ),
                   Positioned(
-                    left: 20,
-                    top: top + 14,
+                    left: ProfileButton.left,
+                    top: top + ProfileButton.top,
                     child: ProfileButton(
                       selected: _tab == AppTab.profile,
                       onTap: () => _select(AppTab.profile),
@@ -77,7 +76,7 @@ class _AppShellState extends State<AppShell> {
                   Positioned(
                     left: 12,
                     right: 12,
-                    bottom: (bottom > 0 ? bottom : 12) + 12,
+                    bottom: islandBottom(context),
                     child: Center(
                       child: NavIsland(selected: _tab, onSelect: _select),
                     ),
@@ -91,6 +90,17 @@ class _AppShellState extends State<AppShell> {
     );
   }
 }
+
+/// Отступ острова от низа окна.
+double islandBottom(BuildContext context) {
+  final bottom = MediaQuery.paddingOf(context).bottom;
+  return (bottom > 0 ? bottom : 12) + 12;
+}
+
+/// Сколько места снизу занимает остров вместе с кружком над ним:
+/// панели экрана (прогресс, плеер) ставятся выше.
+double islandClearance(BuildContext context) =>
+    islandBottom(context) + IslandMetrics.height + IslandMetrics.lift;
 
 /// Даёт экранам переключить раздел (например, «Добавить книгу» с главной).
 class TabSwitcher extends InheritedWidget {

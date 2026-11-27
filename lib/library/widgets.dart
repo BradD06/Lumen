@@ -25,6 +25,7 @@ class LineIcon extends StatelessWidget {
 
 abstract final class Icons24 {
   static const back = 'M15 18l-6-6 6-6';
+  static const forward = 'M9 18l6-6-6-6';
   static const search = 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4';
   static const upload = 'M12 16V4M7 9l5-5 5 5M5 20h14';
   static const file = 'M14 3H6v18h12V7zM14 3v4h4';
