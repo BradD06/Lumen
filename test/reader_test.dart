@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:lumen/app.dart';
+import 'package:lumen/reader/narration_controls.dart';
 import 'package:lumen/reader/reading_panel.dart';
 import 'package:lumen/shell/island.dart';
 import 'package:lumen/shell/profile_button.dart';
@@ -91,6 +92,64 @@ void main() {
     final label = tester.widget<ReadingPanel>(find.byType(ReadingPanel)).trailing!;
     // Длина списка уточняется по мере прокрутки: около середины.
     expect(int.parse(label.split(' ').first), inInclusiveRange(40, 60));
+  });
+
+  testWidgets('блок озвучки: пауза, скорость, музыка, главы', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await _openChapter(tester, 'Глава 1');
+
+    expect(find.byType(NarrationControls), findsOneWidget);
+    for (final label in [
+      'Назад на 15 секунд',
+      'Предыдущая фраза',
+      'Следующая фраза',
+      'Вперёд на 15 секунд',
+      'Скорость',
+      'Таймер сна',
+      'Голос',
+      'Главы',
+      'Вид текста',
+    ]) {
+      expect(find.byTooltip(label), findsOneWidget, reason: label);
+    }
+    // Блок озвучки выше острова.
+    expect(
+      tester.getRect(find.byType(ReadingPanel)).bottom,
+      lessThan(tester.getRect(find.byType(NavIsland)).top),
+    );
+
+    await tester.tap(find.byTooltip('Слушать  Пробел'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Пауза  Пробел'), findsOneWidget);
+
+    await tester.tap(find.text('1,0×'));
+    await tester.pumpAndSettle();
+    // Пункт меню: текст внутри галочки, нажатие попадает в сам пункт.
+    await tester.tap(find.text('1,5×').last, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.text('1,5×'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Музыка на фоне'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(200, 200));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Музыка на фоне: играет'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Главы'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Глава 3').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Глава 3 из 3'), findsOneWidget);
+  });
+
+  test('подписи скорости как в макете', () {
+    expect(NarrationView.speedLabel(1), '1,0×');
+    expect(NarrationView.speedLabel(0.75), '0,75×');
+    expect(NarrationView.speedLabel(1.5), '1,5×');
   });
 
   test('сдвиг строки от профиля: узкая колонка — сдвиг, широкая — нет', () {
