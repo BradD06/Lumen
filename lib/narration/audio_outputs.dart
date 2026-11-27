@@ -21,6 +21,30 @@ final class JustAudioPhrasePlayer implements PhrasePlayer, VoiceVolume {
   final Future<Directory> _folder;
   final _player = AudioPlayer();
   var _file = 0;
+  double _volume = 1;
+  Timer? _ramp;
+
+  /// Фраза входит и выходит за [_fade]: без щелчка на стыке с соседней.
+  static const _fade = Duration(milliseconds: 60);
+
+  /// Плавно довести громкость до `to` за [_fade] (несколько шагов).
+  Future<void> _rampTo(double to, {required double from}) {
+    _ramp?.cancel();
+    const steps = 6;
+    final done = Completer<void>();
+    var step = 0;
+    unawaited(_player.setVolume(from));
+    _ramp = Timer.periodic(_fade ~/ steps, (timer) {
+      step++;
+      unawaited(_player.setVolume(from + (to - from) * step / steps));
+      if (step >= steps) {
+        timer.cancel();
+        if (!done.isCompleted) done.complete();
+      }
+    });
+    return done.future;
+  }
+
   Completer<bool>? _done;
   StreamSubscription<PlayerState>? _states;
 
@@ -59,12 +83,15 @@ final class JustAudioPhrasePlayer implements PhrasePlayer, VoiceVolume {
       if (state.processingState == ProcessingState.completed) {
         _finish(true);
       } else if (state.playing) {
+        if (!started) unawaited(_rampTo(_volume, from: 0));
         started = true;
       } else if (started && state.processingState == ProcessingState.ready) {
         // Систему прервали (звонок, другое приложение): пауза.
         _finish(false);
       }
     });
+    _ramp?.cancel();
+    await _player.setVolume(0);
     unawaited(_player.play());
     return done.future;
   }
@@ -76,15 +103,22 @@ final class JustAudioPhrasePlayer implements PhrasePlayer, VoiceVolume {
   Future<void> setSpeed(double speed) => _player.setSpeed(speed);
 
   @override
-  Future<void> setVolume(double volume) => _player.setVolume(volume.clamp(0.0, 1.0));
+  Future<void> setVolume(double volume) async {
+    _volume = volume.clamp(0.0, 1.0);
+    if (_ramp?.isActive != true && _player.playing) await _player.setVolume(_volume);
+  }
 
   @override
   Future<void> stop() async {
     _finish(false);
+    if (_player.playing) await _rampTo(0, from: _player.volume);
     await _player.pause();
   }
 
-  Future<void> dispose() => _player.dispose();
+  Future<void> dispose() {
+    _ramp?.cancel();
+    return _player.dispose();
+  }
 }
 
 /// Системный голос через flutter_tts: AVSpeechSynthesizer на Mac и iPhone, TextToSpeech
@@ -243,7 +277,7 @@ final class LoopPlayer {
 }
 
 /// Секунда тишины в wav: её играет `LoopPlayer`, пока голос ждёт фразу.
-Uint8List silentWave({int rate = 8000, double seconds = 1}) {
+Uint8List silentWave({int rate = 24000, double seconds = 1}) {
   final samples = (rate * seconds).round();
   final data = samples * 2;
   final bytes = ByteData(44 + data);

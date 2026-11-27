@@ -415,10 +415,14 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
   }
 
   /// Музыка играет, пока играет книга; под голосом тише. Громкость меняется плавно.
+  /// Приглушение держится всю озвучку, а не по фразам: иначе в паузе между фразами музыка
+  /// на миг поднималась и снова опускалась, и на стыках слышался шум. Громче она становится,
+  /// только пока голос ждёт сервер.
   void _updateMusic() {
     final player = music;
     if (player == null) return;
-    double goal() => _mix.musicOn && state.playing ? _mix.musicLevel(speaking: state.sounding) : 0;
+    double goal() =>
+        _mix.musicOn && state.playing ? _mix.musicLevel(speaking: state.waiting == null) : 0;
     if (_mix.musicOn && state.playing) unawaited(player.play(_track.asset));
     if ((goal() - _musicLevel).abs() < 0.001) return;
     _fader ??= Timer.periodic(const Duration(milliseconds: 40), (timer) {
@@ -434,11 +438,13 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
     });
   }
 
-  /// Тишина в паузах голоса сервера: иначе система усыпит приложение в фоне (PORTING.md).
+  /// Тишина под голосом сервера: иначе в паузах система усыпит приложение в фоне (PORTING.md).
+  /// Играет всё время, пока книга играет, а не только между фразами: второй плеер, который
+  /// включался и выключался на каждом стыке, давал щелчок и шум.
   void _updateSilence() {
     final player = silence;
     if (player == null || !keepAwake) return;
-    final needed = state.playing && !state.sounding && !(_mix.musicOn);
+    final needed = state.playing && !(_mix.musicOn);
     if (needed) {
       unawaited(_silenceFile().then((path) => player.play(path, asset: false)));
     } else {
