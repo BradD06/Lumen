@@ -183,6 +183,8 @@ class _BookGrid extends StatelessWidget {
         final columns = width >= 900 ? 6 : (width >= 640 ? 5 : (width >= 480 ? 4 : 3));
         return GridView.builder(
           shrinkWrap: true,
+          // Без своего отступа: иначе сетка добавляет сверху высоту «чёлки» iPhone.
+          padding: EdgeInsets.zero,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
