@@ -64,7 +64,8 @@ final class Book {
 ///
 /// Для озвучки: `id` не меняется, пока книга в библиотеке; текст уже чистый
 /// (без сносок, переносы строк внутри абзаца стали пробелами), абзацы разделены
-/// пустой строкой `\n\n`, их места — `paragraphs`.
+/// пустой строкой `\n\n`, их места — `paragraphs`. Картинки (`images`) в текст
+/// не входят: озвучка их не видит, экран текста ставит их между абзацами.
 final class Chapter {
   const Chapter({
     this.id = '',
@@ -73,6 +74,7 @@ final class Chapter {
     required this.text,
     this.paragraphs = const [],
     this.lines = const [],
+    this.images = const [],
   });
 
   /// Склеить главу из абзацев: текст через `\n\n` и места каждого абзаца.
@@ -81,16 +83,31 @@ final class Chapter {
     int index = 0,
     required String title,
     required List<String> paragraphs,
+    List<ChapterImage> images = const [],
   }) {
     final buffer = StringBuffer();
     final ranges = <TextRange>[];
+    // Пустые абзацы выпадают: места картинок сдвигаются вместе с ними.
+    final positions = <int>[];
     for (final paragraph in paragraphs) {
+      positions.add(ranges.length);
       if (paragraph.isEmpty) continue;
       if (buffer.isNotEmpty) buffer.write('\n\n');
       ranges.add(TextRange(buffer.length, paragraph.length));
       buffer.write(paragraph);
     }
-    return Chapter(id: id, index: index, title: title, text: buffer.toString(), paragraphs: ranges);
+    positions.add(ranges.length);
+    return Chapter(
+      id: id,
+      index: index,
+      title: title,
+      text: buffer.toString(),
+      paragraphs: ranges,
+      images: [
+        for (final image in images)
+          image.copyWith(position: positions[image.position.clamp(0, paragraphs.length)]),
+      ],
+    );
   }
 
   /// Постоянный id главы: `<id книги>/<номер>`.
@@ -109,19 +126,47 @@ final class Chapter {
   /// Строки главы: повествование и реплики. Пусто, пока книгу не разобрали.
   final List<Line> lines;
 
+  /// Иллюстрации по порядку; `position` — перед каким абзацем стоит картинка.
+  final List<ChapterImage> images;
+
   /// Тексты абзацев по порядку.
   List<String> get paragraphTexts => [for (final p in paragraphs) p.of(text)];
 
   static String makeId(String bookId, int index) => '$bookId/$index';
 
-  Chapter copyWith({String? id, int? index, String? title, List<Line>? lines}) => Chapter(
+  Chapter copyWith({
+    String? id,
+    int? index,
+    String? title,
+    List<Line>? lines,
+    List<ChapterImage>? images,
+  }) => Chapter(
     id: id ?? this.id,
     index: index ?? this.index,
     title: title ?? this.title,
     text: text,
     paragraphs: paragraphs,
     lines: lines ?? this.lines,
+    images: images ?? this.images,
   );
+}
+
+/// Иллюстрация внутри главы.
+final class ChapterImage {
+  const ChapterImage({required this.position, required this.name, this.path});
+
+  /// Перед каким абзацем стоит картинка: 0 — до первого,
+  /// `paragraphs.length` — после последнего.
+  final int position;
+
+  /// Имя файла картинки в книге (`img3.jpg`).
+  final String name;
+
+  /// Файл на этом устройстве; `null`, пока книга не сохранена.
+  final String? path;
+
+  ChapterImage copyWith({int? position, String? path}) =>
+      ChapterImage(position: position ?? this.position, name: name, path: path ?? this.path);
 }
 
 /// Кусок текста, который читается одной интонацией: повествование или реплика.

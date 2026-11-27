@@ -8,11 +8,12 @@ import 'src/imported_book.dart';
 import 'src/txt_parser.dart';
 
 export 'src/imported_book.dart';
+export 'src/pdf_layout.dart';
 export 'src/txt_parser.dart' show parsePlainText, splitParagraphs, guessLanguage;
 export 'src/text_decode.dart' show decodeText;
 
 /// Форматы, которые можно добавить (расширения без точки).
-const supportedExtensions = ['epub', 'fb2', 'zip', 'txt'];
+const supportedExtensions = ['epub', 'fb2', 'zip', 'txt', 'pdf'];
 
 /// Разобрать файл книги по имени и байтам. Бросает [ImportException].
 ImportedBook importBook(String fileName, List<int> bytes) {
@@ -29,10 +30,11 @@ ImportedBook importBook(String fileName, List<int> bytes) {
   if (lower.endsWith('.fb2')) return parseFb2(bytes, fallbackTitle: title);
   if (lower.endsWith('.txt')) return parseTxt(bytes, title: title);
   if (lower.endsWith('.pdf')) {
-    throw const ImportException('PDF пока не поддерживается. Добавьте книгу в EPUB, FB2 или TXT.');
+    // PDF читает приложение (PDFium) и собирает книгу через `buildPdfBook`.
+    throw const ImportException('PDF разбирается через buildPdfBook.');
   }
   throw ImportException(
-    'Формат «${_extension(fileName)}» не поддерживается. Подойдут EPUB, FB2 и TXT.',
+    'Формат «${_extension(fileName)}» не поддерживается. Подойдут EPUB, FB2, TXT и PDF.',
   );
 }
 

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:lumen/app.dart';
 import 'package:lumen/library/book_cover.dart';
+import 'package:lumen/library/chapter_content.dart';
 import 'package:lumen/library/library_scope.dart';
 import 'package:lumen/shell/tabs.dart';
 import 'package:lumen_core/lumen_core.dart';
@@ -74,5 +75,28 @@ void main() {
     expect(listeningTime(900 * 90), '1 ч 30 мин');
     expect(listeningTime(100), '< 1 мин');
     expect(BookCover.colorsFor('abc'), BookCover.colorsFor('abc'));
+  });
+
+  test('картинки встают между абзацами по месту', () {
+    final chapter = Chapter.fromParagraphs(
+      title: 'Г',
+      paragraphs: ['А', '', 'Б'],
+      images: const [
+        ChapterImage(position: 0, name: 'a.png'),
+        ChapterImage(position: 2, name: 'b.png'),
+        ChapterImage(position: 3, name: 'c.png'),
+      ],
+    );
+    // Пустой абзац выпал: картинка «перед третьим» стала «перед вторым».
+    final items = chapterItems(chapter);
+    expect(
+      items.map(
+        (i) => switch (i) {
+          ParagraphItem(:final text) => text,
+          ImageItem(:final image) => image.name,
+        },
+      ),
+      ['a.png', 'А', 'b.png', 'Б', 'c.png'],
+    );
   });
 }

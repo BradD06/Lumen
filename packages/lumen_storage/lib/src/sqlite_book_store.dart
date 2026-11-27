@@ -80,6 +80,16 @@ final class SqliteBookStore implements BookStore {
         PRIMARY KEY (chapter_id, idx)
       );
     '''),
+    // v2: иллюстрации глав; файлы в images/<id книги>/.
+    (db) => db.execute('''
+      CREATE TABLE chapter_image (
+        chapter_id TEXT NOT NULL REFERENCES chapter(id) ON DELETE CASCADE,
+        idx INTEGER NOT NULL,
+        position INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        PRIMARY KEY (chapter_id, idx)
+      );
+    '''),
   ];
 
   static void _migrate(Database db) {
@@ -118,6 +128,11 @@ final class SqliteBookStore implements BookStore {
 
   String _coverPath(String file) => '${_coverDir.path}${Platform.pathSeparator}$file';
 
+  /// Папка иллюстраций книги: рядом с папкой обложек.
+  Directory _imageDir(String bookId) => Directory(
+    '${_coverDir.parent.path}${Platform.pathSeparator}images${Platform.pathSeparator}$bookId',
+  );
+
   @override
   Stream<List<Book>> watchBooks() async* {
     yield _all();
@@ -153,6 +168,17 @@ final class SqliteBookStore implements BookStore {
                 speaker: l['speaker'] as String?,
                 emotion: Emotion.parse(l['emotion'] as String?),
                 confidence: (l['confidence'] as num?)?.toDouble(),
+              ),
+          ],
+          images: [
+            for (final i in _db.select(
+              'SELECT position, name FROM chapter_image WHERE chapter_id = ? ORDER BY idx',
+              [chapterId],
+            ))
+              ChapterImage(
+                position: i['position'] as int,
+                name: i['name'] as String,
+                path: '${_imageDir(id).path}${Platform.pathSeparator}${i['name']}',
               ),
           ],
         ),
@@ -207,6 +233,9 @@ final class SqliteBookStore implements BookStore {
       'INSERT INTO line (chapter_id, idx, start, length, speaker, emotion, confidence) '
       'VALUES (?, ?, ?, ?, ?, ?, ?)',
     );
+    final image = _db.prepare(
+      'INSERT INTO chapter_image (chapter_id, idx, position, name) VALUES (?, ?, ?, ?)',
+    );
     try {
       for (var i = 0; i < book.chapters.length; i++) {
         final c = book.chapters[i];
@@ -227,8 +256,12 @@ final class SqliteBookStore implements BookStore {
             x.confidence,
           ]);
         }
+        for (var k = 0; k < c.images.length; k++) {
+          image.execute([id, k, c.images[k].position, c.images[k].name]);
+        }
       }
     } finally {
+      image.close();
       chapter.close();
       paragraph.close();
       line.close();
@@ -244,6 +277,17 @@ final class SqliteBookStore implements BookStore {
   }
 
   @override
+  Future<void> saveImages(String bookId, Map<String, List<int>> images) async {
+    if (images.isEmpty) return;
+    final dir = _imageDir(bookId)..createSync(recursive: true);
+    for (final e in images.entries) {
+      // Имя приходит из разбора книги (img3.jpg), но из папки книги не выпускаем.
+      if (!RegExp(r'^[\w.-]+$').hasMatch(e.key) || e.key.startsWith('.')) continue;
+      await File('${dir.path}${Platform.pathSeparator}${e.key}').writeAsBytes(e.value, flush: true);
+    }
+  }
+
+  @override
   Future<void> delete(String id) async {
     final rows = _db.select('SELECT cover_file FROM book WHERE id = ?', [id]);
     if (rows.isEmpty) return;
@@ -253,6 +297,8 @@ final class SqliteBookStore implements BookStore {
       final file = File(_coverPath(cover));
       if (file.existsSync()) file.deleteSync();
     }
+    final images = _imageDir(id);
+    if (images.existsSync()) images.deleteSync(recursive: true);
     _changes.add(_all());
   }
 
