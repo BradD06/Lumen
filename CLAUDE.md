@@ -20,6 +20,11 @@ Lumen озвучивает текстовые книги нейроголосо�
 - Ключ сервера хранить только в защищённом хранилище системы.
 - Этот файл держать коротким: дизайн и подробности — в `docs/`.
 
+## Код и проверки
+
+- Экраны в `lib/`, логика в пакетах `packages/` (зависимости только вниз, схема в FEATURES.md). Цвета только из `Graphite`, стекло — `Glass`.
+- `flutter pub get` в корне, `flutter test`, `dart test` в папке пакета, формат `dart format --line-length 100 lib test packages`. Без этих проверок CI на PR красный.
+
 ## Связанные репозитории
 
 - [lumen-voice-server](https://github.com/BradD06/lumen-voice-server) — сервер голоса.
