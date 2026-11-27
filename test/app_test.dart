@@ -1,7 +1,9 @@
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show Key;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/app.dart';
 import 'package:lumen/screens/home_screen.dart';
+import 'package:lumen/shell/island.dart';
 import 'package:lumen/shell/tabs.dart';
 
 void main() {
@@ -43,6 +45,25 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pumpAndSettle();
     expect(find.text('Голоса диктора и озвученные книги'), findsOneWidget);
+  });
+
+  testWidgets('кружок выбранного раздела плавно едет по острову', (tester) async {
+    await tester.pumpWidget(const LumenApp());
+    final bubble = find.byKey(const Key('island-bubble'));
+    final island = find.byType(NavIsland);
+    double bubbleX() => tester.getCenter(bubble).dx - tester.getTopLeft(island).dx;
+    // Остров не сжат FittedBox: тестовое окно шире него.
+    expect(bubbleX(), closeTo(IslandMetrics.centerOf(AppTab.home), 0.5));
+
+    await tester.tap(find.bySemanticsLabel(AppTab.voices.label));
+    await tester.pump();
+    await tester.pump(IslandMetrics.move ~/ 2);
+    final middle = bubbleX();
+    expect(middle, greaterThan(IslandMetrics.centerOf(AppTab.home) + 10));
+    expect(middle, lessThan(IslandMetrics.centerOf(AppTab.voices) - 10));
+
+    await tester.pumpAndSettle();
+    expect(bubbleX(), closeTo(IslandMetrics.centerOf(AppTab.voices), 0.5));
   });
 
   test('приветствие и дата по-русски', () {
