@@ -4,7 +4,7 @@
 
 | Функция | Системы | Где в коде |
 |---|---|---|
-| Приложение «Lumen» с иконкой из Lumen_exemple | Все четыре | `assets/icon/`, `flutter_launcher_icons.yaml`; на Mac свои PNG в `macos/Runner/Assets.xcassets/AppIcon.appiconset` |
+| Приложение «Lumen» с иконкой из Lumen_exemple (на Windows — .ico 16–256, рисунок во всю иконку) | Все четыре | все иконки рисует `tool/make_icons.py` (`python3 tool/make_icons.py`, нужен Pillow); крупные PNG в `assets/icon/` |
 | Тема «Графит»: тёмный фон с серыми свечениями, стеклянные карточки, шрифт Onest | Все четыре | `lib/theme/graphite.dart` (цвета), `lib/theme/glass.dart` (`Glass`, `GlowBackground`), `assets/fonts/` |
 | Плавающий остров внизу с пятью разделами: Главная, Библиотека, Добавить, Голоса, Профиль | Все четыре | `lib/shell/island.dart`, `lib/shell/tabs.dart`, `lib/shell/app_shell.dart` |
 | Клавиши ⌘1…⌘5 (на Windows Ctrl) — разделы, ⌘O — «Добавить книгу», ⌘, — настройки; подсказка с клавишей при наведении, белая рамка фокуса | Mac, Windows (и клавиатура на iPad) | `lib/shell/app_shell.dart`, `lib/shell/island.dart` |
