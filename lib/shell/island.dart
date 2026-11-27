@@ -36,16 +36,17 @@ abstract final class IslandMetrics {
   static const move = Duration(milliseconds: 460);
 
   static double get width {
-    final n = AppTab.values.length;
+    final n = AppTab.island.length;
     return padding * 2 + n * buttonWidth + (n - 1) * spacing;
   }
 
   /// Центр кнопки раздела от левого края капсулы.
   static double centerOf(AppTab tab) =>
-      padding + tab.index * (buttonWidth + spacing) + buttonWidth / 2;
+      padding + AppTab.island.indexOf(tab) * (buttonWidth + spacing) + buttonWidth / 2;
 }
 
 /// Плавающий стеклянный остров внизу по центру — на всех системах, без бокового меню.
+/// Когда открыт раздел не из острова (профиль), кружок опускается в остров и вырез затягивается.
 class NavIsland extends StatefulWidget {
   const NavIsland({super.key, required this.selected, required this.onSelect});
 
@@ -56,33 +57,61 @@ class NavIsland extends StatefulWidget {
   State<NavIsland> createState() => _NavIslandState();
 }
 
-class _NavIslandState extends State<NavIsland> with SingleTickerProviderStateMixin {
+class _NavIslandState extends State<NavIsland> with TickerProviderStateMixin {
   late final _move = AnimationController(vsync: this, duration: IslandMetrics.move, value: 1);
   late final _curve = CurvedAnimation(parent: _move, curve: Curves.easeInOutCubicEmphasized);
-  late double _from = IslandMetrics.centerOf(widget.selected);
+
+  /// 1 — кружок над островом и вырез целиком, 0 — ровная капсула без кружка.
+  late final _notch = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+    value: widget.selected.inIsland ? 1 : 0,
+  );
+  late final _notchCurve = CurvedAnimation(parent: _notch, curve: Curves.easeOutCubic);
+  late final _both = Listenable.merge([_curve, _notchCurve]);
+
+  late double _from = _targetX(widget.selected);
   late double _to = _from;
 
+  /// Последний раздел острова: пока открыт профиль, кружок прячется на его месте.
+  late AppTab _shown = widget.selected.inIsland ? widget.selected : AppTab.home;
+
+  double _targetX(AppTab tab) => IslandMetrics.centerOf(tab.inIsland ? tab : AppTab.home);
+
   double get _x => lerpDouble(_from, _to, _curve.value)!;
+
+  bool get _still => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
 
   @override
   void didUpdateWidget(NavIsland old) {
     super.didUpdateWidget(old);
-    final target = IslandMetrics.centerOf(widget.selected);
-    if (target == _to) return;
-    // Едем от того места, где кружок сейчас, даже если прошлый переезд не закончился.
-    _from = _x;
-    _to = target;
-    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
-      _move.value = 1;
-    } else {
-      _move.forward(from: 0);
+    final tab = widget.selected;
+    if (tab == old.selected) return;
+    if (!tab.inIsland) {
+      _still ? _notch.value = 0 : _notch.reverse();
+      return;
     }
+    final target = IslandMetrics.centerOf(tab);
+    if (_notch.value == 0) {
+      // Кружок появляется сразу на месте раздела и вырастает из острова, а не едет от края.
+      _move.value = 1;
+      _from = _to = target;
+    } else if (target != _to) {
+      // Едем от того места, где кружок сейчас, даже если прошлый переезд не закончился.
+      _from = _x;
+      _to = target;
+      _still ? _move.value = 1 : _move.forward(from: 0);
+    }
+    setState(() => _shown = tab);
+    _still ? _notch.value = 1 : _notch.forward();
   }
 
   @override
   void dispose() {
     _curve.dispose();
     _move.dispose();
+    _notchCurve.dispose();
+    _notch.dispose();
     super.dispose();
   }
 
@@ -104,8 +133,8 @@ class _NavIslandState extends State<NavIsland> with SingleTickerProviderStateMix
               width: width,
               height: IslandMetrics.height,
               child: AnimatedBuilder(
-                animation: _curve,
-                builder: (context, _) => _NotchedGlass(notchX: _x),
+                animation: _both,
+                builder: (context, _) => _NotchedGlass(notchX: _x, notch: _notchCurve.value),
               ),
             ),
             Positioned(
@@ -115,7 +144,7 @@ class _NavIslandState extends State<NavIsland> with SingleTickerProviderStateMix
                 mainAxisSize: MainAxisSize.min,
                 spacing: IslandMetrics.spacing,
                 children: [
-                  for (final tab in AppTab.values)
+                  for (final tab in AppTab.island)
                     _IslandButton(
                       tab: tab,
                       selected: tab == widget.selected,
@@ -125,21 +154,25 @@ class _NavIslandState extends State<NavIsland> with SingleTickerProviderStateMix
               ),
             ),
             AnimatedBuilder(
-              animation: _curve,
+              animation: _both,
               builder: (context, child) {
                 // В пути кружок чуть сжимается, как капля, и снова набирает размер на месте.
                 final t = _move.isAnimating ? _curve.value.clamp(0.0, 1.0) : 1.0;
                 final squeeze = 1 - 0.08 * math.sin(math.pi * t);
+                final shown = _notchCurve.value;
                 return Positioned(
                   key: const Key('island-bubble'),
                   left: _x - IslandMetrics.bubble / 2,
-                  top: 0,
+                  top: (1 - shown) * 14,
                   width: IslandMetrics.bubble,
                   height: IslandMetrics.bubble,
-                  child: Transform.scale(scale: squeeze, child: child),
+                  child: Opacity(
+                    opacity: shown.clamp(0.0, 1.0),
+                    child: Transform.scale(scale: squeeze * (0.7 + 0.3 * shown), child: child),
+                  ),
                 );
               },
-              child: _Bubble(tab: widget.selected),
+              child: _Bubble(tab: _shown),
             ),
           ],
         ),
@@ -150,20 +183,21 @@ class _NavIslandState extends State<NavIsland> with SingleTickerProviderStateMix
 
 /// Стеклянная капсула острова с круглым вырезом под кружком.
 class _NotchedGlass extends StatelessWidget {
-  const _NotchedGlass({required this.notchX});
+  const _NotchedGlass({required this.notchX, required this.notch});
 
   final double notchX;
+  final double notch;
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
       // Тень только снаружи формы: под полупрозрачным стеклом она его не темнит.
-      painter: _IslandShadow(notchX),
+      painter: _IslandShadow(notchX, notch),
       child: ClipPath(
-        clipper: _NotchClipper(notchX),
+        clipper: _NotchClipper(notchX, notch),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: CustomPaint(painter: _IslandFill(notchX), child: const SizedBox.expand()),
+          child: CustomPaint(painter: _IslandFill(notchX, notch), child: const SizedBox.expand()),
         ),
       ),
     );
@@ -171,19 +205,25 @@ class _NotchedGlass extends StatelessWidget {
 }
 
 /// Капсула минус вырез: круг под кружком и плечики к верхнему краю.
-Path notchedIsland(Size size, double notchX) {
+/// `notch` от 0 (ровная капсула) до 1 (вырез целиком): пока вырез появляется,
+/// его круг поднимается из-за верхнего края.
+Path notchedIsland(Size size, double notchX, [double notch = 1]) {
   final capsule = Path()
     ..addRRect(RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(size.height / 2)));
+  if (notch < 0.01) return capsule;
   const r = IslandMetrics.bubble / 2 + IslandMetrics.gap;
-  const cy = IslandMetrics.centerY;
+  const c0 = IslandMetrics.centerY;
+  final cy = c0 - (1 - notch) * (r + c0 + 2);
+  if (cy <= -r) return capsule;
   final x = notchX;
   final circle = Path()..addOval(Rect.fromCircle(center: Offset(x, cy), radius: r));
+  final y1 = math.max(5.0, cy + 2);
+  if (y1 - cy >= r) return Path.combine(PathOperation.difference, capsule, circle);
 
   // Где круг пересекает верхний край, и откуда к нему идут плечики.
   final edge = math.sqrt(r * r - cy * cy);
-  final y1 = math.max(5.0, cy + 2);
   final side = math.sqrt(r * r - (y1 - cy) * (y1 - cy));
-  const shoulder = IslandMetrics.shoulder;
+  final shoulder = IslandMetrics.shoulder * notch;
   final cut = Path()
     ..moveTo(x - edge - shoulder, -60)
     ..lineTo(x - edge - shoulder, 0)
@@ -200,26 +240,28 @@ Path notchedIsland(Size size, double notchX) {
 }
 
 class _NotchClipper extends CustomClipper<Path> {
-  const _NotchClipper(this.notchX);
+  const _NotchClipper(this.notchX, this.notch);
 
   final double notchX;
+  final double notch;
 
   @override
-  Path getClip(Size size) => notchedIsland(size, notchX);
+  Path getClip(Size size) => notchedIsland(size, notchX, notch);
 
   @override
-  bool shouldReclip(_NotchClipper old) => old.notchX != notchX;
+  bool shouldReclip(_NotchClipper old) => old.notchX != notchX || old.notch != notch;
 }
 
 class _IslandShadow extends CustomPainter {
-  const _IslandShadow(this.notchX);
+  const _IslandShadow(this.notchX, this.notch);
 
   final double notchX;
+  final double notch;
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawPath(
-      notchedIsland(size, notchX).shift(const Offset(0, 10)),
+      notchedIsland(size, notchX, notch).shift(const Offset(0, 10)),
       Paint()
         ..color = Graphite.glassShadow
         ..maskFilter = const MaskFilter.blur(BlurStyle.outer, 15),
@@ -227,14 +269,15 @@ class _IslandShadow extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_IslandShadow old) => old.notchX != notchX;
+  bool shouldRepaint(_IslandShadow old) => old.notchX != notchX || old.notch != notch;
 }
 
 /// Заливка, светлая кромка сверху и тонкая рамка по форме выреза.
 class _IslandFill extends CustomPainter {
-  const _IslandFill(this.notchX);
+  const _IslandFill(this.notchX, this.notch);
 
   final double notchX;
+  final double notch;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -252,7 +295,7 @@ class _IslandFill extends CustomPainter {
     );
     // Половина линии обрезается формой, внутри остаётся рамка в 1 точку.
     canvas.drawPath(
-      notchedIsland(size, notchX),
+      notchedIsland(size, notchX, notch),
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2
@@ -261,7 +304,7 @@ class _IslandFill extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_IslandFill old) => old.notchX != notchX;
+  bool shouldRepaint(_IslandFill old) => old.notchX != notchX || old.notch != notch;
 }
 
 /// Кружок открытого раздела: значок раздела, тёмный на белом.
@@ -330,7 +373,7 @@ class _IslandButtonState extends State<_IslandButton> {
     final on = widget.selected;
     const fade = Duration(milliseconds: 260);
     return Tooltip(
-      message: '${tab.label}  ${_apple ? '⌘' : 'Ctrl+'}${tab.index + 1}',
+      message: '${tab.label}  ${_apple ? '⌘' : 'Ctrl+'}${tab.keyLabel}',
       child: Semantics(
         selected: on,
         button: true,

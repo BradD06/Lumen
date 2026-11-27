@@ -3,12 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../screens/add_book_screen.dart';
+import '../screens/catalog_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/library_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/voices_screen.dart';
+import '../screens/tab_page.dart';
 import '../theme/glass.dart';
 import 'island.dart';
+import 'profile_button.dart';
 import 'tabs.dart';
 
 /// Корень окна: пять разделов и плавающий остров внизу.
@@ -35,11 +38,12 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
+    final top = MediaQuery.paddingOf(context).top + TabPage.windowBar;
     return CallbackShortcuts(
       bindings: {
+        // ⌘1…⌘5 — разделы острова, ⌘, — профиль.
         for (final tab in AppTab.values) _cmd(tab.key): () => _select(tab),
         _cmd(LogicalKeyboardKey.keyO): () => _select(AppTab.add),
-        _cmd(LogicalKeyboardKey.comma): () => _select(AppTab.settings),
       },
       child: Focus(
         autofocus: true,
@@ -55,10 +59,19 @@ class _AppShellState extends State<AppShell> {
                       children: const [
                         HomeScreen(),
                         LibraryScreen(),
+                        CatalogScreen(),
                         AddBookScreen(),
                         VoicesScreen(),
                         SettingsScreen(),
                       ],
+                    ),
+                  ),
+                  Positioned(
+                    left: 20,
+                    top: top + 14,
+                    child: ProfileButton(
+                      selected: _tab == AppTab.profile,
+                      onTap: () => _select(AppTab.profile),
                     ),
                   ),
                   Positioned(
