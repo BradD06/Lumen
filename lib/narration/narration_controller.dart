@@ -32,12 +32,9 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
   }) : _settings = VoiceServerSettings(secrets ?? MemorySecretStore()),
        _prefs = prefs ?? MemoryPrefs(),
        narrator = Narrator(player: player, speech: speech) {
-    narrator
-      ..addListener(_changed)
-      ..onFinished = _chapterFinished;
-    sleep = SleepTimer(onFire: pause, onChange: notifyListeners);
+    // Сначала все поля, потом подписка на диктора: его первое же изменение (скорость)
+    // читает музыку и тишину. Наоборот на iPhone падало, и звук не включался.
     _speed = _prefs.getDouble(_speedKey) ?? 1;
-    narrator.setSpeed(_speed);
     _voiceId = _prefs.getString(_voiceKey);
     _voiceName = _prefs.getString(_voiceNameKey);
     _mix = AudioMix(
@@ -45,11 +42,20 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
       musicVolume: _prefs.getDouble(_musicVolumeKey) ?? 0.3,
     );
     _track = MusicTrack.byId(_prefs.getString(_trackKey));
+    sleep = SleepTimer(onFire: pause, onChange: notifyListeners);
+    narrator
+      ..setSpeed(_speed)
+      ..addListener(_changed)
+      ..onFinished = _chapterFinished;
   }
 
   /// Без звука (тесты): голос «читает», пока его не остановят.
-  factory NarrationController.silent() =>
-      NarrationController(player: _SilentPlayer(), speech: _SilentSpeech());
+  factory NarrationController.silent({String? startupError}) =>
+      NarrationController(player: _SilentPlayer(), speech: _SilentSpeech())
+        ..startupError = startupError;
+
+  /// Звук не запустился на этом устройстве: почему (показывается во вкладке «Голоса»).
+  String? startupError;
 
   static const _speedKey = 'narration.speed';
   static const _voiceKey = 'narration.voice';
@@ -130,9 +136,12 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
 
   /// Поднять голос сервера и экран блокировки. Вызывается один раз при запуске.
   Future<void> start({BookStore? store, MediaSession? media}) async {
-    _store = store;
+    _store ??= store;
     _media = media;
-    final link = await _settings.load().catchError((_) => null);
+    final link = await _settings
+        .load()
+        .timeout(const Duration(seconds: 5))
+        .catchError((Object _) => null);
     if (link != null) await _useServer(link, check: true);
   }
 
@@ -252,6 +261,9 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
   Future<VoiceError?> connect(String input) async {
     final link = ServerLink.parse(input);
     if (link == null) return const VoiceError(VoiceErrorKind.badAddress);
+    if (cacheFolder == null) {
+      return VoiceError(VoiceErrorKind.server, detail: startupError ?? 'звук не запустился');
+    }
     final server = VoiceServer(link);
     try {
       final voices = await server.voices();
