@@ -23,6 +23,7 @@ dependencies:
   lumen_voice: any
   lumen_storage: any
   lumen_player: any
+  flutter_secure_storage: ^11.2.0
 
 dev_dependencies:
   flutter_test:
