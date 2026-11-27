@@ -113,6 +113,37 @@ void main() {
     });
   }
 
+  testWidgets('в списке глав видно, где остановился и сколько прочитано', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await _openChapter(tester, 'Глава 2');
+
+    await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    final percent = tester.widget<ReadingPanel>(find.byType(ReadingPanel)).trailing!;
+    expect(percent, isNot('0 %'));
+
+    await tester.tap(find.byTooltip('Назад').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Вы остановились здесь'), findsOneWidget);
+    final row = find.ancestor(
+      of: find.text('Вы остановились здесь'),
+      matching: find.byType(InkWell),
+    );
+    expect(find.descendant(of: row, matching: find.text('Глава 2')), findsOneWidget);
+    expect(find.descendant(of: row, matching: find.textContaining('%')), findsOneWidget);
+    expect(find.textContaining('Прочитано'), findsOneWidget);
+
+    // Глава открывается на том же месте.
+    await tester.tap(find.text('Глава 2').first);
+    await tester.pumpAndSettle();
+    final reopened = tester.widget<ReadingPanel>(find.byType(ReadingPanel)).trailing!;
+    final a = int.parse(percent.split(' ').first);
+    final b = int.parse(reopened.split(' ').first);
+    expect((a - b).abs(), lessThanOrEqualTo(5));
+  });
+
   testWidgets('прогресс над островом, кнопки листают главы', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;

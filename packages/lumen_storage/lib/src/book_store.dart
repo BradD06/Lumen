@@ -21,12 +21,19 @@ abstract interface class BookStore {
 
   /// Убрать книгу из библиотеки вместе с главами и обложкой.
   Future<void> delete(String id);
+
+  /// Сколько прочитано в книге и где читатель остановился.
+  Future<ReadingProgress> progress(String bookId);
+
+  /// Запомнить место: глава [chapter] прочитана на [fraction], она теперь текущая.
+  Future<void> saveProgress(String bookId, int chapter, double fraction);
 }
 
 /// Книги в памяти: для тестов и пока нет базы.
 final class MemoryBookStore implements BookStore {
   final _books = <String, Book>{};
   final _changes = StreamController<List<Book>>.broadcast();
+  final _progress = <String, ReadingProgress>{};
 
   List<Book> get _all => List.unmodifiable(
     _books.values.map(
@@ -69,6 +76,17 @@ final class MemoryBookStore implements BookStore {
 
   @override
   Future<void> delete(String id) async {
+    _progress.remove(id);
     if (_books.remove(id) != null) _changes.add(_all);
+  }
+
+  @override
+  Future<ReadingProgress> progress(String bookId) async =>
+      _progress[bookId] ?? ReadingProgress.empty;
+
+  @override
+  Future<void> saveProgress(String bookId, int chapter, double fraction) async {
+    if (!_books.containsKey(bookId)) return;
+    _progress[bookId] = (_progress[bookId] ?? ReadingProgress.empty).withChapter(chapter, fraction);
   }
 }

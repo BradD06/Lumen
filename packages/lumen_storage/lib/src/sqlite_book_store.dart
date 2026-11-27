@@ -95,6 +95,16 @@ final class SqliteBookStore implements BookStore {
         PRIMARY KEY (chapter_id, idx)
       );
     '''),
+    // v3: где читатель остановился — доля каждой открытой главы.
+    (db) => db.execute('''
+      CREATE TABLE reading_progress (
+        book_id TEXT NOT NULL REFERENCES book(id) ON DELETE CASCADE,
+        chapter_idx INTEGER NOT NULL,
+        fraction REAL NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (book_id, chapter_idx)
+      );
+    '''),
   ];
 
   static void _migrate(Database db) {
@@ -324,6 +334,42 @@ final class SqliteBookStore implements BookStore {
       if (!RegExp(r'^[\w.-]+$').hasMatch(e.key) || e.key.startsWith('.')) continue;
       await File('${dir.path}${Platform.pathSeparator}${e.key}').writeAsBytes(e.value, flush: true);
     }
+  }
+
+  @override
+  Future<ReadingProgress> progress(String bookId) async {
+    final rows = _db.select(
+      'SELECT chapter_idx, fraction, updated_at FROM reading_progress WHERE book_id = ?',
+      [bookId],
+    );
+    if (rows.isEmpty) return ReadingProgress.empty;
+    var current = rows.first;
+    for (final row in rows) {
+      if ((row['updated_at'] as int) > (current['updated_at'] as int)) current = row;
+    }
+    return ReadingProgress(
+      chapters: {
+        for (final row in rows) row['chapter_idx'] as int: (row['fraction'] as num).toDouble(),
+      },
+      current: current['chapter_idx'] as int,
+    );
+  }
+
+  /// Последняя метка времени: две записи в одну миллисекунду не должны
+  /// перепутать, какая глава текущая.
+  int _lastStamp = 0;
+
+  @override
+  Future<void> saveProgress(String bookId, int chapter, double fraction) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _lastStamp = now > _lastStamp ? now : _lastStamp + 1;
+    _db.execute(
+      '''INSERT INTO reading_progress (book_id, chapter_idx, fraction, updated_at)
+         SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM book WHERE id = ?)
+         ON CONFLICT(book_id, chapter_idx) DO UPDATE SET fraction = excluded.fraction,
+           updated_at = excluded.updated_at''',
+      [bookId, chapter, fraction.clamp(0.0, 1.0), _lastStamp, bookId],
+    );
   }
 
   @override

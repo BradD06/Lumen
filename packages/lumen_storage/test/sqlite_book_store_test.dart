@@ -113,4 +113,33 @@ void main() {
     await sub.cancel();
     store.close();
   });
+
+  test('место чтения переживает перезапуск и пересохранение книги, уходит с книгой', () async {
+    var store = SqliteBookStore.open(dir.path);
+    await store.save(sample('b1'));
+    expect((await store.progress('b1')).current, isNull);
+    await store.saveProgress('b1', 0, 1);
+    await store.saveProgress('b1', 1, 0.4);
+    store.close();
+
+    store = SqliteBookStore.open(dir.path);
+    var progress = await store.progress('b1');
+    expect(progress.current, 1);
+    expect(progress.of(0), 1);
+    expect(progress.of(1), closeTo(0.4, 1e-9));
+
+    // Вернулись к первой главе — она снова текущая.
+    await store.saveProgress('b1', 0, 0.2);
+    await store.save(sample('b1'));
+    progress = await store.progress('b1');
+    expect(progress.current, 0);
+    expect(progress.of(0), closeTo(0.2, 1e-9));
+
+    await store.delete('b1');
+    expect((await store.progress('b1')).current, isNull);
+    // Для книги, которой нет, ничего не пишется.
+    await store.saveProgress('b1', 0, 0.5);
+    expect((await store.progress('b1')).chapters, isEmpty);
+    store.close();
+  });
 }
