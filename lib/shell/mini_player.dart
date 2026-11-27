@@ -16,6 +16,9 @@ class MiniPlayer extends StatelessWidget {
 
   static const height = 76.0;
 
+  /// Зазор между мини-плеером и островом.
+  static const gap = 10.0;
+
   /// Отступ от краёв блока: слева обложка, справа крестик.
   static const _side = 16.0;
 

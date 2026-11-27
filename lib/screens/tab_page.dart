@@ -2,6 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../narration/narration_scope.dart';
+import '../shell/app_shell.dart' show islandClearance;
+import '../shell/mini_player.dart';
 import '../theme/glass.dart';
 import '../theme/graphite.dart';
 
@@ -21,7 +24,7 @@ class TabPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final top = MediaQuery.paddingOf(context).top + windowBar;
     return ListView(
-      padding: EdgeInsets.fromLTRB(20, top + 76, 20, 140),
+      padding: EdgeInsets.fromLTRB(20, top + 76, 20, 0),
       children: [
         Center(
           child: ConstrainedBox(
@@ -54,7 +57,23 @@ class TabPage extends StatelessWidget {
             ),
           ),
         ),
+        const BottomRoom(),
       ],
+    );
+  }
+}
+
+/// Пустое место в конце списка раздела: последняя кнопка прокручивается выше острова
+/// и мини-плеера над ним. Перестраивается только оно, когда мини-плеер появляется или уходит.
+class BottomRoom extends StatelessWidget {
+  const BottomRoom({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final n = NarrationScope.of(context);
+    final player = n.book != null && n.text != null;
+    return SizedBox(
+      height: islandClearance(context) + (player ? MiniPlayer.gap + MiniPlayer.height : 0) + 24,
     );
   }
 }
