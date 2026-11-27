@@ -295,6 +295,14 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
     notifyListeners();
   }
 
+  /// Стереть озвученные фразы на этом устройстве: после обновления сервера (другая обработка
+  /// звука) книга иначе звучала бы по-старому, пока фразы не вытеснятся из кеша.
+  Future<void> clearVoiceCache() async {
+    final folder = cacheFolder;
+    if (folder == null) return;
+    await (_cache ?? PhraseCache(await folder)).clear();
+  }
+
   /// Проверить сервер ещё раз и обновить список голосов.
   Future<void> refreshServer() async {
     final link = _link;

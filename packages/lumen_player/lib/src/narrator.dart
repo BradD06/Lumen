@@ -96,6 +96,8 @@ final class Narrator {
     required this._speech,
     this.tick = const Duration(milliseconds: 50),
     this.serverCheck = const Duration(seconds: 20),
+    this.paragraphPause = const Duration(milliseconds: 600),
+    this.sentencePause = const Duration(milliseconds: 150),
   });
 
   final PhrasePlayer _player;
@@ -106,6 +108,23 @@ final class Narrator {
 
   /// Как часто после сбоя проверять, ожил ли сервер.
   final Duration serverCheck;
+
+  /// Пауза голоса сервера между абзацами, сверх тишины в конце самой фразы. Как у дикторов
+  /// аудиокниг (в ElevenReader между абзацами 0,9–1,5 с, между предложениями 0,4–0,6 с):
+  /// без неё абзацы шли подряд, будто одно длинное предложение.
+  final Duration paragraphPause;
+
+  /// Пауза между частями одного абзаца (в начале чтения части идут по предложению).
+  final Duration sentencePause;
+
+  /// Пауза перед частью `next`: между абзацами длиннее, внутри абзаца короче.
+  Duration _pauseBefore(int next) {
+    final text = _text?.text;
+    if (text == null || next <= 0 || next >= _parts.length) return Duration.zero;
+    final from = _parts[next - 1].end.clamp(0, text.length);
+    final to = _parts[next].start.clamp(from, text.length);
+    return text.substring(from, to).contains('\n') ? paragraphPause : sentencePause;
+  }
 
   /// Глава дочитана до конца.
   void Function()? onFinished;
@@ -415,6 +434,13 @@ final class Narrator {
       _index++;
       _spoken = null;
       _set(_state.copyWith(sounding: false));
+      if (_state.engine == VoiceEngine.server) {
+        final pause = _pauseBefore(_index);
+        if (pause > Duration.zero) {
+          await Future<void>.delayed(pause);
+          if (run != _run) return;
+        }
+      }
       // Сервер ожил, пока читал системный голос: со следующего предложения — снова он.
       if (_state.engine == VoiceEngine.system && _wantServer && _index < _parts.length) {
         _relayout(_parts[_index].start);

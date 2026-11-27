@@ -46,6 +46,8 @@ final class FakeSpeech implements SystemSpeech {
 final class FakePlayer implements PhrasePlayer {
   final played = <String>[];
   final starts = <Duration>[];
+  final clock = Stopwatch()..start();
+  final times = <Duration>[];
   Completer<bool>? _current;
 
   @override
@@ -55,6 +57,7 @@ final class FakePlayer implements PhrasePlayer {
   Future<bool> play(PhraseAudio audio, {Duration from = Duration.zero, double speed = 1}) {
     played.add(utf8.decode(audio.data));
     starts.add(from);
+    times.add(clock.elapsed);
     final done = _current = Completer<bool>();
     scheduleMicrotask(() {
       if (!done.isCompleted) done.complete(true);
@@ -204,6 +207,32 @@ void main() {
       expect(player.played.first, 'Первая фраза здесь.');
       expect(player.played.join(' '), contains('Третья фраза'));
       expect(speech.said, isEmpty);
+      n.dispose();
+    });
+
+    test('между абзацами пауза длиннее, чем между предложениями', () async {
+      final client = MockClient((request) async {
+        final text = (jsonDecode(request.body) as Map)['text'] as String;
+        return http.Response.bytes(Uint8List.fromList(utf8.encode(text)), 200);
+      });
+      final player = FakePlayer();
+      final n =
+          Narrator(
+              player: player,
+              speech: FakeSpeech(),
+              serverCheck: const Duration(hours: 1),
+              paragraphPause: const Duration(milliseconds: 400),
+              sentencePause: const Duration(milliseconds: 50),
+            )
+            ..setServer(voice(client))
+            ..load(chapter);
+      n.play();
+      await until(() => player.played.any((p) => p.contains('Третья')));
+      expect(player.played, hasLength(3));
+      final sentenceGap = player.times[1] - player.times[0];
+      final paragraphGap = player.times[2] - player.times[1];
+      expect(sentenceGap, greaterThanOrEqualTo(const Duration(milliseconds: 50)));
+      expect(paragraphGap, greaterThanOrEqualTo(const Duration(milliseconds: 400)));
       n.dispose();
     });
 

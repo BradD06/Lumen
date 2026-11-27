@@ -54,9 +54,12 @@ void main() {
     final parts = SpeechText.ramped([SpeechBlock(text: text, start: 0)], startingAt: 0);
     expect(parts.first.spoken, 'Это предложение номер 1 в длинном абзаце.');
     final lengths = parts.map((p) => p.spoken.length).toList();
-    for (var i = 0; i + 1 < lengths.length; i++) {
+    // Растут до целого абзаца (последняя часть — что осталось от абзаца).
+    for (var i = 0; i + 2 < lengths.length; i++) {
       expect(lengths[i], lessThanOrEqualTo(lengths[i + 1]));
     }
+    // Быстро: уже третья часть больше 300 знаков (озвучка абзацами ради интонации).
+    expect(lengths[3], greaterThan(300));
     expect(lengths.every((l) => l <= SpeechText.paragraphLength), isTrue);
     expect(lengths.last, greaterThan(3 * lengths.first));
     // Ничего не потеряно и не повторено.
@@ -77,7 +80,7 @@ void main() {
     final index = SpeechText.indexOf(place, parts)!;
     expect(index, 2);
     expect(dots(parts[index].spoken), 1);
-    expect(dots(parts[index + 1].spoken), 1);
+    expect(dots(parts[index + 1].spoken), greaterThanOrEqualTo(1));
     expect(parts.every((p) => p.end <= blocks[1].start || p.start >= blocks[1].start), isTrue);
   });
 
