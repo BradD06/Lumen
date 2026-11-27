@@ -19,4 +19,6 @@ flutter run -d macos   # or: -d windows, an iOS simulator, an Android device
 flutter test
 ```
 
+Step-by-step setup for each platform (in Russian): [docs/RUNNING.md](docs/RUNNING.md).
+
 The voice server lives in [lumen-voice-server](https://github.com/BradD06/lumen-voice-server).

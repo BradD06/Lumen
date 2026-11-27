@@ -7,11 +7,12 @@ environment:
   sdk: ^3.14.0
 
 # Части приложения (зависимости только вниз): экраны (lib/) → lumen_player →
-# lumen_voice → lumen_core; lumen_storage → lumen_core.
+# lumen_voice → lumen_core; lumen_storage → lumen_core; lumen_import → lumen_core.
 workspace:
   - packages/lumen_core
   - packages/lumen_voice
   - packages/lumen_storage
+  - packages/lumen_import
   - packages/lumen_player
 
 dependencies:
@@ -22,6 +23,10 @@ dependencies:
   lumen_core: any
   lumen_voice: any
   lumen_storage: any
+  lumen_import: any
+  file_picker: ^13.4.1
+  path_provider: ^2.1.6
+  desktop_drop: ^0.8.4
   lumen_player: any
   flutter_secure_storage: ^11.2.0
 

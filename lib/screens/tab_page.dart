@@ -5,8 +5,8 @@ import 'package:material_ui/material_ui.dart';
 import '../theme/glass.dart';
 import '../theme/graphite.dart';
 
-/// Общая раскладка раздела: заголовок сверху, колонка до 1100 px по центру,
-/// снизу место под остров.
+/// Общая раскладка раздела: заголовок сверху (под кружком профиля в углу),
+/// колонка до 1100 px по центру, снизу место под остров.
 class TabPage extends StatelessWidget {
   const TabPage({super.key, required this.title, this.overline, required this.children});
 
@@ -15,13 +15,13 @@ class TabPage extends StatelessWidget {
   final List<Widget> children;
 
   /// На Mac кнопки окна лежат поверх приложения (прозрачный заголовок).
-  static double get _windowBar => defaultTargetPlatform == TargetPlatform.macOS ? 28 : 0;
+  static double get windowBar => defaultTargetPlatform == TargetPlatform.macOS ? 28 : 0;
 
   @override
   Widget build(BuildContext context) {
-    final top = MediaQuery.paddingOf(context).top + _windowBar;
+    final top = MediaQuery.paddingOf(context).top + windowBar;
     return ListView(
-      padding: EdgeInsets.fromLTRB(20, top + 32, 20, 140),
+      padding: EdgeInsets.fromLTRB(20, top + 76, 20, 140),
       children: [
         Center(
           child: ConstrainedBox(
