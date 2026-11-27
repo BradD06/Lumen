@@ -3,6 +3,7 @@ import 'package:lumen_core/lumen_core.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../library/book_cover.dart';
+import '../library/book_transitions.dart';
 import '../library/library_scope.dart';
 import '../library/widgets.dart';
 import '../shell/app_shell.dart';
@@ -23,6 +24,9 @@ class LibraryScreen extends StatefulWidget {
 
 class _LibraryScreenState extends State<LibraryScreen> {
   final _navigator = GlobalKey<NavigatorState>();
+
+  /// Свой контроллер перелётов: вложенному навигатору нужен отдельный.
+  final _heroes = MaterialApp.createMaterialHeroController();
   late final _depth = _DepthObserver(() {
     // Окно прячет профиль, пока над списком книг открыт экран книги.
     final open = _navigator.currentState?.canPop() ?? false;
@@ -34,14 +38,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Widget build(BuildContext context) {
     return NavigatorPopHandler(
       onPopWithResult: (_) => _navigator.currentState?.maybePop(),
-      child: Navigator(
-        key: _navigator,
-        // Фокус остаётся у окна, иначе ⌘1…⌘5 перестают работать.
-        requestFocus: false,
-        observers: [_depth],
-        onGenerateRoute: (_) => PageRouteBuilder<void>(
-          pageBuilder: (_, _, _) => const _LibraryList(),
-          transitionDuration: Duration.zero,
+      child: HeroControllerScope(
+        controller: _heroes,
+        child: Navigator(
+          key: _navigator,
+          // Фокус остаётся у окна, иначе ⌘1…⌘5 перестают работать.
+          requestFocus: false,
+          observers: [_depth],
+          onGenerateRoute: (_) => PageRouteBuilder<void>(
+            pageBuilder: (_, _, _) => const _LibraryList(),
+            transitionDuration: Duration.zero,
+          ),
         ),
       ),
     );
@@ -238,7 +245,10 @@ class BookTile extends StatelessWidget {
   final Book book;
 
   void _open(BuildContext context) => Navigator.of(context).push(
-    MaterialPageRoute<void>(
+    BlurPageRoute<void>(
+      // Обложка растёт до середины пути, потом встаёт на место — список глав следом.
+      duration: const Duration(milliseconds: 900),
+      pageFrom: .6,
       builder: (_) => BookScreen(bookId: book.id, preview: book),
     ),
   );
@@ -284,7 +294,10 @@ class BookTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              BookCover(book: book),
+              FlyingCover(
+                book: book,
+                child: BookCover(book: book),
+              ),
               const SizedBox(height: 6),
               Text(
                 book.title,

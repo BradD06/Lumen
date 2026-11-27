@@ -1,11 +1,37 @@
+/// Точное место в главе: абзац (или картинка) по порядку и доля его высоты,
+/// где проходит верх видимого текста. Не зависит от ширины окна и от того,
+/// успели ли загрузиться картинки выше.
+final class ChapterPlace {
+  const ChapterPlace({required this.item, this.within = 0});
+
+  /// Номер абзаца или картинки в главе (как в `chapterItems`).
+  final int item;
+
+  /// Сколько этого абзаца уже ушло вверх: от 0 до 1.
+  final double within;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChapterPlace && other.item == item && other.within == within;
+
+  @override
+  int get hashCode => Object.hash(item, within);
+
+  @override
+  String toString() => 'ChapterPlace($item, $within)';
+}
+
 /// Сколько прочитано в книге: доля каждой главы и глава, где читатель остановился.
 final class ReadingProgress {
-  const ReadingProgress({this.chapters = const {}, this.current});
+  const ReadingProgress({this.chapters = const {}, this.places = const {}, this.current});
 
   static const empty = ReadingProgress();
 
   /// Номер главы → прочитанная доля от 0 до 1 (место в главе).
   final Map<int, double> chapters;
+
+  /// Точные места в главах (номер главы → место); у старых записей нет.
+  final Map<int, ChapterPlace> places;
 
   /// Глава, которую открывали последней; `null` — книгу ещё не читали.
   final int? current;
@@ -35,6 +61,9 @@ final class ReadingProgress {
   }
 
   /// Тот же прогресс, где глава [index] прочитана на [fraction] и стала текущей.
-  ReadingProgress withChapter(int index, double fraction) =>
-      ReadingProgress(chapters: {...chapters, index: fraction.clamp(0.0, 1.0)}, current: index);
+  ReadingProgress withChapter(int index, double fraction, {ChapterPlace? place}) => ReadingProgress(
+    chapters: {...chapters, index: fraction.clamp(0.0, 1.0)},
+    places: place == null ? ({...places}..remove(index)) : {...places, index: place},
+    current: index,
+  );
 }

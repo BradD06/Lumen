@@ -2,10 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:lumen/app.dart';
 import 'package:lumen/library/book_cover.dart';
+import 'package:lumen/library/book_transitions.dart';
 import 'package:lumen/reader/narration_controls.dart';
 import 'package:lumen/reader/reading_panel.dart';
-import 'package:lumen/shell/app_shell.dart';
 import 'package:lumen/shell/island.dart';
+import 'package:lumen/theme/fading_glass.dart';
 import 'package:lumen/shell/profile_button.dart';
 import 'package:lumen/shell/tabs.dart';
 import 'package:lumen_import/lumen_import.dart';
@@ -30,6 +31,14 @@ Future<void> _openChapter(WidgetTester tester, String chapter) async {
 }
 
 Rect _rect(WidgetTester tester, Finder f) => tester.getRect(f);
+
+/// Во сколько раз виджет увеличен на экране (обложка в полёте масштабируется).
+double _scaleOf(Element e) {
+  final box = e.renderObject! as RenderBox;
+  final a = box.localToGlobal(Offset.zero);
+  final b = box.localToGlobal(Offset(box.size.width, 0));
+  return (b - a).distance / box.size.width;
+}
 
 void main() {
   for (final (name, size) in [('телефон', Size(390, 844)), ('окно', Size(1280, 800))]) {
@@ -144,6 +153,30 @@ void main() {
     expect((a - b).abs(), lessThanOrEqualTo(5));
   });
 
+  for (final (name, size) in [('телефон', Size(390, 844)), ('окно', Size(1440, 900))]) {
+    testWidgets('$name: начало и конец главы не прячутся под шапку и плеер', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      tester.view.padding = const FakeViewPadding(top: 59, bottom: 34);
+      addTearDown(tester.view.reset);
+      await _openChapter(tester, 'Глава 2');
+
+      // Шапка и плеер вместе со стеклянными кромками.
+      final header = tester.getRect(find.byType(FadingGlass).first);
+      final player = tester.getRect(find.byType(ReadingPanel));
+      final first = tester.getRect(find.textContaining('Абзац 0 главы 2.'));
+      expect(first.top, greaterThanOrEqualTo(header.bottom));
+
+      // Длина списка уточняется по мере прокрутки: листаем до упора.
+      for (var i = 0; i < 6; i++) {
+        await tester.drag(find.byType(ListView).last, const Offset(0, -5000));
+        await tester.pumpAndSettle();
+      }
+      final last = tester.getRect(find.textContaining('Абзац 39 главы 2.'));
+      expect(last.bottom, lessThanOrEqualTo(player.top));
+    });
+  }
+
   testWidgets('прогресс над островом, кнопки листают главы', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -153,9 +186,12 @@ void main() {
     final panel = find.byType(ReadingPanel);
     expect(find.text('Глава 2 из 3'), findsOneWidget);
     expect(find.text('0 %'), findsOneWidget);
-    // Остров спрятан, плеер стоит на его месте у низа окна.
+    // Остров спрятан, плеер — полоса во всю ширину у низа окна.
     expect(find.byType(NavIsland).hitTestable(), findsNothing);
-    expect(_rect(tester, panel).bottom, closeTo(844 - islandBottom(tester.element(panel)), 1));
+    final bar = _rect(tester, panel);
+    expect((bar.left, bar.right, bar.bottom), (0, 390, 844));
+    // Над кнопками — стеклянная кромка, через неё виден (размытый) текст.
+    expect(find.byType(FadingGlass), findsNWidgets(2));
 
     // Прокрутка двигает прогресс.
     await tester.drag(find.byType(ListView).last, const Offset(0, -600));
@@ -265,6 +301,43 @@ void main() {
     // Все в одном ряду.
     expect(tester.getRect(find.byTooltip('Скорость')).center.dy, closeTo(play.center.dy, 1));
   });
+
+  test('обложка при открытии — 85 % экрана по центру, не шире экрана', () {
+    final tall = bigCoverRect(const Size(1440, 900));
+    expect(tall.height, closeTo(900 * .85, 1e-6));
+    expect(tall.center, const Offset(720, 450));
+    final phone = bigCoverRect(const Size(390, 844));
+    expect(phone.width, closeTo(390 * .85, 1e-6));
+    expect(phone.height / phone.width, closeTo(1.5, 1e-6));
+  });
+
+  testWidgets(
+    'книга открывается с перелётом обложки, после перехода список под ней не ловит нажатия',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final store = MemoryBookStore();
+      await store.save(parsePlainText('Глава 1\n\nРаз.', title: 'Тихая ночь').toBook('b1'));
+      await tester.pumpWidget(LumenApp(store: store));
+      await tester.tap(find.bySemanticsLabel(AppTab.library.label));
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel('Тихая ночь'));
+      await tester.pump();
+      for (var i = 0; i < 9; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      // Посреди перехода обложка большая и по центру.
+      final widths = [
+        for (final e in find.byType(BookCover).evaluate())
+          (e.renderObject! as RenderBox).size.width * _scaleOf(e),
+      ];
+      expect(widths.reduce((a, b) => a > b ? a : b), greaterThan(250));
+      await tester.pumpAndSettle();
+      expect(find.text('Главы'), findsOneWidget);
+      expect(find.bySemanticsLabel('Тихая ночь'), findsNothing);
+    },
+  );
 
   test('подписи скорости как в макете', () {
     expect(NarrationView.speedLabel(1), '1,0×');

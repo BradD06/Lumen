@@ -105,6 +105,11 @@ final class SqliteBookStore implements BookStore {
         PRIMARY KEY (book_id, chapter_idx)
       );
     '''),
+    // v4: точное место в главе — абзац и доля его высоты.
+    (db) {
+      db.execute('ALTER TABLE reading_progress ADD COLUMN place_item INTEGER');
+      db.execute('ALTER TABLE reading_progress ADD COLUMN place_within REAL');
+    },
   ];
 
   static void _migrate(Database db) {
@@ -339,7 +344,8 @@ final class SqliteBookStore implements BookStore {
   @override
   Future<ReadingProgress> progress(String bookId) async {
     final rows = _db.select(
-      'SELECT chapter_idx, fraction, updated_at FROM reading_progress WHERE book_id = ?',
+      '''SELECT chapter_idx, fraction, updated_at, place_item, place_within
+         FROM reading_progress WHERE book_id = ?''',
       [bookId],
     );
     if (rows.isEmpty) return ReadingProgress.empty;
@@ -351,6 +357,14 @@ final class SqliteBookStore implements BookStore {
       chapters: {
         for (final row in rows) row['chapter_idx'] as int: (row['fraction'] as num).toDouble(),
       },
+      places: {
+        for (final row in rows)
+          if (row['place_item'] != null)
+            row['chapter_idx'] as int: ChapterPlace(
+              item: row['place_item'] as int,
+              within: (row['place_within'] as num? ?? 0).toDouble(),
+            ),
+      },
       current: current['chapter_idx'] as int,
     );
   }
@@ -360,15 +374,30 @@ final class SqliteBookStore implements BookStore {
   int _lastStamp = 0;
 
   @override
-  Future<void> saveProgress(String bookId, int chapter, double fraction) async {
+  Future<void> saveProgress(
+    String bookId,
+    int chapter,
+    double fraction, {
+    ChapterPlace? place,
+  }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     _lastStamp = now > _lastStamp ? now : _lastStamp + 1;
     _db.execute(
-      '''INSERT INTO reading_progress (book_id, chapter_idx, fraction, updated_at)
-         SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM book WHERE id = ?)
+      '''INSERT INTO reading_progress
+           (book_id, chapter_idx, fraction, updated_at, place_item, place_within)
+         SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM book WHERE id = ?)
          ON CONFLICT(book_id, chapter_idx) DO UPDATE SET fraction = excluded.fraction,
-           updated_at = excluded.updated_at''',
-      [bookId, chapter, fraction.clamp(0.0, 1.0), _lastStamp, bookId],
+           updated_at = excluded.updated_at, place_item = excluded.place_item,
+           place_within = excluded.place_within''',
+      [
+        bookId,
+        chapter,
+        fraction.clamp(0.0, 1.0),
+        _lastStamp,
+        place?.item,
+        place?.within.clamp(0.0, 1.0),
+        bookId,
+      ],
     );
   }
 
