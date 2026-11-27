@@ -2,35 +2,25 @@ import 'package:lumen_player/lumen_player.dart';
 import 'package:lumen_voice/lumen_voice.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../theme/glass.dart';
 import '../theme/graphite.dart';
 import 'narration_controller.dart';
 import 'narration_scope.dart';
 
-/// Окно в стиле «Графит»: тёмное стекло, заголовок, список.
+/// Окно в стиле «Графит»: прозрачное стекло, заголовок, список.
 Future<T?> _sheet<T>(BuildContext context, {required String title, required WidgetBuilder body}) =>
-    showDialog<T>(
-      context: context,
-      barrierColor: const Color(0x99000000),
-      builder: (context) => Dialog(
-        backgroundColor: const Color(0xF21A1A22),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440, maxHeight: 560),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
-                child: Text(
-                  title,
-                  style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
-                ),
-              ),
-              Flexible(child: body(context)),
-            ],
+    showGlassDialog<T>(
+      context,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+            child: Text(title, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
           ),
-        ),
+          Flexible(child: body(context)),
+        ],
       ),
     );
 

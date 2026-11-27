@@ -80,3 +80,48 @@ class AppBackground extends StatelessWidget {
     return ColoredBox(color: Graphite.background, child: child);
   }
 }
+
+/// Всплывающее окно (музыка, скорость, голос, таймер, главы): прозрачное стекло
+/// с сильным размытием, текст книги просвечивает (Брэд, 27.11.2026).
+class GlassPanel extends StatelessWidget {
+  const GlassPanel({
+    super.key,
+    required this.child,
+    this.radius = 22,
+    this.padding = EdgeInsets.zero,
+  });
+
+  final Widget child;
+  final double radius;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) => Glass(
+    radius: radius,
+    blur: 40,
+    fill: Graphite.panelFill,
+    padding: padding,
+    // Material внутри стекла: строки списка рисуют выделение на нём, а не под заливкой.
+    child: Material(type: MaterialType.transparency, child: child),
+  );
+}
+
+/// Окно по центру из прозрачного стекла; затемнение под ним лёгкое.
+Future<T?> showGlassDialog<T>(
+  BuildContext context, {
+  required WidgetBuilder builder,
+  double maxWidth = 440,
+  double maxHeight = 560,
+}) => showDialog<T>(
+  context: context,
+  barrierColor: Graphite.panelBarrier,
+  builder: (context) => Dialog(
+    backgroundColor: Colors.transparent,
+    surfaceTintColor: Colors.transparent,
+    elevation: 0,
+    child: ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: maxHeight),
+      child: GlassPanel(radius: 24, child: builder(context)),
+    ),
+  ),
+);

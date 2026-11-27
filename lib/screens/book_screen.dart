@@ -754,43 +754,36 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
   static void _soon() {}
 
   Future<void> _pickChapter() async {
-    final picked = await showDialog<int>(
-      context: context,
-      barrierColor: const Color(0x99000000),
-      builder: (context) => Dialog(
-        backgroundColor: const Color(0xF21A1A22),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440, maxHeight: 520),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 18, 20, 8),
-                child: Text('Главы', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
-              ),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.only(bottom: 10),
-                  itemCount: _chapters.length,
-                  itemBuilder: (context, i) => ListTile(
-                    selected: i == _index,
-                    selectedColor: Graphite.text,
-                    selectedTileColor: Graphite.islandOn,
-                    leading: Text(
-                      '${i + 1}',
-                      style: const TextStyle(fontSize: 13, color: Graphite.textMuted),
-                    ),
-                    title: Text(_chapters[i].title, maxLines: 2, overflow: TextOverflow.ellipsis),
-                    onTap: () => Navigator.of(context).pop(i),
-                  ),
-                ),
-              ),
-            ],
+    final picked = await showGlassDialog<int>(
+      context,
+      maxHeight: 520,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 18, 20, 8),
+            child: Text('Главы', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
           ),
-        ),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: const EdgeInsets.only(bottom: 10),
+              itemCount: _chapters.length,
+              itemBuilder: (context, i) => ListTile(
+                selected: i == _index,
+                selectedColor: Graphite.text,
+                selectedTileColor: Graphite.islandOn,
+                leading: Text(
+                  '${i + 1}',
+                  style: const TextStyle(fontSize: 13, color: Graphite.textMuted),
+                ),
+                title: Text(_chapters[i].title, maxLines: 2, overflow: TextOverflow.ellipsis),
+                onTap: () => Navigator.of(context).pop(i),
+              ),
+            ),
+          ),
+        ],
       ),
     );
     if (picked != null) _go(picked);

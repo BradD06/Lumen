@@ -37,6 +37,10 @@ abstract final class Graphite {
   static const islandOn = Color(0x29FFFFFF); // .16
   static const islandOffText = Color(0xFF9A9AA6);
 
+  // Всплывающие окна плеера: прозрачное стекло, сквозь него виден текст книги.
+  static const panelFill = Color(0x8C1C1C24); // .55
+  static const panelBarrier = Color(0x33000000); // .20
+
   static const font = 'Onest';
 
   static ThemeData theme() {

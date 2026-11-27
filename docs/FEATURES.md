@@ -5,7 +5,7 @@
 | Функция | Системы | Где в коде |
 |---|---|---|
 | Приложение «Lumen» с иконкой из Lumen_exemple (на Windows — .ico 16–256, плитка во весь квадрат, лист как в Lumen_exemple) | Все четыре | все иконки рисует `tool/make_icons.py` (`python3 tool/make_icons.py`, нужен Pillow); крупные PNG в `assets/icon/` |
-| Тема «Графит»: ровный тёмно-серый фон одним цветом, стеклянные карточки, шрифт Onest | Все четыре | `lib/theme/graphite.dart` (цвета), `lib/theme/glass.dart` (`Glass`, `AppBackground`), `assets/fonts/` |
+| Тема «Графит»: ровный тёмно-серый фон одним цветом, стеклянные карточки; окна плеера (музыка, скорость, голос, таймер сна, главы) из прозрачного стекла, текст книги просвечивает размытым (`GlassPanel`, `showGlassDialog`), шрифт Onest | Все четыре | `lib/theme/graphite.dart` (цвета), `lib/theme/glass.dart` (`Glass`, `AppBackground`, `GlassPanel`), `assets/fonts/` |
 | Плавающий остров внизу с пятью разделами: Главная, Каталог, Добавить, Библиотека, Голоса (⌘1…⌘5 по порядку) | Все четыре | `lib/shell/island.dart`, `lib/shell/tabs.dart`, `lib/shell/app_shell.dart` |
 | Профиль — кружок в левом верхнем углу (открытый белый), на Mac под тремя кнопками окна; кружок есть только в разделах: пока в библиотеке открыта книга или глава, его нет, и на его месте «Назад» (`TabSwitcher.bookOpen`, наблюдатель вложенного навигатора в `lib/screens/library_screen.dart`) | Все четыре | `lib/shell/profile_button.dart` |
 | Раздел «Каталог» (книги, заранее добавленные в приложение): пока заглушка | Все четыре | `lib/screens/catalog_screen.dart` |
