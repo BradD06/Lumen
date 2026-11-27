@@ -15,6 +15,10 @@ abstract interface class BookStore {
   /// Сохранить картинку обложки; вернёт путь для `Book.coverPath`.
   Future<String?> saveCover(String bookId, List<int> bytes, String extension);
 
+  /// Сохранить иллюстрации книги (имя файла → байты). Пути к ним появятся
+  /// в `ChapterImage.path` книги из `book(id)`.
+  Future<void> saveImages(String bookId, Map<String, List<int>> images);
+
   /// Убрать книгу из библиотеки вместе с главами и обложкой.
   Future<void> delete(String id);
 }
@@ -59,6 +63,9 @@ final class MemoryBookStore implements BookStore {
 
   @override
   Future<String?> saveCover(String bookId, List<int> bytes, String extension) async => null;
+
+  @override
+  Future<void> saveImages(String bookId, Map<String, List<int>> images) async {}
 
   @override
   Future<void> delete(String id) async {

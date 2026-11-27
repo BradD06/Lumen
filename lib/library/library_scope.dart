@@ -88,6 +88,7 @@ class Library {
     if (imported.cover != null) {
       coverPath = await store.saveCover(id, imported.cover!, imported.coverExtension ?? 'jpg');
     }
+    await store.saveImages(id, imported.images);
     final book = imported.toBook(
       id,
       addedAt: DateTime.now(),

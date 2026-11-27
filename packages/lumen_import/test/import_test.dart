@@ -4,10 +4,14 @@ import 'package:archive/archive.dart';
 import 'package:lumen_import/lumen_import.dart';
 import 'package:test/test.dart';
 
-List<int> zip(Map<String, String> files) {
+/// Ненастоящий PNG нужного размера: подпись формата и нули.
+final png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, ...List.filled(2000, 0)];
+
+List<int> zip(Map<String, Object> files) {
   final archive = Archive();
   for (final e in files.entries) {
-    final bytes = utf8.encode(e.value);
+    final value = e.value;
+    final bytes = value is String ? utf8.encode(value) : value as List<int>;
     archive.addFile(ArchiveFile(e.key, bytes.length, bytes));
   }
   return ZipEncoder().encode(archive);
@@ -86,8 +90,38 @@ void main() {
     });
   });
 
+  test('EPUB: иллюстрации на своих местах, значки и обложка пропущены', () {
+    final book = importBook(
+      'pic.epub',
+      zip({
+        'mimetype': 'application/epub+zip',
+        'META-INF/container.xml':
+            '<container><rootfiles><rootfile full-path="content.opf"/></rootfiles></container>',
+        'content.opf':
+            '<package><metadata><title>Картинки</title></metadata><manifest>'
+            '<item id="cov" href="img/cover.png" media-type="image/png" properties="cover-image"/>'
+            '<item id="c1" href="text/c1.xhtml" media-type="application/xhtml+xml"/>'
+            '</manifest><spine><itemref idref="c1"/></spine></package>',
+        'img/cover.png': png,
+        'img/map.png': png,
+        'img/star.png': png.sublist(0, 100),
+        'text/c1.xhtml':
+            '<html><body><p>Первый абзац.</p><div><img src="../img/map.png" alt="Карта"/></div>'
+            '<p>Второй абзац.</p><img src="../img/star.png"/><img src="../img/cover.png"/>'
+            '<svg xmlns:xlink="http://www.w3.org/1999/xlink"><image xlink:href="../img/map.png"/></svg>'
+            '</body></html>',
+      }),
+    );
+    final chapter = book.chapters.single;
+    expect(chapter.paragraphTexts, ['Первый абзац.', 'Второй абзац.']);
+    expect(chapter.images.map((i) => (i.position, i.name)), [(1, 'img1.png'), (2, 'img1.png')]);
+    expect(book.images.keys, ['img1.png']);
+    expect(book.cover, isNotNull);
+  });
+
   group('FB2', () {
-    const fb2 =
+    final picture = base64.encode(png);
+    final fb2 =
         '<?xml version="1.0" encoding="windows-1251"?>'
         '<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0" xmlns:l="http://www.w3.org/1999/xlink">'
         '<description><title-info><author><first-name>Николай</first-name><last-name>Гоголь</last-name></author>'
@@ -97,11 +131,13 @@ void main() {
         '<section><title><p>Том первый</p></title>'
         '<section><title><p>Глава первая</p></title>'
         '<p>В ворота гостиницы<a l:href="#n1" type="note">[1]</a> губернского города NN въехала</p>'
+        '<image l:href="#pic.png"/>'
         '<empty-line/><poem><stanza><v>Строка стиха</v></stanza></poem></section>'
         '<section><title><p>Глава вторая</p></title><p>Уже более недели.</p></section>'
         '</section></body>'
         '<body name="notes"><section id="n1"><p>Сноска</p></section></body>'
         '<binary id="cover.png" content-type="image/png">UE5H</binary>'
+        '<binary id="pic.png" content-type="image/png">$picture</binary>'
         '</FictionBook>';
 
     test('Windows-1251, автор, главы, обложка, сноски', () {
@@ -117,6 +153,8 @@ void main() {
       ]);
       expect(utf8.decode(book.cover!), 'PNG');
       expect(book.coverExtension, 'png');
+      expect(book.chapters.first.images.single.position, 2, reason: 'после второго абзаца');
+      expect(book.images.values.single, png);
     });
 
     test('FB2 в ZIP', () {

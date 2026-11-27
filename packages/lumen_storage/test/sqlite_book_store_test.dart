@@ -60,6 +60,30 @@ void main() {
     store.close();
   });
 
+  test('иллюстрации: места в главе, файлы рядом с базой, удаляются с книгой', () async {
+    var store = SqliteBookStore.open(dir.path);
+    final base = sample('b3');
+    final chapter = base.chapters.first.copyWith(
+      images: const [ChapterImage(position: 1, name: 'img1.png')],
+    );
+    await store.saveImages('b3', {
+      'img1.png': [7, 7, 7],
+      '../evil.png': [1],
+    });
+    await store.save(base.copyWith(chapters: [chapter, base.chapters.last]));
+    store.close();
+
+    store = SqliteBookStore.open(dir.path);
+    final image = (await store.book('b3'))!.chapters.first.images.single;
+    expect(image.position, 1);
+    expect(File(image.path!).readAsBytesSync(), [7, 7, 7]);
+    expect(File('${dir.path}/evil.png').existsSync(), isFalse);
+
+    await store.delete('b3');
+    expect(File(image.path!).existsSync(), isFalse);
+    store.close();
+  });
+
   test('реплики хранят говорящего и чувство', () async {
     final store = SqliteBookStore.inMemory(coverDirectory: dir.path);
     final base = sample('b2');

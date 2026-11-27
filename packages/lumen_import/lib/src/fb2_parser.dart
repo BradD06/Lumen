@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:lumen_core/lumen_core.dart';
 import 'package:xml/xml.dart';
 
+import 'image_collector.dart';
 import 'imported_book.dart';
 import 'text_decode.dart';
 import 'txt_parser.dart' show guessLanguage;
@@ -37,8 +38,24 @@ ImportedBook parseFb2(List<int> bytes, {required String fallbackTitle}) {
     final name = attr(b, 'name') ?? '';
     return name != 'notes' && name != 'comments' && name != 'footnotes';
   });
+  final binaries = {
+    for (final b in elementsNamed(doc, 'binary'))
+      if (attr(b, 'id') != null) attr(b, 'id')!: b,
+  };
+  final coverId = _coverId(info);
+  final collector = ImageCollector();
+  String? image(XmlElement e) {
+    final href = attr(e, 'href');
+    if (href == null) return null;
+    final id = href.startsWith('#') ? href.substring(1) : href;
+    if (id == coverId) return null;
+    final binary = binaries[id];
+    final data = binary == null ? null : _decode(binary);
+    return data == null ? null : collector.add(id, data, _binaryExtension(binary!));
+  }
+
   for (final body in bodies) {
-    _collect(body, chapters, parentTitle: null, isBody: true);
+    _collect(body, chapters, image, parentTitle: null, isBody: true);
   }
   if (chapters.isEmpty) throw const ImportException('В FB2 не нашлось текста.');
 
@@ -51,6 +68,7 @@ ImportedBook parseFb2(List<int> bytes, {required String fallbackTitle}) {
     chapters: chapters,
     cover: cover?.$1,
     coverExtension: cover?.$2,
+    images: collector.files,
   );
 }
 
@@ -82,12 +100,14 @@ String _titleOf(XmlElement section) {
 /// (эпиграф, вступление) — отдельная глава с его названием.
 void _collect(
   XmlElement section,
-  List<Chapter> out, {
+  List<Chapter> out,
+  _ImageName image, {
   required String? parentTitle,
   bool isBody = false,
 }) {
   final ownTitle = isBody ? '' : _titleOf(section);
   final paragraphs = <String>[];
+  final images = <ChapterImage>[];
   final subsections = <XmlElement>[];
   for (final child in section.childElements) {
     switch (child.name.local) {
@@ -100,10 +120,10 @@ void _collect(
             if (t.isNotEmpty) paragraphs.add(t);
           }
         }
-      case 'image' || 'empty-line' || 'binary':
+      case 'empty-line' || 'binary':
         break;
       default:
-        _paragraphs(child, paragraphs);
+        _paragraphs(child, paragraphs, images, image);
     }
   }
 
@@ -114,21 +134,35 @@ void _collect(
       Chapter.fromParagraphs(
         title: title.isEmpty ? 'Глава ${out.length + 1}' : title,
         paragraphs: paragraphs,
+        images: images,
       ),
     );
   }
   for (final sub in subsections) {
-    _collect(sub, out, parentTitle: hasOwnText ? null : (ownTitle.isEmpty ? null : ownTitle));
+    _collect(
+      sub,
+      out,
+      image,
+      parentTitle: hasOwnText ? null : (ownTitle.isEmpty ? null : ownTitle),
+    );
   }
 }
 
 /// Абзацы блока: `p`, `v` (строка стиха), `subtitle`, `text-author` — каждый абзац;
 /// `poem`, `stanza`, `cite`, `epigraph` — контейнеры.
-void _paragraphs(XmlElement e, List<String> out) {
+void _paragraphs(XmlElement e, List<String> out, List<ChapterImage> images, _ImageName image) {
   switch (e.name.local) {
+    case 'image':
+      final name = image(e);
+      if (name != null) images.add(ChapterImage(position: out.length, name: name));
     case 'p' || 'v' || 'subtitle' || 'text-author':
       final t = inlineText(e, skip: _isNoteLink);
       if (t.isNotEmpty && hasWords(t)) out.add(t);
+      // Картинка внутри абзаца — после него.
+      for (final inner in e.childElements.where((c) => c.name.local == 'image')) {
+        final name = image(inner);
+        if (name != null) images.add(ChapterImage(position: out.length, name: name));
+      }
     case 'table':
       for (final row in e.childElements) {
         final t = inlineText(row, skip: _isNoteLink);
@@ -136,26 +170,39 @@ void _paragraphs(XmlElement e, List<String> out) {
       }
     default:
       for (final child in e.childElements) {
-        if (child.name.local == 'image' || child.name.local == 'empty-line') continue;
-        _paragraphs(child, out);
+        if (child.name.local == 'empty-line') continue;
+        _paragraphs(child, out, images, image);
       }
   }
 }
 
-(Uint8List, String)? _cover(XmlDocument doc, XmlElement? info) {
+typedef _ImageName = String? Function(XmlElement image);
+
+String? _coverId(XmlElement? info) {
   final page = info == null ? null : firstNamed(info, 'coverpage');
   final image = page == null ? null : firstNamed(page, 'image');
   final href = image == null ? null : attr(image, 'href');
   if (href == null) return null;
-  final id = href.startsWith('#') ? href.substring(1) : href;
-  final binary = elementsNamed(doc, 'binary').where((b) => attr(b, 'id') == id).firstOrNull;
-  if (binary == null) return null;
+  return href.startsWith('#') ? href.substring(1) : href;
+}
+
+Uint8List? _decode(XmlElement binary) {
   try {
-    final data = base64.decode(binary.innerText.replaceAll(RegExp(r'\s'), ''));
-    final type = attr(binary, 'content-type') ?? '';
-    final ext = type.contains('png') ? 'png' : (type.contains('gif') ? 'gif' : 'jpg');
-    return (data, ext);
+    return base64.decode(binary.innerText.replaceAll(RegExp(r'\s'), ''));
   } on FormatException {
     return null;
   }
+}
+
+String _binaryExtension(XmlElement binary) {
+  final type = attr(binary, 'content-type') ?? '';
+  return type.contains('png') ? 'png' : (type.contains('gif') ? 'gif' : 'jpg');
+}
+
+(Uint8List, String)? _cover(XmlDocument doc, XmlElement? info) {
+  final id = _coverId(info);
+  if (id == null) return null;
+  final binary = elementsNamed(doc, 'binary').where((b) => attr(b, 'id') == id).firstOrNull;
+  final data = binary == null ? null : _decode(binary);
+  return data == null ? null : (data, _binaryExtension(binary!));
 }

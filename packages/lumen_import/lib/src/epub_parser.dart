@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:lumen_core/lumen_core.dart';
 import 'package:xml/xml.dart';
 
+import 'image_collector.dart';
 import 'imported_book.dart';
 import 'txt_parser.dart' show guessLanguage;
 import 'xml_text.dart';
@@ -58,6 +59,8 @@ ImportedBook parseEpub(List<int> bytes, {required String fallbackTitle}) {
 
   final chapters = <Chapter>[];
   final allText = StringBuffer();
+  final images = ImageCollector();
+  final coverItem = _coverItem(opf, manifest);
   for (final ref in elementsNamed(opf, 'itemref')) {
     if (attr(ref, 'linear') == 'no') continue;
     final item = manifest[attr(ref, 'idref')];
@@ -66,17 +69,33 @@ ImportedBook parseEpub(List<int> bytes, {required String fallbackTitle}) {
     if (source == null) continue;
     final doc = _parseHtml(source);
     if (_isNotes(doc, toc[item.path])) continue;
-    final blocks = _blocks(doc);
+    final dir = item.path.contains('/')
+        ? item.path.substring(0, item.path.lastIndexOf('/') + 1)
+        : '';
+    final blocks = _blocks(doc, (src) {
+      final path = _resolve(dir, src);
+      // Обложка уже стоит отдельно, в тексте её не повторяем.
+      if (path == coverItem?.path) return null;
+      final file = files[path];
+      if (file == null) return null;
+      return images.add(path, file.content, _extension('', path));
+    });
     if (!blocks.paragraphs.any(hasWords)) continue;
     // Страница только с заголовком («Часть первая») — не отдельная глава.
     if (blocks.paragraphs.length == 1 && blocks.paragraphs.first == blocks.heading) continue;
     final chapterTitle = toc[item.path] ?? blocks.heading ?? 'Глава ${chapters.length + 1}';
-    chapters.add(Chapter.fromParagraphs(title: chapterTitle, paragraphs: blocks.paragraphs));
+    chapters.add(
+      Chapter.fromParagraphs(
+        title: chapterTitle,
+        paragraphs: blocks.paragraphs,
+        images: blocks.images,
+      ),
+    );
     if (allText.length < 5000) allText.writeAll(blocks.paragraphs, ' ');
   }
   if (chapters.isEmpty) throw const ImportException('В EPUB не нашлось текста.');
 
-  final cover = _cover(opf, manifest, files);
+  final cover = _cover(coverItem, files);
   return ImportedBook(
     title: title.isEmpty ? fallbackTitle : title,
     author: author.isEmpty ? null : author,
@@ -84,6 +103,7 @@ ImportedBook parseEpub(List<int> bytes, {required String fallbackTitle}) {
     chapters: chapters,
     cover: cover?.$1,
     coverExtension: cover?.$2,
+    images: images.files,
   );
 }
 
@@ -191,16 +211,17 @@ bool _isNotes(XmlDocument doc, String? tocLabel) {
 }
 
 final class _Blocks {
-  _Blocks(this.paragraphs, this.heading);
+  _Blocks(this.paragraphs, this.heading, this.images);
   final List<String> paragraphs;
   final String? heading;
+  final List<ChapterImage> images;
 }
 
 const _blockTags = {
   'p', 'div', 'li', 'blockquote', 'pre', 'dt', 'dd', 'td', 'th', 'figcaption', //
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'section', 'article', 'body', 'ul', 'ol', 'table', 'tr',
 };
-const _skipTags = {'head', 'script', 'style', 'rt', 'rp', 'svg', 'math', 'nav'};
+const _skipTags = {'head', 'script', 'style', 'rt', 'rp', 'math', 'nav'};
 
 bool _isFootnote(XmlElement e) {
   final type = attr(e, 'type') ?? '';
@@ -218,8 +239,11 @@ bool _isFootnote(XmlElement e) {
 }
 
 /// Абзацы документа: каждый блочный элемент — абзац, его строки склеены пробелами.
-_Blocks _blocks(XmlDocument doc) {
+/// [image] получает адрес картинки из `src` и возвращает её имя в книге
+/// (или `null`, если картинку не берём).
+_Blocks _blocks(XmlDocument doc, String? Function(String src) image) {
   final paragraphs = <String>[];
+  final images = <ChapterImage>[];
   String? heading;
   var buffer = StringBuffer();
   var bufferIsHeading = false;
@@ -243,8 +267,23 @@ _Blocks _blocks(XmlDocument doc) {
         if (_skipTags.contains(tag) || _isFootnote(child)) continue;
         if (tag == 'br') {
           buffer.write(' ');
-        } else if (tag == 'img') {
-          continue;
+        } else if (tag == 'img' || tag == 'image') {
+          // <img src>, а в обёртке <svg> — <image xlink:href>.
+          final src = attr(child, 'src') ?? attr(child, 'href');
+          final name = src == null || src.startsWith('data:') ? null : image(src);
+          if (name != null) {
+            flush();
+            images.add(ChapterImage(position: paragraphs.length, name: name));
+          }
+        } else if (tag == 'svg') {
+          for (final inner in elementsNamed(child, 'image')) {
+            final src = attr(inner, 'href');
+            final name = src == null ? null : image(src);
+            if (name != null) {
+              flush();
+              images.add(ChapterImage(position: paragraphs.length, name: name));
+            }
+          }
         } else if (_blockTags.contains(tag)) {
           flush();
           final isHeading = RegExp(r'^h[1-6]$').hasMatch(tag);
@@ -260,14 +299,10 @@ _Blocks _blocks(XmlDocument doc) {
 
   walk(firstNamed(doc, 'body') ?? doc);
   flush();
-  return _Blocks(paragraphs, heading);
+  return _Blocks(paragraphs, heading, images);
 }
 
-(Uint8List, String)? _cover(
-  XmlDocument opf,
-  Map<String, _Item> manifest,
-  Map<String, ArchiveFile> files,
-) {
+_Item? _coverItem(XmlDocument opf, Map<String, _Item> manifest) {
   _Item? item = manifest.values
       .where((i) => i.properties.split(' ').contains('cover-image'))
       .firstOrNull;
@@ -284,7 +319,11 @@ _Blocks _blocks(XmlDocument doc) {
       )
       .firstOrNull
       ?.value;
-  if (item == null || !item.mediaType.startsWith('image/')) return null;
+  return item != null && item.mediaType.startsWith('image/') ? item : null;
+}
+
+(Uint8List, String)? _cover(_Item? item, Map<String, ArchiveFile> files) {
+  if (item == null) return null;
   final file = files[item.path];
   if (file == null) return null;
   return (Uint8List.fromList(file.content), _extension(item.mediaType, item.path));

@@ -11,6 +11,7 @@ final class ImportedBook {
     required this.chapters,
     this.cover,
     this.coverExtension,
+    this.images = const {},
   });
 
   final String title;
@@ -23,6 +24,9 @@ final class ImportedBook {
   /// Картинка обложки из файла (JPEG, PNG...) и её расширение без точки.
   final Uint8List? cover;
   final String? coverExtension;
+
+  /// Иллюстрации глав: имя файла (`img3.jpg`, как в `ChapterImage.name`) → байты.
+  final Map<String, Uint8List> images;
 
   int get characterCount => chapters.fold(0, (sum, c) => sum + c.text.length);
 
