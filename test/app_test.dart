@@ -32,7 +32,7 @@ void main() {
     await tester.pumpWidget(const LumenApp());
     await tester.tap(find.text('Добавить книгу').first);
     await tester.pumpAndSettle();
-    expect(find.text('EPUB, FB2 или TXT'), findsOneWidget);
+    expect(find.text('Выберите файл книги'), findsOneWidget);
   });
 
   testWidgets('Ctrl+4 открывает «Голоса» (на Mac — ⌘4)', (tester) async {
