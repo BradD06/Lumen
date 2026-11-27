@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:lumen_core/lumen_core.dart';
+import 'package:flutter/rendering.dart' hide TextRange;
 import 'package:material_ui/material_ui.dart' hide TextRange;
 
 import '../theme/graphite.dart';
@@ -58,9 +59,10 @@ class ChapterItemView extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 14),
       child: word == null && sentence == null
           ? Text(text, style: textStyle)
-          : Text.rich(
-              highlighted(text, word: word, sentence: sentence),
-              style: textStyle,
+          : NarrationMarks(
+              word: word,
+              sentence: sentence,
+              child: Text(text, style: textStyle),
             ),
     ),
     ImageItem(:final image) => Padding(
@@ -68,37 +70,104 @@ class ChapterItemView extends StatelessWidget {
       child: ChapterImageView(image: image),
     ),
   };
+}
 
-  /// Подсветка по макету «Графит»: слово — сплошной янтарь с тёмным текстом,
-  /// остальное предложение — янтарь 16 %.
-  static TextSpan highlighted(String text, {TextRange? word, TextRange? sentence}) {
-    final cuts = <int>{0, text.length};
-    for (final r in [word, sentence]) {
-      if (r == null) continue;
-      cuts
-        ..add(r.start.clamp(0, text.length))
-        ..add(r.end.clamp(0, text.length));
+/// Подсветка голоса под текстом: предложение — серая плашка, слово — янтарная, у каждой
+/// строки свои скруглённые углы. Рисуется за абзацем, сам текст не меняется.
+class NarrationMarks extends SingleChildRenderObjectWidget {
+  const NarrationMarks({super.key, this.word, this.sentence, required Text super.child});
+
+  final TextRange? word;
+  final TextRange? sentence;
+
+  @override
+  RenderNarrationMarks createRenderObject(BuildContext context) =>
+      RenderNarrationMarks(word: word, sentence: sentence);
+
+  @override
+  void updateRenderObject(BuildContext context, RenderNarrationMarks renderObject) => renderObject
+    ..word = word
+    ..sentence = sentence;
+}
+
+class RenderNarrationMarks extends RenderProxyBox {
+  RenderNarrationMarks({TextRange? word, TextRange? sentence}) {
+    _word = word;
+    _sentence = sentence;
+  }
+
+  static const _radius = Radius.circular(6);
+
+  TextRange? get word => _word;
+  TextRange? _word;
+  set word(TextRange? value) {
+    if (value == _word) return;
+    _word = value;
+    markNeedsPaint();
+  }
+
+  TextRange? get sentence => _sentence;
+  TextRange? _sentence;
+  set sentence(TextRange? value) {
+    if (value == _sentence) return;
+    _sentence = value;
+    markNeedsPaint();
+  }
+
+  RenderParagraph? _paragraph() {
+    RenderParagraph? found;
+    void visit(RenderObject object) {
+      if (found != null) return;
+      if (object is RenderParagraph) {
+        found = object;
+      } else {
+        object.visitChildren(visit);
+      }
     }
-    final points = cuts.toList()..sort();
-    final spans = <TextSpan>[];
-    for (var i = 0; i + 1 < points.length; i++) {
-      final a = points[i];
-      final b = points[i + 1];
-      if (a == b) continue;
-      final inWord = word != null && a >= word.start && b <= word.end;
-      final inSentence = sentence != null && a >= sentence.start && b <= sentence.end;
-      spans.add(
-        TextSpan(
-          text: text.substring(a, b),
-          style: inWord
-              ? const TextStyle(color: Graphite.onAmber, backgroundColor: Graphite.amber)
-              : inSentence
-              ? const TextStyle(backgroundColor: Graphite.amberSoft)
-              : null,
-        ),
-      );
+
+    final c = child;
+    if (c != null) visit(c);
+    return found;
+  }
+
+  /// Плашки по строкам: куски одной строки сливаются в одну, чуть шире самого текста.
+  static List<Rect> lines(RenderParagraph paragraph, TextRange range) {
+    final boxes = paragraph.getBoxesForSelection(
+      TextSelection(baseOffset: range.start, extentOffset: range.end),
+    );
+    final merged = <Rect>[];
+    for (final box in boxes) {
+      final rect = box.toRect();
+      if (rect.isEmpty) continue;
+      final i = merged.indexWhere((r) => (r.center.dy - rect.center.dy).abs() < rect.height / 2);
+      if (i < 0) {
+        merged.add(rect);
+      } else {
+        merged[i] = merged[i].expandToInclude(rect);
+      }
     }
-    return TextSpan(children: spans);
+    return [
+      for (final r in merged) Rect.fromLTRB(r.left - 4, r.top - 2, r.right + 4, r.bottom + 2),
+    ];
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final paragraph = _paragraph();
+    if (paragraph != null && (word != null || sentence != null)) {
+      final shift = offset + paragraph.localToGlobal(Offset.zero, ancestor: this);
+      void draw(TextRange? range, Color color) {
+        if (range == null || range.end <= range.start) return;
+        final paint = Paint()..color = color;
+        for (final r in lines(paragraph, range)) {
+          context.canvas.drawRRect(RRect.fromRectAndRadius(r.shift(shift), _radius), paint);
+        }
+      }
+
+      draw(sentence, Graphite.sentenceMark);
+      draw(word, Graphite.wordMark);
+    }
+    super.paint(context, offset);
   }
 }
 

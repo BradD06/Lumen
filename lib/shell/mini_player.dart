@@ -14,7 +14,10 @@ import 'tabs.dart';
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({super.key});
 
-  static const height = 60.0;
+  static const height = 76.0;
+
+  /// Отступ от краёв блока: слева обложка, справа крестик.
+  static const _side = 16.0;
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +49,7 @@ class MiniPlayer extends StatelessWidget {
                 child: Stack(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 8, 6, 8),
+                      padding: const EdgeInsets.fromLTRB(_side, 10, _side - 4, 14),
                       child: Row(
                         spacing: 10,
                         children: [
@@ -86,11 +89,12 @@ class MiniPlayer extends StatelessWidget {
                         ],
                       ),
                     ),
-                    // Сколько главы прослушано — тонкая янтарная полоска снизу.
+                    // Сколько главы прослушано — тонкая янтарная полоска снизу: начинается
+                    // у нижнего угла обложки, кончается у правого края.
                     Positioned(
-                      left: 18,
+                      left: _side,
                       right: 18,
-                      bottom: 3,
+                      bottom: 6,
                       height: 2,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(2),

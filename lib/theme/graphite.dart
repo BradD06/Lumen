@@ -14,10 +14,15 @@ abstract final class Graphite {
   static const accent = Color(0xFFF2F2F5);
   static const onAccent = Color(0xFF0E0E14);
 
-  /// Янтарь: текущее слово (сплошной фон, тёмный текст), предложение — 16 %.
+  /// Янтарь: прогресс и текущее слово под голосом.
   static const amber = Color(0xFFF2C166);
   static const onAmber = Color(0xFF1A1408);
   static const amberSoft = Color(0x29F2C166);
+
+  /// Подсветка голоса в тексте: предложение — мягкий серый, слово — янтарь, текст остаётся
+  /// белым; углы скруглены (`NarrationMarks`).
+  static const sentenceMark = Color(0x29FFFFFF);
+  static const wordMark = Color(0x75F2C166);
 
   // Стекло.
   static const glassFill = Color(0x13FFFFFF); // .075
