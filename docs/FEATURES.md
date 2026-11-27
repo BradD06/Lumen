@@ -4,7 +4,7 @@
 
 | Функция | Системы | Где в коде |
 |---|---|---|
-| Приложение «Lumen» с иконкой из Lumen_exemple (на Windows — .ico 16–256, рисунок во всю иконку) | Все четыре | все иконки рисует `tool/make_icons.py` (`python3 tool/make_icons.py`, нужен Pillow); крупные PNG в `assets/icon/` |
+| Приложение «Lumen» с иконкой из Lumen_exemple (на Windows — .ico 16–256, плитка во весь квадрат, лист как в Lumen_exemple) | Все четыре | все иконки рисует `tool/make_icons.py` (`python3 tool/make_icons.py`, нужен Pillow); крупные PNG в `assets/icon/` |
 | Тема «Графит»: тёмный фон с серыми свечениями, стеклянные карточки, шрифт Onest | Все четыре | `lib/theme/graphite.dart` (цвета), `lib/theme/glass.dart` (`Glass`, `GlowBackground`), `assets/fonts/` |
 | Плавающий остров внизу с пятью разделами: Главная, Библиотека, Каталог, Добавить, Голоса | Все четыре | `lib/shell/island.dart`, `lib/shell/tabs.dart`, `lib/shell/app_shell.dart` |
 | Профиль — кружок в левом верхнем углу (открытый белый) | Все четыре | `lib/shell/profile_button.dart` |
