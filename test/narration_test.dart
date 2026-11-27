@@ -2,9 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/app.dart';
 import 'package:lumen/narration/audio_outputs.dart';
 import 'package:lumen/narration/narration_controller.dart';
+import 'package:lumen/library/chapter_content.dart';
 import 'package:lumen/shell/mini_player.dart';
 import 'package:lumen/shell/tabs.dart';
-import 'package:lumen/theme/graphite.dart';
 import 'package:lumen_core/lumen_core.dart';
 import 'package:lumen_import/lumen_import.dart';
 import 'package:lumen_player/lumen_player.dart';
@@ -30,19 +30,10 @@ Future<void> _openChapter(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// Есть ли в тексте подсветка голоса (янтарь).
-bool _highlighted(WidgetTester tester) {
-  for (final text in tester.widgetList<RichText>(find.byType(RichText))) {
-    var found = false;
-    text.text.visitChildren((span) {
-      final color = span.style?.backgroundColor;
-      if (color == Graphite.amber || color == Graphite.amberSoft) found = true;
-      return !found;
-    });
-    if (found) return true;
-  }
-  return false;
-}
+/// Есть ли в тексте подсветка голоса.
+bool _highlighted(WidgetTester tester) => tester
+    .widgetList<NarrationMarks>(find.byType(NarrationMarks))
+    .any((m) => m.word != null || m.sentence != null);
 
 void main() {
   testWidgets('«Слушать» подсвечивает предложение, после выхода из книги — мини-плеер', (
