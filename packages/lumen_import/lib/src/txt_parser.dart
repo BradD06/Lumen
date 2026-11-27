@@ -91,6 +91,17 @@ bool _isSubtitle(String p) =>
     p.length <= 70 && !_isHeading(p) && !RegExp(r'[.,;:!?…»"]$').hasMatch(p) && hasWords(p);
 
 List<Chapter> _chapters(List<String> paragraphs, String bookTitle) {
+  final chapters = chaptersByHeadings(paragraphs);
+  // Заголовков не нашлось: одна глава с названием книги (или части, если текст длинный).
+  if (chapters.length == 1 && chapters.first.title == 'Начало') {
+    return splitLong(bookTitle, chapters.first.paragraphTexts);
+  }
+  return chapters;
+}
+
+/// Главы по заголовкам «Глава 1», «Часть вторая», «Chapter 3», римским цифрам.
+/// Текст до первого заголовка — глава «Начало».
+List<Chapter> chaptersByHeadings(List<String> paragraphs) {
   final chapters = <Chapter>[];
   var title = '';
   var body = <String>[];
@@ -122,11 +133,6 @@ List<Chapter> _chapters(List<String> paragraphs, String bookTitle) {
     }
   }
   flush();
-
-  // Заголовков не нашлось: одна глава с названием книги (или части, если текст длинный).
-  if (chapters.length == 1 && chapters.first.title == 'Начало') {
-    return splitLong(bookTitle, chapters.first.paragraphTexts);
-  }
   return chapters;
 }
 

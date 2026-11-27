@@ -133,7 +133,7 @@ class _AddBookScreenState extends State<AddBookScreen> {
           ),
         ),
         const Text(
-          'EPUB · FB2 · TXT',
+          'EPUB · FB2 · TXT · PDF',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, color: Graphite.textMuted),
         ),

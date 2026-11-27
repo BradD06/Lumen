@@ -9,6 +9,8 @@ import 'package:lumen_storage/lumen_storage.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'pdf_import.dart';
+
 /// Открыть библиотеку на устройстве: `<папка приложения>/library/lumen.db`.
 /// Если база не открылась, книги живут в памяти до перезапуска.
 Future<BookStore> openLibrary() async {
@@ -61,7 +63,12 @@ class Library {
 
   /// Добавить книгу из файла. Бросает [ImportException] с понятным текстом.
   Future<Book> addFile(String fileName, Uint8List bytes) async {
-    final imported = await _parse(() => importBook(fileName, bytes));
+    final isPdf =
+        fileName.toLowerCase().endsWith('.pdf') ||
+        (bytes.length > 4 && String.fromCharCodes(bytes.take(5)) == '%PDF-');
+    final imported = isPdf
+        ? await _parsePdf(fileName, bytes)
+        : await _parse(() => importBook(fileName, bytes));
     return _save(imported, sourceName: fileName);
   }
 
@@ -69,6 +76,17 @@ class Library {
   Future<Book> addText(String text, {String? title}) async {
     final imported = await _parse(() => parsePlainText(text, title: title));
     return _save(imported);
+  }
+
+  Future<ImportedBook> _parsePdf(String fileName, Uint8List bytes) async {
+    try {
+      return await importPdf(fileName, bytes);
+    } on ImportException {
+      rethrow;
+    } catch (error) {
+      debugPrint('PDF не разобрался: $error');
+      throw const ImportException('PDF не удалось прочитать: файл повреждён или защищён.');
+    }
   }
 
   Future<ImportedBook> _parse(ImportedBook Function() parse) async {

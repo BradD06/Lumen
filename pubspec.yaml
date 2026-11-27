@@ -27,6 +27,8 @@ dependencies:
   file_picker: ^13.4.1
   path_provider: ^2.1.6
   desktop_drop: ^0.8.4
+  pdfrx: ">=3.1.0 <3.2.0"
+  image: ^4.5.0
   lumen_player: any
   flutter_secure_storage: ^11.2.0
 
