@@ -13,6 +13,11 @@
 | Клавиши ⌘1…⌘5 (на Windows Ctrl) — разделы острова, ⌘O — «Добавить книгу», ⌘, — профиль и настройки; подсказка с клавишей при наведении, белая рамка фокуса | Mac, Windows (и клавиатура на iPad) | `lib/shell/app_shell.dart`, `lib/shell/island.dart` |
 | Пустые экраны разделов с подсказкой, что там будет; приветствие и дата по-русски на главной | Все четыре | `lib/screens/` |
 | На Mac приложение тянется под заголовок окна, три кнопки окна лежат в его полосе | Mac | `macos/Runner/MainFlutterWindow.swift` |
+| Добавить книгу: выбрать файл EPUB, FB2 (и FB2 в ZIP) или TXT, на компьютере — перетащить его в большое поле; «Вставить текст» для рассказа из буфера. После добавления карточка: обложка, формат, главы, примерное время звука | Все четыре (перетаскивание — Mac, Windows) | `lib/screens/add_book_screen.dart`, `lib/library/library_scope.dart` (`Library.addFile` / `addText`, разбор в фоновом потоке) |
+| Разбор книг: название, автор, язык, обложка; главы по оглавлению EPUB, разделам FB2 или заголовкам TXT («Глава 1», «Часть вторая», римские цифры); сноски и примечания убраны, переносы строк внутри абзаца — пробелы; кодировки UTF-8, UTF-16, Windows-1251, KOI8-R | — | `packages/lumen_import` |
+| Библиотека: сетка обложек (телефон 3 колонки, компьютер 6), поиск по названию и автору (ё = е), правая кнопка или долгое нажатие — «Открыть» / «Убрать из библиотеки». Без обложки в файле рисуется цветная обложка с названием | Все четыре | `lib/screens/library_screen.dart`, `lib/library/book_cover.dart` |
+| Карточка книги (формат, главы, время звука, список глав) и текст главы, как его разобрал Lumen. Остров остаётся внизу | Все четыре | `lib/screens/book_screen.dart` |
+| Книги хранятся на устройстве и переживают перезапуск (SQLite в папке приложения, обложки рядом) | Все четыре | `packages/lumen_storage/lib/src/sqlite_book_store.dart`, открывается в `lib/main.dart` |
 | GitHub проверяет каждый PR: формат, анализ, тесты, сборка Android, Windows, macOS и iOS | — | `.github/workflows/ci.yml` |
 
 ## Как устроен код
@@ -22,13 +27,15 @@
 ```
 экраны (lib/) → lumen_player → lumen_voice → lumen_core
               → lumen_storage → lumen_core
+              → lumen_import  → lumen_core
 ```
 
 | Пакет | Что там | Сейчас |
 |---|---|---|
-| `lumen_core` | Модели и чистая логика, ни от чего не зависит | `Book` (один диктор: `narratorVoiceId`), `Chapter`, `Line` (кусок текста с `speaker` и `emotion`; голос один, персонажи различаются интонацией), `Emotion`, `TextRange` (места в UTF-16) |
+| `lumen_core` | Модели и чистая логика, ни от чего не зависит | `Book` (один диктор: `narratorVoiceId`; `coverPath`, `addedAt`, `sourceName`), `Chapter` (постоянный `id` = `<книга>/<номер>`, `index`, чистый `text`, абзацы `paragraphs` — места в тексте, абзацы разделены `\n\n`; `paragraphTexts`; `Chapter.fromParagraphs`), `Line` (кусок текста с `speaker` и `emotion`; голос один, персонажи различаются интонацией), `Emotion`, `TextRange` (места в UTF-16) |
 | `lumen_voice` | Озвучка: сервер голоса, фразы, кеш, время слов | `ServerLink` (адрес и ключ из ссылки `https://…/#key=…`, пути `/v1/voices`, `/v1/speak`, `/health`), `ServerState` («не отвечает» и «нет интернета» — разные состояния). Ядро — этап 1 |
-| `lumen_storage` | Хранилище книг | `BookStore` и `MemoryBookStore`. База — этап 2 |
+| `lumen_storage` | Хранилище книг | `BookStore` (список без глав, книга целиком, обложки) и две реализации: `SqliteBookStore` (на устройстве: таблицы `book`, `chapter`, `paragraph`, `line`; у абзаца и реплики есть «кто говорит» и «чувство»; миграции только добавляются в конец `_migrations`, номер в `PRAGMA user_version`) и `MemoryBookStore` (тесты) |
+| `lumen_import` | Разбор книг, без Flutter | `importBook(имя файла, байты)` → `ImportedBook` (сведения, главы, обложка) → `toBook(id)`; `parsePlainText` для вставленного текста; `ImportException` с понятным текстом по-русски. PDF и DOCX — позже |
 | `lumen_player` | Плеер: голос и фоновая музыка — две дорожки | `AudioMix` (громкость музыки, приглушение под голосом). Плеер — этап 3, музыка — этап 6 |
 
 Проверить у себя: `flutter test` (приложение) и `dart test` в папке пакета. CI держит Flutter 3.50.1 (`FLUTTER_VERSION` в `ci.yml`).
