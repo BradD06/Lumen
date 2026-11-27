@@ -10,32 +10,53 @@ import 'narration_controller.dart';
 import 'prefs.dart';
 import 'secure_secret_store.dart';
 
-/// Озвучка на устройстве: настоящий звук, системный голос, экран блокировки.
-Future<NarrationController> openNarration(BookStore store) async {
-  await configureAudioSession();
-  final prefs = await SystemPrefs.open();
-  Future<Directory> folder(String name) async {
-    final support = await getApplicationSupportDirectory();
-    final dir = Directory('${support.path}${Platform.pathSeparator}$name');
-    await dir.create(recursive: true);
-    return dir;
-  }
+/// Озвучка на устройстве: настоящий звук, системный голос. Ничего не ждёт от системы
+/// дольше пары секунд: окно приложения не должно оставаться белым из-за звука.
+/// Сессию звука и экран блокировки поднимает `startNarration` уже после первого кадра.
+Future<NarrationController?> openNarration() async {
+  try {
+    final prefs = await SystemPrefs.open().timeout(
+      const Duration(seconds: 2),
+      onTimeout: MemoryPrefs.new,
+    );
+    Future<Directory> folder(String name) async {
+      final support = await getApplicationSupportDirectory();
+      final dir = Directory('${support.path}${Platform.pathSeparator}$name');
+      await dir.create(recursive: true);
+      return dir;
+    }
 
-  final phrases = getTemporaryDirectory();
-  final controller = NarrationController(
-    player: JustAudioPhrasePlayer(phrases),
-    speech: FlutterSystemSpeech(),
-    music: LoopPlayer(),
-    silence: LoopPlayer(),
-    secrets: SecureSecretStore(),
-    prefs: prefs,
-    cacheFolder: folder('phrases'),
-    keepAwake: Platform.isIOS || Platform.isAndroid,
-  );
-  final media = await startMediaSession(() => controller);
-  // Сервер проверяется в фоне: окно открывается сразу.
-  controller.start(store: store, media: media);
-  return controller;
+    return NarrationController(
+      player: JustAudioPhrasePlayer(getTemporaryDirectory()),
+      speech: FlutterSystemSpeech(),
+      music: LoopPlayer(),
+      silence: LoopPlayer(),
+      secrets: SecureSecretStore(),
+      prefs: prefs,
+      cacheFolder: folder('phrases'),
+      keepAwake: Platform.isIOS || Platform.isAndroid,
+    );
+  } catch (error) {
+    debugPrint('Озвучка не поднялась: $error');
+    return null;
+  }
+}
+
+/// Сессия звука, экран блокировки и сервер голоса — в фоне, когда окно уже открыто.
+Future<void> startNarration(NarrationController controller, BookStore store) async {
+  controller.attachStore(store);
+  try {
+    await configureAudioSession().timeout(const Duration(seconds: 5));
+  } catch (error) {
+    debugPrint('Сессия звука: $error');
+  }
+  MediaSession? media;
+  try {
+    media = await startMediaSession(() => controller);
+  } catch (error) {
+    debugPrint('Экран блокировки: $error');
+  }
+  await controller.start(store: store, media: media);
 }
 
 /// Даёт экранам озвучку: одна на всё приложение.

@@ -130,9 +130,12 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
 
   /// Поднять голос сервера и экран блокировки. Вызывается один раз при запуске.
   Future<void> start({BookStore? store, MediaSession? media}) async {
-    _store = store;
+    _store ??= store;
     _media = media;
-    final link = await _settings.load().catchError((_) => null);
+    final link = await _settings
+        .load()
+        .timeout(const Duration(seconds: 5))
+        .catchError((Object _) => null);
     if (link != null) await _useServer(link, check: true);
   }
 
