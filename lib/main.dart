@@ -12,7 +12,7 @@ Future<void> main() async {
   final narration = await openNarration();
   // Окно открывается сразу; звук, экран блокировки и сервер поднимаются после.
   runApp(LumenApp(store: library, narration: narration));
-  if (narration != null) {
+  if (narration.startupError == null) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(startNarration(narration, library));
     });

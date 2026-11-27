@@ -178,6 +178,11 @@ class _ServerCardState extends State<_ServerCard> {
             ],
           ),
           if (problem != null) ServerProblem(error: problem),
+          if (n.startupError case final error?)
+            Text(
+              'Звук не запустился на этом устройстве: $error',
+              style: const TextStyle(fontSize: 13, height: 1.35, color: Graphite.textMuted),
+            ),
           const Text(
             'Ключ хранится только в защищённом хранилище системы.',
             style: TextStyle(fontSize: 12, color: Graphite.textFaint),

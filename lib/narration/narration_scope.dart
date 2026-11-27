@@ -13,7 +13,7 @@ import 'secure_secret_store.dart';
 /// Озвучка на устройстве: настоящий звук, системный голос. Ничего не ждёт от системы
 /// дольше пары секунд: окно приложения не должно оставаться белым из-за звука.
 /// Сессию звука и экран блокировки поднимает `startNarration` уже после первого кадра.
-Future<NarrationController?> openNarration() async {
+Future<NarrationController> openNarration() async {
   try {
     final prefs = await SystemPrefs.open().timeout(
       const Duration(seconds: 2),
@@ -36,9 +36,9 @@ Future<NarrationController?> openNarration() async {
       cacheFolder: folder('phrases'),
       keepAwake: Platform.isIOS || Platform.isAndroid,
     );
-  } catch (error) {
-    debugPrint('Озвучка не поднялась: $error');
-    return null;
+  } catch (error, stack) {
+    debugPrint('Озвучка не поднялась: $error\n$stack');
+    return NarrationController.silent(startupError: '$error');
   }
 }
 

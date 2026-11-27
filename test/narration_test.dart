@@ -1,11 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/app.dart';
+import 'package:lumen/narration/audio_outputs.dart';
 import 'package:lumen/narration/narration_controller.dart';
 import 'package:lumen/shell/mini_player.dart';
 import 'package:lumen/shell/tabs.dart';
 import 'package:lumen/theme/graphite.dart';
 import 'package:lumen_core/lumen_core.dart';
 import 'package:lumen_import/lumen_import.dart';
+import 'package:lumen_player/lumen_player.dart';
+import 'package:lumen_voice/lumen_voice.dart';
 import 'package:lumen_storage/lumen_storage.dart';
 import 'package:material_ui/material_ui.dart' hide TextRange;
 
@@ -105,4 +108,45 @@ void main() {
     expect(offsetOfPlace(chapter, const ChapterPlace(item: 1, within: .5)), second.start);
     expect(offsetOfPlace(chapter, null), 0);
   });
+
+  testWidgets('озвучка с музыкой и тишиной собирается (на iPhone падала при запуске)', (
+    tester,
+  ) async {
+    final controller = NarrationController(
+      player: _NoPlayer(),
+      speech: _NoSpeech(),
+      music: LoopPlayer(),
+      silence: LoopPlayer(),
+      keepAwake: true,
+    );
+    expect(controller.startupError, isNull);
+    controller.setSpeed(1.5);
+    controller.setMusicVolume(0.4);
+    expect(controller.speed, 1.5);
+    controller.dispose();
+  });
+}
+
+final class _NoPlayer implements PhrasePlayer {
+  @override
+  Future<bool> play(PhraseAudio audio, {Duration from = Duration.zero, double speed = 1}) async =>
+      false;
+  @override
+  Duration get position => Duration.zero;
+  @override
+  Future<void> setSpeed(double speed) async {}
+  @override
+  Future<void> stop() async {}
+}
+
+final class _NoSpeech implements SystemSpeech {
+  @override
+  Future<bool> speak(
+    String text, {
+    String? language,
+    double speed = 1,
+    void Function(int start, int end)? onWord,
+  }) async => false;
+  @override
+  Future<void> stop() async {}
 }
