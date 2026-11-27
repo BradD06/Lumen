@@ -1,19 +1,25 @@
 import 'dart:async';
 
-import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart' hide TextRange;
+import 'package:flutter/services.dart' hide TextRange;
 import 'package:lumen_core/lumen_core.dart';
 import 'package:lumen_storage/lumen_storage.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:material_ui/material_ui.dart' hide TextRange;
 
 import '../library/book_cover.dart';
 import '../library/book_transitions.dart';
 import '../library/chapter_content.dart';
 import '../library/library_scope.dart';
 import '../library/widgets.dart';
+import '../narration/music.dart';
+import '../narration/narration_controller.dart';
+import '../narration/narration_scope.dart';
+import '../narration/narration_sheets.dart';
 import '../reader/narration_controls.dart';
 import '../reader/reading_panel.dart';
 import '../shell/profile_button.dart';
+import '../shell/tabs.dart';
+import '../shell/app_shell.dart' show TabSwitcher;
 import '../theme/fading_glass.dart';
 import '../theme/glass.dart';
 import '../theme/graphite.dart';
@@ -27,9 +33,12 @@ double _top(BuildContext context) =>
 
 /// Карточка книги: обложка, сведения и главы.
 class BookScreen extends StatefulWidget {
-  const BookScreen({super.key, required this.bookId, this.preview});
+  const BookScreen({super.key, required this.bookId, this.preview, this.openChapter});
 
   final String bookId;
+
+  /// Сразу открыть текст этой главы (из мини-плеера).
+  final int? openChapter;
 
   /// Книга из списка (без глав): показать сразу, пока грузится целиком.
   final Book? preview;
@@ -54,8 +63,15 @@ class _BookScreenState extends State<BookScreen> {
   }
 
   Future<void> _loadProgress() async {
+    final book = _book;
     final progress = await LibraryScope.of(context).store.progress(widget.bookId);
-    if (mounted) setState(() => _progress = progress);
+    if (!mounted) return;
+    setState(() => _progress = progress);
+    final chapter = widget.openChapter;
+    final loaded = await book;
+    if (chapter != null && loaded != null && mounted && chapter < loaded.chapters.length) {
+      _open(loaded, chapter);
+    }
   }
 
   void _open(Book book, int index) => Navigator.of(context).push(
@@ -344,9 +360,23 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
   /// Сверху место под шапку: верх видимого текста — «линия чтения».
   double _topInset = 0;
 
-  /// Блок озвучки пока только для вида: кнопки меняют то, что видно,
-  /// звук подключит плеер (этап 3).
-  var _narration = const NarrationView();
+  /// Озвучка на всё приложение: эта глава может играть, а может играть другая книга.
+  late NarrationController _narration;
+  var _listening = false;
+
+  /// Что видно в блоке озвучки; экран перестраивается, только когда это меняется.
+  var _view = const NarrationView();
+
+  /// Слово и предложение под голосом (места в главе) — их слушают абзацы.
+  final _marks = ValueNotifier<_Marks?>(null);
+
+  /// Глава, которую голос читал в прошлый раз: голос перешёл к следующей — экран за ним.
+  int? _narratedChapter;
+
+  /// Читатель сам листал: какое-то время текст за голосом не едет.
+  var _userScrolledAt = DateTime(0);
+  var _autoScroll = false;
+  double _bottomInset = 0;
 
   static const _column = 760.0;
   static const _panelWidth = 680.0;
@@ -369,6 +399,15 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
     super.didChangeDependencies();
     // Библиотека нужна и в dispose, где искать её по дереву уже нельзя.
     _store = LibraryScope.of(context).store;
+    if (!_listening) {
+      _listening = true;
+      _narration = NarrationScope.read(context)
+        ..attachStore(_store)
+        ..attachReader(widget.book.id)
+        ..addListener(_onNarration);
+      _narration.live.addListener(_onNarration);
+      _onNarration();
+    }
   }
 
   @override
@@ -380,8 +419,13 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
   @override
   void dispose() {
     _save(notify: false);
+    _narration.live.removeListener(_onNarration);
+    _narration
+      ..removeListener(_onNarration)
+      ..detachReader(widget.book.id);
     _scroll.dispose();
     _progress.dispose();
+    _marks.dispose();
     super.dispose();
   }
 
@@ -490,8 +534,10 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
     _save();
   }
 
-  void _go(int index) {
+  void _go(int index, {bool byVoice = false}) {
     if (index < 0 || index >= _chapters.length || index == _index) return;
+    // Голос читает эту главу — он тоже переходит.
+    if (!byVoice && _narrated) _narration.goToChapter(index);
     _save();
     setState(() => _index = index);
     _progress.value = 0;
@@ -500,30 +546,210 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
   }
 
   void _seek(double fraction) {
+    if (_narrated && _narration.state.playing) {
+      _narration.seekFraction(fraction);
+      _userScrolledAt = DateTime(0);
+    }
     if (!_scroll.hasClients) return;
     final position = _scroll.position;
     _scroll.jumpTo(fraction * position.maxScrollExtent);
   }
 
-  void _narrate(NarrationView view) => setState(() => _narration = view);
+  /// Голос читает именно эту главу этой книги.
+  bool get _narrated =>
+      _narration.book?.id == widget.book.id &&
+      _narration.chapterIndex == _index &&
+      _narration.text != null;
 
-  // Перемотка и фразы появятся с плеером (этап 3).
+  void _onNarration() {
+    if (!mounted) return;
+    final n = _narration;
+    final sameBook = n.book?.id == widget.book.id;
+    // Глава дочитана, голос пошёл дальше — и экран за ним.
+    if (sameBook && n.state.playing && n.chapterIndex != _index && _narratedChapter == _index) {
+      _narratedChapter = n.chapterIndex;
+      _go(n.chapterIndex, byVoice: true);
+      return;
+    }
+    _narratedChapter = sameBook ? n.chapterIndex : null;
+    final narrated = _narrated;
+    final s = n.state;
+    final view = NarrationView(
+      playing: narrated && s.playing,
+      loading: narrated && s.playing && s.loading,
+      speed: n.speed,
+      voiceName: n.voiceName,
+      musicOn: n.mix.musicOn,
+      musicVolume: n.mix.musicVolume,
+      musicTrack: n.track.index,
+      sleepTimer: n.sleep.remaining ?? (n.sleep.endOfChapter ? Duration.zero : null),
+      notice: narrated ? _noticeOf(n) : null,
+    );
+    if (view != _view) setState(() => _view = view);
+    final marks = narrated && (s.word != null || s.sentence != null)
+        ? _Marks(word: s.word, sentence: s.sentence)
+        : null;
+    if (marks != _marks.value) {
+      _marks.value = marks;
+      if (marks != null && s.playing) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _followVoice());
+      }
+    }
+  }
+
+  static String? _noticeOf(NarrationController n) {
+    final waiting = n.state.waiting;
+    if (waiting != null) return '${waiting.title} · жду';
+    final fallback = n.state.fallback;
+    if (fallback != null) return '${fallback.title} · читает системный голос';
+    return null;
+  }
+
+  /// «Слушать» / «Пауза».
+  void _playPause() {
+    final n = _narration;
+    _userScrolledAt = DateTime(0);
+    if (!_narrated) {
+      // С места, где читатель сейчас, а не с начала главы.
+      n.open(widget.book, _index, place: _placeNow() ?? _places.places[_index]);
+      n.play();
+      return;
+    }
+    if (n.state.playing) {
+      n.pause();
+      return;
+    }
+    // На паузе ушёл листать далеко от голоса — читать с места на экране.
+    if (_wordTop() == null || !_isVisible(_wordTop()!)) {
+      final place = _placeNow();
+      if (place != null) n.jumpTo(offsetOfPlace(_chapters[_index], place));
+    }
+    n.play();
+  }
+
+  /// Нажатие на слово в тексте: голос читает отсюда.
+  void _readFrom(int offset) {
+    if (!_narrated) return;
+    _userScrolledAt = DateTime(0);
+    _narration.jumpTo(offset);
+  }
+
+  /// Где по прокрутке стоит строка звучащего слова; `null` — абзац ещё не построен.
+  double? _wordTop() {
+    final marks = _marks.value;
+    final range = marks?.word ?? marks?.sentence;
+    if (range == null || !_scroll.hasClients) return null;
+    final chapter = _chapters[_index];
+    final p = _paragraphOf(chapter, range.start);
+    if (p == null) return null;
+    final item = _itemsOf(chapter).indexWhere((it) => it is ParagraphItem && it.index == p);
+    final paragraph = _paragraphBox(_built[item]);
+    if (paragraph == null || !paragraph.attached) return null;
+    final start = (range.start - chapter.paragraphs[p].start).clamp(
+      0,
+      paragraph.text.toPlainText().length,
+    );
+    final caret = paragraph.getOffsetForCaret(TextPosition(offset: start), Rect.zero);
+    final top = RenderAbstractViewport.of(paragraph).getOffsetToReveal(paragraph, 0).offset;
+    return top + caret.dy;
+  }
+
+  bool _isVisible(double y) {
+    final position = _scroll.position;
+    final top = position.pixels + _topInset;
+    final bottom = position.pixels + position.viewportDimension - _bottomInset;
+    return y >= top && y + 24 <= bottom;
+  }
+
+  /// Текст едет за голосом: строка со словом держится в верхней трети видимого текста.
+  void _followVoice() {
+    if (!mounted || _restoring || !_scroll.hasClients || !_narrated) return;
+    if (DateTime.now().difference(_userScrolledAt) < const Duration(seconds: 6)) return;
+    final position = _scroll.position;
+    final visible = position.viewportDimension - _topInset - _bottomInset;
+    final y = _wordTop();
+    if (y == null) {
+      // Абзац далеко и ещё не построен: прыжок к нему, точнее — на следующем слове.
+      final marks = _marks.value;
+      final range = marks?.word ?? marks?.sentence;
+      if (range == null) return;
+      final chapter = _chapters[_index];
+      final p = _paragraphOf(chapter, range.start);
+      if (p == null) return;
+      final item = _itemsOf(chapter).indexWhere((it) => it is ParagraphItem && it.index == p);
+      if (item >= 0) {
+        _autoScroll = true;
+        _showPlace(ChapterPlace(item: item));
+        _autoScroll = false;
+      }
+      return;
+    }
+    final top = position.pixels + _topInset;
+    final inZone = y >= top + visible * 0.08 && y <= top + visible * 0.62;
+    if (inZone) return;
+    final target = (y - _topInset - visible * 0.3).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    _autoScroll = true;
+    _scroll
+        .animateTo(
+          target,
+          duration: const Duration(milliseconds: 520),
+          curve: Curves.easeInOutCubic,
+        )
+        .whenComplete(() => _autoScroll = false);
+  }
+
+  static int? _paragraphOf(Chapter chapter, int offset) {
+    int? found;
+    for (var i = 0; i < chapter.paragraphs.length; i++) {
+      if (chapter.paragraphs[i].start <= offset) found = i;
+    }
+    return found;
+  }
+
+  static RenderParagraph? _paragraphBox(BuildContext? context) {
+    RenderParagraph? found;
+    void visit(RenderObject object) {
+      if (found != null) return;
+      if (object is RenderParagraph) {
+        found = object;
+        return;
+      }
+      object.visitChildren(visit);
+    }
+
+    final root = context?.findRenderObject();
+    if (root != null) visit(root);
+    return found;
+  }
+
+  NarrationActions get _actions {
+    final n = _narration;
+    final here = _narrated;
+    return NarrationActions(
+      playPause: _playPause,
+      back15: here ? () => n.skip(-15) : null,
+      forward15: here ? () => n.skip(15) : null,
+      previousPhrase: here ? n.previousPhrase : null,
+      nextPhrase: here ? n.nextPhrase : null,
+      speed: n.setSpeed,
+      sleepTimer: () => showSleepTimer(context, n),
+      voice: () => showVoicePicker(context, n, openServer: _openServer),
+      music: n.setMusic,
+      musicVolume: n.setMusicVolume,
+      musicTrack: (i) => n.setTrack(MusicTrack.values[i]),
+      chapters: _pickChapter,
+      textLook: _soon,
+    );
+  }
+
+  /// «Подключить сервер» из окна голоса: вкладка «Голоса» (книга в библиотеке остаётся).
+  void _openServer() => TabSwitcher.of(context)(AppTab.voices);
+
+  // «Вид текста» — этап 5.
   static void _soon() {}
-
-  NarrationActions get _actions => NarrationActions(
-    playPause: () => _narrate(_narration.copyWith(playing: !_narration.playing)),
-    back15: _soon,
-    forward15: _soon,
-    previousPhrase: _soon,
-    nextPhrase: _soon,
-    speed: (v) => _narrate(_narration.copyWith(speed: v)),
-    sleepTimer: _soon,
-    voice: _soon,
-    music: (on) => _narrate(_narration.copyWith(musicOn: on)),
-    musicVolume: (v) => _narrate(_narration.copyWith(musicVolume: v)),
-    chapters: _pickChapter,
-    textLook: _soon,
-  );
 
   Future<void> _pickChapter() async {
     final picked = await showDialog<int>(
@@ -571,6 +797,10 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
   bool _onScroll(ScrollNotification n) {
     // Читатель сам начал листать — место больше не держим.
     if (n is ScrollStartNotification && n.dragDetails != null) _endRestore();
+    // Читатель сам листает (пальцем, колесом, полосой) — текст пока не едет за голосом.
+    if (n is ScrollUpdateNotification && !_autoScroll && !_restoring) {
+      _userScrolledAt = DateTime.now();
+    }
     return _onMetrics(n.metrics);
   }
 
@@ -601,12 +831,13 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
     // целиком над плеером, вместе с его стеклянной кромкой.
     final textBottom =
         panelInset + 12 + 44 + NarrationControls.heightFor(panelWidth) + ReadingPanel.fade + 12;
+    _bottomInset = textBottom;
     return CallbackShortcuts(
       bindings: {
         // ⌥← / ⌥→ (Alt на Windows) — соседняя глава.
         const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): () => _go(_index - 1),
         const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true): () => _go(_index + 1),
-        const SingleActivator(LogicalKeyboardKey.space): () => _actions.playPause!(),
+        const SingleActivator(LogicalKeyboardKey.space): _playPause,
       },
       // Свой фокус, чтобы клавиши экрана работали; ⌘1…⌘5 окна выше по дереву.
       child: Focus(
@@ -640,7 +871,15 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
                             child: Center(
                               child: ConstrainedBox(
                                 constraints: const BoxConstraints(maxWidth: _column),
-                                child: ChapterItemView(item: items[i]),
+                                child: switch (items[i]) {
+                                  final ParagraphItem item => _NarratedParagraph(
+                                    item: item,
+                                    range: chapter.paragraphs[item.index],
+                                    marks: _marks,
+                                    onTap: _readFrom,
+                                  ),
+                                  final item => ChapterItemView(item: item),
+                                },
                               ),
                             ),
                           );
@@ -668,9 +907,9 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
                       valueListenable: _progress,
                       // Блок озвучки строится один раз на кадр экрана, а не на каждый
                       // шаг прокрутки: прогресс меняется 60 раз в секунду.
-                      child: NarrationControls(view: _narration, actions: _actions),
+                      child: NarrationControls(view: _view, actions: _actions),
                       builder: (context, value, controls) => ReadingPanel(
-                        title: 'Глава ${_index + 1} из ${_chapters.length}',
+                        title: _view.notice ?? 'Глава ${_index + 1} из ${_chapters.length}',
                         trailing: '${(value * 100).round()} %',
                         value: value,
                         onSeek: _seek,
@@ -690,6 +929,116 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
       ),
     );
   }
+}
+
+/// Слово и предложение под голосом, места в главе.
+@immutable
+class _Marks {
+  const _Marks({this.word, this.sentence});
+
+  final TextRange? word;
+  final TextRange? sentence;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _Marks && other.word == word && other.sentence == sentence;
+
+  @override
+  int get hashCode => Object.hash(word, sentence);
+}
+
+/// Абзац с подсветкой голоса. Перестраивается, только когда подсветка задевает именно его,
+/// а не на каждое слово главы. Нажатие на слово — голос читает отсюда.
+class _NarratedParagraph extends StatefulWidget {
+  const _NarratedParagraph({
+    required this.item,
+    required this.range,
+    required this.marks,
+    required this.onTap,
+  });
+
+  final ParagraphItem item;
+
+  /// Место абзаца в главе.
+  final TextRange range;
+  final ValueNotifier<_Marks?> marks;
+  final ValueChanged<int> onTap;
+
+  @override
+  State<_NarratedParagraph> createState() => _NarratedParagraphState();
+}
+
+class _NarratedParagraphState extends State<_NarratedParagraph> {
+  _Marks? _local;
+
+  @override
+  void initState() {
+    super.initState();
+    _local = _localOf(widget.marks.value);
+    widget.marks.addListener(_changed);
+  }
+
+  @override
+  void didUpdateWidget(_NarratedParagraph old) {
+    super.didUpdateWidget(old);
+    if (old.marks != widget.marks) {
+      old.marks.removeListener(_changed);
+      widget.marks.addListener(_changed);
+    }
+    _local = _localOf(widget.marks.value);
+  }
+
+  @override
+  void dispose() {
+    widget.marks.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() {
+    final local = _localOf(widget.marks.value);
+    if (local != _local) setState(() => _local = local);
+  }
+
+  /// Часть подсветки внутри этого абзаца, в его местах.
+  _Marks? _localOf(_Marks? marks) {
+    if (marks == null) return null;
+    TextRange? cut(TextRange? r) {
+      if (r == null) return null;
+      final start = r.start > widget.range.start ? r.start : widget.range.start;
+      final end = r.end < widget.range.end ? r.end : widget.range.end;
+      if (end <= start) return null;
+      return TextRange(start - widget.range.start, end - start);
+    }
+
+    final word = cut(marks.word);
+    final sentence = cut(marks.sentence);
+    return word == null && sentence == null ? null : _Marks(word: word, sentence: sentence);
+  }
+
+  void _tap(TapUpDetails details) {
+    RenderParagraph? paragraph;
+    void visit(RenderObject object) {
+      if (paragraph != null) return;
+      if (object is RenderParagraph) {
+        paragraph = object;
+        return;
+      }
+      object.visitChildren(visit);
+    }
+
+    final root = context.findRenderObject();
+    if (root != null) visit(root);
+    final found = paragraph;
+    if (found == null) return;
+    final at = found.getPositionForOffset(found.globalToLocal(details.globalPosition)).offset;
+    widget.onTap(widget.range.start + at.clamp(0, widget.range.length));
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTapUp: _tap,
+    child: ChapterItemView(item: widget.item, word: _local?.word, sentence: _local?.sentence),
+  );
 }
 
 /// Абзац или картинка в списке главы: пока построены, отмечены в [built],

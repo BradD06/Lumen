@@ -11,6 +11,7 @@ import '../screens/voices_screen.dart';
 import '../screens/tab_page.dart';
 import '../theme/glass.dart';
 import 'island.dart';
+import 'mini_player.dart';
 import 'profile_button.dart';
 import 'tabs.dart';
 
@@ -100,6 +101,30 @@ class _AppShellState extends State<AppShell> {
                         selected: _tab == AppTab.profile,
                         onTap: () => _select(AppTab.profile),
                       ),
+                    ),
+                  ),
+                  // Мини-плеер над островом, пока книга играет (в книге его место — плеер).
+                  Positioned(
+                    left: 12,
+                    right: 12,
+                    bottom: islandClearance(context) + 10,
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: _bookOpen,
+                      builder: (context, bookOpen, player) {
+                        final hidden = bookOpen && _tab == AppTab.library;
+                        return IgnorePointer(
+                          ignoring: hidden,
+                          child: ExcludeSemantics(
+                            excluding: hidden,
+                            child: AnimatedOpacity(
+                              opacity: hidden ? 0 : 1,
+                              duration: const Duration(milliseconds: 200),
+                              child: player,
+                            ),
+                          ),
+                        );
+                      },
+                      child: const Center(child: MiniPlayer()),
                     ),
                   ),
                   // В открытой книге остров уезжает вниз, его место занимает плеер
