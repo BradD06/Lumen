@@ -57,9 +57,9 @@ class _AppShellState extends State<AppShell> {
                       index: _tab.index,
                       children: const [
                         HomeScreen(),
-                        LibraryScreen(),
                         CatalogScreen(),
                         AddBookScreen(),
+                        LibraryScreen(),
                         VoicesScreen(),
                         SettingsScreen(),
                       ],

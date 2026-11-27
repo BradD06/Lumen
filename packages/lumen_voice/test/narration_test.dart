@@ -29,7 +29,19 @@ void main() {
 
   test('очередь сервера: кеш + сервер, голос в ключе кеша', () async {
     final dir = await Directory.systemTemp.createTemp('lumen_narration');
-    addTearDown(() => dir.delete(recursive: true));
+    // Очередь заранее подгружает следующие фразы и может ещё дописывать кеш, когда тест
+    // закончился: удаляем папку, как только она перестанет меняться.
+    addTearDown(() async {
+      for (var attempt = 0; ; attempt++) {
+        try {
+          await dir.delete(recursive: true);
+          return;
+        } on FileSystemException {
+          if (attempt >= 20) rethrow;
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      }
+    });
     final spoken = <String>[];
     final server = VoiceServer(
       ServerLink.parse('https://voice.example/#key=k')!,
