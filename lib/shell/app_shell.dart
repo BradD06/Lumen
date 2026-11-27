@@ -61,7 +61,7 @@ class _AppShellState extends State<AppShell> {
           select: _select,
           bookOpen: _bookOpen,
           child: Scaffold(
-            body: GlowBackground(
+            body: AppBackground(
               child: Stack(
                 children: [
                   Positioned.fill(

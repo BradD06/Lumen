@@ -69,87 +69,14 @@ class Glass extends StatelessWidget {
   }
 }
 
-/// Фон приложения: тёмный графит и три размытых серых свечения.
-class GlowBackground extends StatelessWidget {
-  const GlowBackground({super.key, required this.child});
+/// Фон приложения: ровный графит одним цветом, без бликов (Брэд, 27.11.2026).
+class AppBackground extends StatelessWidget {
+  const AppBackground({super.key, required this.child});
 
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Graphite.background,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          const IgnorePointer(
-            child: RepaintBoundary(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _Glow(
-                    alignment: Alignment(-1.1, -1.0),
-                    size: 520,
-                    color: Graphite.glowA,
-                    opacity: .55,
-                  ),
-                  _Glow(
-                    alignment: Alignment(1.25, -0.1),
-                    size: 440,
-                    color: Graphite.glowB,
-                    opacity: .35,
-                  ),
-                  _Glow(
-                    alignment: Alignment(-0.5, 1.25),
-                    size: 480,
-                    color: Graphite.glowC,
-                    opacity: .42,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-class _Glow extends StatelessWidget {
-  const _Glow({
-    required this.alignment,
-    required this.size,
-    required this.color,
-    required this.opacity,
-  });
-
-  final Alignment alignment;
-  final double size;
-  final Color color;
-  final double opacity;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: alignment,
-      child: OverflowBox(
-        maxWidth: size,
-        maxHeight: size,
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(
-              colors: [
-                color.withValues(alpha: opacity),
-                color.withValues(alpha: 0),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    return ColoredBox(color: Graphite.background, child: child);
   }
 }
