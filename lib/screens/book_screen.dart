@@ -7,6 +7,7 @@ import 'package:lumen_storage/lumen_storage.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../library/book_cover.dart';
+import '../library/book_transitions.dart';
 import '../library/chapter_content.dart';
 import '../library/library_scope.dart';
 import '../library/widgets.dart';
@@ -58,7 +59,7 @@ class _BookScreenState extends State<BookScreen> {
   }
 
   void _open(Book book, int index) => Navigator.of(context).push(
-    MaterialPageRoute<void>(
+    BlurPageRoute<void>(
       builder: (_) => ChapterTextScreen(
         book: book,
         index: index,
@@ -125,7 +126,10 @@ class _BookScreenState extends State<BookScreen> {
                         children: [
                           SizedBox(
                             width: 120,
-                            child: BookCover(book: book, radius: 16, titleSize: 13),
+                            child: FlyingCover(
+                              book: book,
+                              child: BookCover(book: book, radius: 16, titleSize: 13),
+                            ),
                           ),
                           Expanded(
                             child: Column(
