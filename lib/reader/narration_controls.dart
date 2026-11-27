@@ -4,8 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import '../theme/glass.dart';
 import '../theme/graphite.dart';
 
-/// Что показывает блок озвучки. Пока звука нет, экран держит это сам;
-/// плеер (этап 3, `lumen_player`) будет отдавать то же из своего состояния.
+/// Что показывает блок озвучки; его отдаёт озвучка (`NarrationController`).
 @immutable
 class NarrationView {
   const NarrationView({
@@ -15,7 +14,9 @@ class NarrationView {
     this.voiceName,
     this.musicOn = false,
     this.musicVolume = 0.3,
+    this.musicTrack = 0,
     this.sleepTimer,
+    this.notice,
   });
 
   final bool playing;
@@ -29,11 +30,20 @@ class NarrationView {
   /// Громкость музыки под голосом, 0…1.
   final double musicVolume;
 
-  /// Сколько осталось до таймера сна; `null` — таймер выключен.
+  /// Номер дорожки в `musicTracks`.
+  final int musicTrack;
+
+  /// Сколько осталось до таймера сна (`Duration.zero` — до конца главы); `null` — выключен.
   final Duration? sleepTimer;
+
+  /// Что сказать вместо «Глава N из M»: «Сервер не отвечает · жду».
+  final String? notice;
 
   /// Скорости из макета.
   static const speeds = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
+
+  /// Дорожки фоновой музыки (`MusicTrack`).
+  static const musicTracks = ['Тихий вечер', 'Дождь за окном'];
 
   /// «1,25×» — с запятой, как в макете.
   static String speedLabel(double speed) {
@@ -43,26 +53,35 @@ class NarrationView {
     return '${s.replaceAll('.', ',')}×';
   }
 
-  NarrationView copyWith({
-    bool? playing,
-    bool? loading,
-    double? speed,
-    String? voiceName,
-    bool? musicOn,
-    double? musicVolume,
-  }) => NarrationView(
-    playing: playing ?? this.playing,
-    loading: loading ?? this.loading,
-    speed: speed ?? this.speed,
-    voiceName: voiceName ?? this.voiceName,
-    musicOn: musicOn ?? this.musicOn,
-    musicVolume: musicVolume ?? this.musicVolume,
-    sleepTimer: sleepTimer,
+  @override
+  bool operator ==(Object other) =>
+      other is NarrationView &&
+      other.playing == playing &&
+      other.loading == loading &&
+      other.speed == speed &&
+      other.voiceName == voiceName &&
+      other.musicOn == musicOn &&
+      other.musicVolume == musicVolume &&
+      other.musicTrack == musicTrack &&
+      other.sleepTimer?.inMinutes == sleepTimer?.inMinutes &&
+      (other.sleepTimer == null) == (sleepTimer == null) &&
+      other.notice == notice;
+
+  @override
+  int get hashCode => Object.hash(
+    playing,
+    loading,
+    speed,
+    voiceName,
+    musicOn,
+    musicVolume,
+    musicTrack,
+    sleepTimer?.inMinutes,
+    notice,
   );
 }
 
 /// Что делают кнопки. Неподключённая кнопка (`null`) видна, но погашена.
-/// Плеер подставит сюда свои методы.
 @immutable
 class NarrationActions {
   const NarrationActions({
@@ -76,6 +95,7 @@ class NarrationActions {
     this.voice,
     this.music,
     this.musicVolume,
+    this.musicTrack,
     this.chapters,
     this.textLook,
   });
@@ -90,6 +110,9 @@ class NarrationActions {
   final VoidCallback? voice;
   final ValueChanged<bool>? music;
   final ValueChanged<double>? musicVolume;
+
+  /// Выбрать дорожку музыки (номер в `NarrationView.musicTracks`).
+  final ValueChanged<int>? musicTrack;
   final VoidCallback? chapters;
 
   /// «Аа» — «Вид текста».
@@ -149,7 +172,11 @@ class NarrationControls extends StatelessWidget {
       children: [
         _SpeedButton(speed: view.speed, onChanged: actions.speed),
         _RoundButton(
-          label: view.sleepTimer == null ? 'Таймер сна' : 'Таймер сна: включён',
+          label: switch (view.sleepTimer) {
+            null => 'Таймер сна',
+            Duration.zero => 'Таймер сна: до конца главы',
+            final left => 'Таймер сна: ${left.inMinutes + 1} мин',
+          },
           selected: view.sleepTimer != null,
           onPressed: actions.sleepTimer,
           child: const _Icon(_Paths.timer, size: 19),
@@ -480,6 +507,7 @@ class _MusicSheet extends StatefulWidget {
 class _MusicSheetState extends State<_MusicSheet> {
   late bool _on = widget.view.musicOn;
   late double _volume = widget.view.musicVolume;
+  late int _track = widget.view.musicTrack;
 
   @override
   Widget build(BuildContext context) {
@@ -539,6 +567,33 @@ class _MusicSheetState extends State<_MusicSheet> {
                 ),
               ],
             ),
+            if (widget.actions.musicTrack != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final (i, title) in NarrationView.musicTracks.indexed)
+                      ChoiceChip(
+                        label: Text(title),
+                        selected: i == _track,
+                        showCheckmark: false,
+                        selectedColor: Graphite.accent,
+                        backgroundColor: Graphite.glassFillStrong,
+                        side: const BorderSide(color: Graphite.glassBorder),
+                        labelStyle: TextStyle(
+                          fontSize: 13,
+                          color: i == _track ? Graphite.onAccent : Graphite.text,
+                        ),
+                        onSelected: (_) {
+                          setState(() => _track = i);
+                          widget.actions.musicTrack!(i);
+                        },
+                      ),
+                  ],
+                ),
+              ),
             const Text(
               'Тихая музыка под голосом диктора; когда он говорит, она приглушается.',
               style: TextStyle(fontSize: 12, height: 1.35, color: Graphite.textFaint),

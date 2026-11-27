@@ -22,8 +22,23 @@ class LibraryScreen extends StatefulWidget {
   State<LibraryScreen> createState() => _LibraryScreenState();
 }
 
+/// Стек экранов библиотеки: мини-плеер открывает через него играющую книгу.
+final libraryNavigator = GlobalKey<NavigatorState>(debugLabel: 'Библиотека');
+
+/// Открыть в библиотеке книгу на главе `chapter` (нажатие на мини-плеер).
+void openBookInLibrary(Book book, int chapter) {
+  final navigator = libraryNavigator.currentState;
+  if (navigator == null) return;
+  navigator.popUntil((route) => route.isFirst);
+  navigator.push(
+    BlurPageRoute<void>(
+      builder: (_) => BookScreen(bookId: book.id, preview: book, openChapter: chapter),
+    ),
+  );
+}
+
 class _LibraryScreenState extends State<LibraryScreen> {
-  final _navigator = GlobalKey<NavigatorState>();
+  GlobalKey<NavigatorState> get _navigator => libraryNavigator;
 
   /// Свой контроллер перелётов: вложенному навигатору нужен отдельный.
   final _heroes = MaterialApp.createMaterialHeroController();

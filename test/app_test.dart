@@ -29,7 +29,7 @@ void main() {
     await tester.tap(find.bySemanticsLabel(AppTab.profile.label));
     await tester.pumpAndSettle();
     expect(find.text('Профиль и настройки'), findsOneWidget);
-    expect(find.text('Сервер озвучки'), findsOneWidget);
+    expect(find.text('Сервер голоса'), findsOneWidget);
     // В интерфейсе нет слова «ПК», только «сервер».
     expect(find.textContaining('ПК'), findsNothing);
   });
@@ -48,7 +48,7 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.digit5);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pumpAndSettle();
-    expect(find.text('Голоса диктора и озвученные книги'), findsOneWidget);
+    expect(find.text('Сервер голоса'), findsOneWidget);
   });
 
   testWidgets('кружок выбранного раздела плавно едет по острову', (tester) async {

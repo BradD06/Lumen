@@ -106,7 +106,12 @@ flutter run -d macos
    ```
    **Закройте и откройте PowerShell заново** (и VS Code, если он был открыт), иначе новый PATH не подхватится. Проверка: `flutter --version`.
 4. **Visual Studio 2026 Community** (не путать с VS Code): https://visualstudio.microsoft.com. В установщике отметьте нагрузку **«Разработка классических приложений на C++» (Desktop development with C++)**. Справа должны быть отмечены: **MSVC … build tools**, **C++ CMake tools for Windows**, **Windows 11 SDK** (или Windows 10 SDK). Если Visual Studio уже стоит: запустите Visual Studio Installer → «Изменить» и добавьте эту нагрузку.
-5. **Проверка:** `flutter doctor`. Нужна зелёная галочка у **Visual Studio — develop Windows apps**.
+5. **NuGet** (нужен системному голосу озвучки при сборке). В PowerShell:
+   ```powershell
+   winget install Microsoft.NuGet
+   ```
+   Закройте и откройте PowerShell заново. Проверка: `nuget help` печатает версию.
+6. **Проверка:** `flutter doctor`. Нужна зелёная галочка у **Visual Studio — develop Windows apps**.
 
 ## Windows: запуск
 
@@ -153,6 +158,13 @@ Windows: проверьте, что есть файл `C:\src\flutter\bin\flutte
 
 **`Unable to find suitable Visual Studio toolchain`** или ошибки CMake / MSVC при `flutter run -d windows`.
 Не хватает частей Visual Studio. Visual Studio Installer → «Изменить» → нагрузка «Разработка классических приложений на C++» с MSVC, CMake tools и Windows SDK. После установки откройте PowerShell заново и проверьте `flutter doctor`.
+
+**`nuget.exe not found. Please install it.`** при `flutter run -d windows`.
+Не хватает NuGet: `winget install Microsoft.NuGet`, откройте PowerShell заново, потом `flutter clean` и снова `flutter run -d windows`.
+
+**Книга не звучит голосом Lumen.** Во вкладке «Голоса» должно стоять «Подключён». Если там «Не отвечает» — сервер голоса выключен или недоступен из этой сети; пока читает системный голос, голос Lumen вернётся сам, когда сервер ответит. «Ключ не подходит» — скопируйте ссылку из окна сервера заново и нажмите «Вставить ссылку».
+
+**На iPhone нет русского системного голоса.** Настройки → Универсальный доступ → Устный контент → Голоса → Русский: скачайте любой голос.
 
 **`cmdline-tools component is missing`** или **`sdkmanager not found`** при `flutter doctor --android-licenses`.
 В Android Studio → Settings → Android SDK → SDK Tools отметьте **Android SDK Command-line Tools (latest)** и нажмите Apply. Затем повторите команду.

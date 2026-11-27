@@ -244,7 +244,7 @@ void main() {
       'Вперёд на 15 секунд',
       'Скорость',
       'Таймер сна',
-      'Голос',
+      'Голос: Системный голос',
       'Главы',
       'Вид текста',
     ]) {
@@ -288,7 +288,7 @@ void main() {
     expect(play.center.dx, closeTo(panel.center.dx, 1));
     final back15 = tester.getRect(find.byTooltip('Назад на 15 секунд'));
     final forward15 = tester.getRect(find.byTooltip('Вперёд на 15 секунд'));
-    for (final label in ['Скорость', 'Таймер сна', 'Голос']) {
+    for (final label in ['Скорость', 'Таймер сна', 'Голос: Системный голос']) {
       expect(tester.getRect(find.byTooltip(label)).right, lessThan(back15.left), reason: label);
     }
     for (final label in ['Музыка на фоне', 'Главы', 'Вид текста']) {

@@ -7,16 +7,27 @@ import '../theme/graphite.dart';
 
 /// Иконка из контура макета (viewBox 24×24, линия 1.8).
 class LineIcon extends StatelessWidget {
-  const LineIcon(this.path, {super.key, this.size = 20, this.color = Graphite.text});
+  const LineIcon(
+    this.path, {
+    super.key,
+    this.size = 20,
+    this.color = Graphite.text,
+    this.filled = false,
+  });
 
   final String path;
   final double size;
   final Color color;
 
+  /// Залитая фигура (воспроизведение, пауза), а не линия.
+  final bool filled;
+
   @override
   Widget build(BuildContext context) => SvgPicture.string(
-    '<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8" '
-    'stroke-linecap="round" stroke-linejoin="round"><path d="$path"/></svg>',
+    filled
+        ? '<svg viewBox="0 0 24 24" fill="#FFFFFF"><path d="$path"/></svg>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8" '
+              'stroke-linecap="round" stroke-linejoin="round"><path d="$path"/></svg>',
     width: size,
     height: size,
     colorFilter: ColorFilter.mode(color, BlendMode.srcIn),

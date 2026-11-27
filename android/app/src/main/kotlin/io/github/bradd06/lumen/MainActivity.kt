@@ -1,5 +1,6 @@
 package io.github.bradd06.lumen
 
-import io.flutter.embedding.android.FlutterActivity
+import com.ryanheise.audioservice.AudioServiceActivity
 
-class MainActivity : FlutterActivity()
+// AudioServiceActivity: книга играет в фоне, с экрана блокировки и из шторки.
+class MainActivity : AudioServiceActivity()

@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:lumen_core/lumen_core.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:material_ui/material_ui.dart' hide TextRange;
 
 import '../theme/graphite.dart';
 import 'widgets.dart';
@@ -42,9 +42,13 @@ List<ChapterItem> chapterItems(Chapter chapter) {
 
 /// Абзац или картинка в тексте главы.
 class ChapterItemView extends StatelessWidget {
-  const ChapterItemView({super.key, required this.item});
+  const ChapterItemView({super.key, required this.item, this.word, this.sentence});
 
   final ChapterItem item;
+
+  /// Слово под голосом и его предложение — места внутри этого абзаца.
+  final TextRange? word;
+  final TextRange? sentence;
 
   static const textStyle = TextStyle(fontSize: 17, height: 1.55, color: Graphite.text);
 
@@ -52,13 +56,50 @@ class ChapterItemView extends StatelessWidget {
   Widget build(BuildContext context) => switch (item) {
     ParagraphItem(:final text) => Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: Text(text, style: textStyle),
+      child: word == null && sentence == null
+          ? Text(text, style: textStyle)
+          : Text.rich(
+              highlighted(text, word: word, sentence: sentence),
+              style: textStyle,
+            ),
     ),
     ImageItem(:final image) => Padding(
       padding: const EdgeInsets.only(top: 6, bottom: 20),
       child: ChapterImageView(image: image),
     ),
   };
+
+  /// Подсветка по макету «Графит»: слово — сплошной янтарь с тёмным текстом,
+  /// остальное предложение — янтарь 16 %.
+  static TextSpan highlighted(String text, {TextRange? word, TextRange? sentence}) {
+    final cuts = <int>{0, text.length};
+    for (final r in [word, sentence]) {
+      if (r == null) continue;
+      cuts
+        ..add(r.start.clamp(0, text.length))
+        ..add(r.end.clamp(0, text.length));
+    }
+    final points = cuts.toList()..sort();
+    final spans = <TextSpan>[];
+    for (var i = 0; i + 1 < points.length; i++) {
+      final a = points[i];
+      final b = points[i + 1];
+      if (a == b) continue;
+      final inWord = word != null && a >= word.start && b <= word.end;
+      final inSentence = sentence != null && a >= sentence.start && b <= sentence.end;
+      spans.add(
+        TextSpan(
+          text: text.substring(a, b),
+          style: inWord
+              ? const TextStyle(color: Graphite.onAmber, backgroundColor: Graphite.amber)
+              : inSentence
+              ? const TextStyle(backgroundColor: Graphite.amberSoft)
+              : null,
+        ),
+      );
+    }
+    return TextSpan(children: spans);
+  }
 }
 
 /// Иллюстрация в полном цвете, не выше ⅔ экрана. Нажатие — во весь экран с увеличением.
