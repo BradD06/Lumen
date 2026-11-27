@@ -98,6 +98,16 @@ void main() {
     expect(x, closeTo(IslandMetrics.centerOf(AppTab.catalog), 0.5));
   });
 
+  testWidgets('порядок острова: Главная, Каталог, Добавить, Библиотека, Голоса', (tester) async {
+    await tester.pumpWidget(const LumenApp());
+    final order = ['Главная', 'Каталог', 'Добавить', 'Библиотека', 'Голоса'];
+    expect(AppTab.island.map((t) => t.label), order);
+    final xs = [for (final label in order) tester.getCenter(find.bySemanticsLabel(label)).dx];
+    for (var i = 1; i < xs.length; i++) {
+      expect(xs[i], greaterThan(xs[i - 1]));
+    }
+  });
+
   test('приветствие и дата по-русски', () {
     final t = DateTime(2026, 11, 26, 20);
     expect(greeting(t), 'Добрый вечер');
