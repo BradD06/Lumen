@@ -8,6 +8,7 @@ Lumen озвучивает текстовые книги нейроголосо�
 - [docs/ROADMAP.md](docs/ROADMAP.md) — этапы по порядку, одна задача на GitHub на этап.
 - [docs/DESIGN.md](docs/DESIGN.md) — дизайн «Графит».
 - [docs/PORTING.md](docs/PORTING.md) — что переносим из Lumen_exemple, API сервера голоса и подвохи.
+- [docs/RUNNING.md](docs/RUNNING.md) — установка и запуск на Mac, iPhone, Windows, Android; что делать при ошибках. Меняешь требования к сборке — обнови его.
 
 ## Правила владельца
 
