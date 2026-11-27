@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/services.dart';
 import 'package:lumen_core/lumen_core.dart';
 import 'package:material_ui/material_ui.dart';
@@ -72,23 +74,21 @@ class _BookScreenState extends State<BookScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     spacing: 18,
                     children: [
-                      ClearOfProfile(
-                        maxWidth: 1100,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            GlassIconButton(
-                              icon: Icons24.back,
-                              label: 'Назад',
-                              onPressed: () => Navigator.of(context).maybePop(),
-                            ),
-                            GlassIconButton(
-                              icon: Icons24.trash,
-                              label: 'Убрать из библиотеки',
-                              onPressed: () => _more(book),
-                            ),
-                          ],
-                        ),
+                      // «Назад» — на месте кружка профиля (профиль в книге скрыт).
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          GlassIconButton(
+                            icon: Icons24.back,
+                            label: 'Назад',
+                            onPressed: () => Navigator.of(context).maybePop(),
+                          ),
+                          GlassIconButton(
+                            icon: Icons24.trash,
+                            label: 'Убрать из библиотеки',
+                            onPressed: () => _more(book),
+                          ),
+                        ],
                       ),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
@@ -326,7 +326,8 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
     final chapter = _chapters[_index];
     // Абзацы и иллюстрации по порядку; считаем один раз на главу.
     final items = _itemsOf(chapter);
-    final panelBottom = islandClearance(context) + 10;
+    // Остров в открытой книге спрятан: плеер стоит на его месте.
+    final panelBottom = islandBottom(context);
     final panelWidth = (MediaQuery.sizeOf(context).width - 24).clamp(0.0, _panelWidth);
     // Текст прокручивается до конца над панелью: прогресс 56 + блок озвучки.
     final textBottom = panelBottom + 56 + NarrationControls.heightFor(panelWidth) + 40;
@@ -353,55 +354,16 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
                       // Новая глава — новый список, без следов прошлой прокрутки.
                       key: ValueKey(_index),
                       controller: _scroll,
-                      padding: EdgeInsets.fromLTRB(20, _top(context), 20, textBottom),
-                      itemCount: items.length + 1,
+                      // Сверху место под закреплённую шапку: текст уходит под неё.
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        _ChapterHeader.heightOf(context) + 8,
+                        20,
+                        textBottom,
+                      ),
+                      itemCount: items.length,
                       itemBuilder: (context, i) {
-                        final Widget child;
-                        if (i == 0) {
-                          child = Padding(
-                            padding: const EdgeInsets.only(bottom: 18),
-                            child: ClearOfProfile(
-                              maxWidth: _column,
-                              child: Row(
-                                spacing: 14,
-                                children: [
-                                  GlassIconButton(
-                                    icon: Icons24.back,
-                                    label: 'Назад',
-                                    onPressed: () => Navigator.of(context).maybePop(),
-                                  ),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          widget.book.title,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Graphite.textMuted,
-                                          ),
-                                        ),
-                                        Text(
-                                          chapter.title,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        } else {
-                          child = ChapterItemView(item: items[i - 1]);
-                        }
+                        final child = ChapterItemView(item: items[i]);
                         return Center(
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: _column),
@@ -411,6 +373,16 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
                       },
                     ),
                   ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                child: _ChapterHeader(
+                  bookTitle: widget.book.title,
+                  chapterTitle: chapter.title,
+                  column: _column,
                 ),
               ),
               Positioned(
@@ -442,6 +414,127 @@ class _ChapterTextScreenState extends State<ChapterTextScreen> {
       ),
     );
   }
+}
+
+/// Шапка текста главы, закреплённая сверху (Брэд, 27.11.2026): «Назад» в строке
+/// с кружком профиля, название книги и главы по центру экрана. Под шапкой
+/// жидкое стекло: текст, уходящий под неё при прокрутке, размывается, а нижний
+/// край стекла плавно сходит на нет.
+class _ChapterHeader extends StatelessWidget {
+  const _ChapterHeader({required this.bookTitle, required this.chapterTitle, required this.column});
+
+  final String bookTitle;
+  final String chapterTitle;
+
+  /// Ширина колонки текста: «Назад» стоит по её левому краю, когда окно широкое.
+  final double column;
+
+  /// Высота строки кнопок вместе с отступом сверху (под ней начинается текст).
+  static double heightOf(BuildContext context) => _top(context) + _bar + _gap;
+
+  static const _bar = 44.0;
+  static const _gap = 12.0;
+
+  /// Полоса, где стекло сходит на нет.
+  static const _fade = 30.0;
+
+  /// Размытие полос в нижней кромке: мелкие шаги, чтобы край не читался полосой.
+  static const _fadeSigmas = [11.0, 8.0, 6.0, 4.0, 2.5, 1.2];
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final height = heightOf(context);
+    // «Назад» на месте кружка профиля (профиль в книге скрыт), а в широком
+    // окне — по левому краю колонки текста.
+    final backLeft = 20 + ((width - 40 - column).clamp(0, double.infinity) / 2);
+    // Название по центру экрана: поля с двух сторон одинаковые, чтобы не наехать на «Назад».
+    final side = backLeft + _bar + 12;
+    return SizedBox(
+      height: height + _fade,
+      child: Stack(
+        children: [
+          // Стекло: сильное размытие под шапкой и всё слабее в полосе снизу.
+          Positioned(left: 0, right: 0, top: 0, height: height, child: _Blur(sigma: 14)),
+          for (final (i, sigma) in _fadeSigmas.indexed)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: height + i * _fade / _fadeSigmas.length,
+              height: _fade / _fadeSigmas.length,
+              child: _Blur(sigma: sigma),
+            ),
+          // Затемнение фоном приложения: сверху плотнее, к низу прозрачное.
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: [0, height / (height + _fade), 1],
+                    colors: [
+                      Graphite.background.withValues(alpha: .72),
+                      Graphite.background.withValues(alpha: .45),
+                      Graphite.background.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: backLeft,
+            top: _top(context),
+            child: GlassIconButton(
+              icon: Icons24.back,
+              label: 'Назад',
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+          ),
+          Positioned(
+            left: side,
+            right: side,
+            top: _top(context),
+            height: _bar,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  bookTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 12, color: Graphite.textMuted),
+                ),
+                Text(
+                  chapterTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Blur extends StatelessWidget {
+  const _Blur({required this.sigma});
+
+  final double sigma;
+
+  @override
+  Widget build(BuildContext context) => ClipRect(
+    child: BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma, tileMode: TileMode.mirror),
+      child: const SizedBox.expand(),
+    ),
+  );
 }
 
 /// Стеклянная плашка «подпись / значение» (Формат, Глав, Звука).

@@ -4,6 +4,7 @@ import 'package:lumen/app.dart';
 import 'package:lumen/library/book_cover.dart';
 import 'package:lumen/reader/narration_controls.dart';
 import 'package:lumen/reader/reading_panel.dart';
+import 'package:lumen/shell/app_shell.dart';
 import 'package:lumen/shell/island.dart';
 import 'package:lumen/shell/profile_button.dart';
 import 'package:lumen/shell/tabs.dart';
@@ -32,37 +33,47 @@ Rect _rect(WidgetTester tester, Finder f) => tester.getRect(f);
 
 void main() {
   for (final (name, size) in [('телефон', Size(390, 844)), ('окно', Size(1280, 800))]) {
-    testWidgets('$name: «Назад» не прячется под кружком профиля', (tester) async {
+    testWidgets('$name: в книге профиля нет, «Назад» на его месте', (tester) async {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       await _openChapter(tester, 'Глава 2');
 
-      final profile = _rect(tester, find.byType(ProfileButton));
+      Finder profile() => find.byTooltip('Профиль  Ctrl+,');
+      expect(profile().hitTestable(), findsNothing);
+      expect(find.byType(NavIsland).hitTestable(), findsNothing);
       final back = _rect(tester, find.byTooltip('Назад').last);
-      expect(profile.overlaps(back), isFalse);
-      // На одной высоте с профилем.
-      expect(back.center.dy, closeTo(profile.center.dy, 1));
+      // На месте кружка профиля (на телефоне) или левее колонки текста нет ничего.
+      expect(back.top, closeTo(_rect(tester, find.byType(ProfileButton)).top, 1));
+
+      // Обратно к списку книг — профиль снова виден.
+      await tester.tap(find.byTooltip('Назад').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Назад').last);
+      await tester.pumpAndSettle();
+      expect(profile().hitTestable(), findsOneWidget);
+      expect(find.byType(NavIsland).hitTestable(), findsOneWidget);
     });
   }
 
-  testWidgets('во весь экран «Назад» и заголовок по началу текста, в узком окне — правее профиля', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1440, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await _openChapter(tester, 'Глава 2');
+  testWidgets(
+    'во весь экран «Назад» и заголовок по началу текста, в узком окне — на месте профиля',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _openChapter(tester, 'Глава 2');
 
-    final back = tester.getRect(find.byTooltip('Назад').last);
-    final text = tester.getRect(find.textContaining('Абзац 0 главы 2.'));
-    expect(back.left, closeTo(text.left, 1));
+      final back = tester.getRect(find.byTooltip('Назад').last);
+      final text = tester.getRect(find.textContaining('Абзац 0 главы 2.'));
+      expect(back.left, closeTo(text.left, 1));
 
-    tester.view.physicalSize = const Size(700, 900);
-    await tester.pumpAndSettle();
-    final narrowBack = tester.getRect(find.byTooltip('Назад').last);
-    expect(narrowBack.left, ProfileButton.clearance);
-  });
+      tester.view.physicalSize = const Size(700, 900);
+      await tester.pumpAndSettle();
+      final narrowBack = tester.getRect(find.byTooltip('Назад').last);
+      expect(narrowBack.left, ProfileButton.left);
+    },
+  );
 
   testWidgets('карточка книги во весь экран: «Назад» по краю обложки', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
@@ -81,6 +92,25 @@ void main() {
     expect(back.left, closeTo(cover.left, 1));
   });
 
+  for (final (name, size) in [('телефон', Size(390, 844)), ('окно', Size(1440, 900))]) {
+    testWidgets('$name: шапка главы закреплена сверху, название по центру', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _openChapter(tester, 'Глава 2');
+
+      Rect back() => tester.getRect(find.byTooltip('Назад').last);
+      final before = back();
+      final title = tester.getRect(find.text('Глава 2').last);
+      expect(title.center.dx, closeTo(size.width / 2, 1));
+
+      await tester.drag(find.byType(ListView).last, const Offset(0, -500));
+      await tester.pumpAndSettle();
+      expect(back(), before);
+      expect(tester.getRect(find.text('Глава 2').last), title);
+    });
+  }
+
   testWidgets('прогресс над островом, кнопки листают главы', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -90,8 +120,9 @@ void main() {
     final panel = find.byType(ReadingPanel);
     expect(find.text('Глава 2 из 3'), findsOneWidget);
     expect(find.text('0 %'), findsOneWidget);
-    // Панель выше острова и его кружка.
-    expect(_rect(tester, panel).bottom, lessThan(_rect(tester, find.byType(NavIsland)).top));
+    // Остров спрятан, плеер стоит на его месте у низа окна.
+    expect(find.byType(NavIsland).hitTestable(), findsNothing);
+    expect(_rect(tester, panel).bottom, closeTo(844 - islandBottom(tester.element(panel)), 1));
 
     // Прокрутка двигает прогресс.
     await tester.drag(find.byType(ListView).last, const Offset(0, -600));
@@ -150,11 +181,6 @@ void main() {
     ]) {
       expect(find.byTooltip(label), findsOneWidget, reason: label);
     }
-    // Блок озвучки выше острова.
-    expect(
-      tester.getRect(find.byType(ReadingPanel)).bottom,
-      lessThan(tester.getRect(find.byType(NavIsland)).top),
-    );
 
     await tester.tap(find.byTooltip('Слушать  Пробел'));
     await tester.pumpAndSettle();
@@ -211,10 +237,5 @@ void main() {
     expect(NarrationView.speedLabel(1), '1,0×');
     expect(NarrationView.speedLabel(0.75), '0,75×');
     expect(NarrationView.speedLabel(1.5), '1,5×');
-  });
-
-  test('сдвиг строки от профиля: узкая колонка — сдвиг, широкая — нет', () {
-    expect(ClearOfProfile.indent(350, 760, 20), ProfileButton.clearance - 20);
-    expect(ClearOfProfile.indent(1240, 760, 20), 0);
   });
 }

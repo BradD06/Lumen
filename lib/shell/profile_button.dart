@@ -18,10 +18,6 @@ class ProfileButton extends StatefulWidget {
   static const left = 20.0;
   static const top = 14.0;
 
-  /// Левый край кнопок экрана в той же строке, что и кружок: правее него,
-  /// чтобы «Назад» не пряталась под профилем.
-  static const clearance = left + size + 12;
-
   final bool selected;
   final VoidCallback onTap;
 
@@ -100,44 +96,6 @@ class _ProfileButtonState extends State<ProfileButton> {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Строка кнопок экрана (Назад, Убрать…) на одной высоте с кружком профиля.
-/// Если колонка экрана начинается левее, чем кончается кружок, строка сдвигается
-/// вправо, чтобы кнопки не прятались под профилем; на широком окне колонка
-/// и так правее, и строка стоит ровно по ней.
-class ClearOfProfile extends StatelessWidget {
-  const ClearOfProfile({
-    super.key,
-    required this.maxWidth,
-    required this.child,
-    this.sidePadding = 20,
-  });
-
-  /// Ширина колонки экрана (она по центру).
-  final double maxWidth;
-
-  /// Поле списка слева и справа от колонки.
-  final double sidePadding;
-  final Widget child;
-
-  /// Насколько сдвинуть строку вправо при ширине области [available]
-  /// (окно без полей [sidePadding]).
-  static double indent(double available, double maxWidth, double sidePadding) {
-    final columnLeft = sidePadding + (available - maxWidth).clamp(0, double.infinity) / 2;
-    return (ProfileButton.clearance - columnLeft).clamp(0, double.infinity).toDouble();
-  }
-
-  // Ширина окна, а не места внутри колонки: колонка уже сужена до [maxWidth],
-  // и по ней нельзя понять, далеко ли она от кружка (экран идёт во всю ширину окна).
-  @override
-  Widget build(BuildContext context) {
-    final available = MediaQuery.sizeOf(context).width - sidePadding * 2;
-    return Padding(
-      padding: EdgeInsets.only(left: indent(available, maxWidth, sidePadding)),
-      child: child,
     );
   }
 }
