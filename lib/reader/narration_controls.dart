@@ -98,7 +98,8 @@ class NarrationActions {
 
 /// Блок управления озвучкой (макет «Графит», остров плеера): перемотка на 15 с,
 /// предыдущая и следующая фраза, белая пауза; ниже скорость, таймер сна, голос,
-/// музыка на фоне, главы и «Аа». На широком окне всё в один ряд.
+/// музыка на фоне, главы и «Аа». На широком окне всё в один ряд: плеер
+/// по центру, остальные кнопки слева и справа от него.
 class NarrationControls extends StatelessWidget {
   const NarrationControls({super.key, required this.view, required this.actions});
 
@@ -140,7 +141,9 @@ class NarrationControls extends StatelessWidget {
         ),
       ],
     );
-    final options = Row(
+    // Слева от кнопок плеера — скорость, таймер, голос; справа — музыка, главы, «Аа»
+    // (Брэд, 27.11.2026: плеер по середине).
+    final left = Row(
       mainAxisSize: MainAxisSize.min,
       spacing: 2,
       children: [
@@ -156,6 +159,12 @@ class NarrationControls extends StatelessWidget {
           onPressed: actions.voice,
           child: const _Icon(_Paths.voice, size: 19),
         ),
+      ],
+    );
+    final right = Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 2,
+      children: [
         _MusicButton(view: view, actions: actions),
         _RoundButton(
           label: 'Главы',
@@ -173,21 +182,33 @@ class NarrationControls extends StatelessWidget {
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= oneRowWidth - 12;
         if (wide) {
+          // Плеер ровно по центру панели, боковые группы прижаты к краям.
           return SizedBox(
             height: 60,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [transport, options],
+              children: [
+                Expanded(
+                  child: Align(alignment: Alignment.centerLeft, child: left),
+                ),
+                transport,
+                Expanded(
+                  child: Align(alignment: Alignment.centerRight, child: right),
+                ),
+              ],
             ),
           );
         }
+        // Узко (телефон): плеер сверху по центру, под ним группы слева и справа.
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(height: 60, child: Center(child: transport)),
             SizedBox(
               height: 46,
-              child: FittedBox(fit: BoxFit.scaleDown, child: options),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(mainAxisSize: MainAxisSize.min, spacing: 24, children: [left, right]),
+              ),
             ),
           ],
         );

@@ -146,6 +146,31 @@ void main() {
     expect(find.text('Глава 3 из 3'), findsOneWidget);
   });
 
+  testWidgets('окно: плеер по центру панели, остальные кнопки слева и справа', (tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await _openChapter(tester, 'Глава 1');
+
+    final panel = tester.getRect(find.byType(ReadingPanel));
+    final play = tester.getRect(find.byTooltip('Слушать  Пробел'));
+    expect(play.center.dx, closeTo(panel.center.dx, 1));
+    final back15 = tester.getRect(find.byTooltip('Назад на 15 секунд'));
+    final forward15 = tester.getRect(find.byTooltip('Вперёд на 15 секунд'));
+    for (final label in ['Скорость', 'Таймер сна', 'Голос']) {
+      expect(tester.getRect(find.byTooltip(label)).right, lessThan(back15.left), reason: label);
+    }
+    for (final label in ['Музыка на фоне', 'Главы', 'Вид текста']) {
+      expect(
+        tester.getRect(find.byTooltip(label)).left,
+        greaterThan(forward15.right),
+        reason: label,
+      );
+    }
+    // Все в одном ряду.
+    expect(tester.getRect(find.byTooltip('Скорость')).center.dy, closeTo(play.center.dy, 1));
+  });
+
   test('подписи скорости как в макете', () {
     expect(NarrationView.speedLabel(1), '1,0×');
     expect(NarrationView.speedLabel(0.75), '0,75×');
