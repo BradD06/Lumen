@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/app.dart';
 import 'package:lumen/narration/audio_outputs.dart';
 import 'package:lumen/narration/narration_controller.dart';
+import 'package:lumen/narration/prefs.dart';
 import 'package:lumen/library/chapter_content.dart';
 import 'package:lumen/shell/mini_player.dart';
 import 'package:lumen/shell/tabs.dart';
@@ -116,9 +117,31 @@ void main() {
     expect(controller.speed, 1.5);
     controller.dispose();
   });
+
+  test('громкость диктора отдельно от музыки и запоминается', () {
+    final prefs = MemoryPrefs();
+    final player = _NoPlayer();
+    final speech = _NoSpeech();
+    final controller = NarrationController(player: player, speech: speech, prefs: prefs);
+    expect(controller.voiceVolume, 1);
+    expect(player.volume, 1);
+    controller.setVoiceVolume(0.6);
+    controller.setMusicVolume(0.2);
+    expect(player.volume, 0.6);
+    expect(speech.volume, 0.6);
+    expect(controller.mix.musicVolume, 0.2);
+    controller.dispose();
+
+    final again = NarrationController(player: _NoPlayer(), speech: _NoSpeech(), prefs: prefs);
+    expect(again.voiceVolume, 0.6);
+    again.dispose();
+  });
 }
 
-final class _NoPlayer implements PhrasePlayer {
+final class _NoPlayer implements PhrasePlayer, VoiceVolume {
+  double volume = -1;
+  @override
+  Future<void> setVolume(double volume) async => this.volume = volume;
   @override
   Future<bool> play(PhraseAudio audio, {Duration from = Duration.zero, double speed = 1}) async =>
       false;
@@ -130,7 +153,10 @@ final class _NoPlayer implements PhrasePlayer {
   Future<void> stop() async {}
 }
 
-final class _NoSpeech implements SystemSpeech {
+final class _NoSpeech implements SystemSpeech, VoiceVolume {
+  double volume = -1;
+  @override
+  Future<void> setVolume(double volume) async => this.volume = volume;
   @override
   Future<bool> speak(
     String text, {

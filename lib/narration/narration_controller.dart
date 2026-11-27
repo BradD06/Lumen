@@ -31,6 +31,7 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
     this.keepAwake = false,
   }) : _settings = VoiceServerSettings(secrets ?? MemorySecretStore()),
        _prefs = prefs ?? MemoryPrefs(),
+       _voiceOutputs = [player, speech].whereType<VoiceVolume>().toList(),
        narrator = Narrator(player: player, speech: speech) {
     // Сначала все поля, потом подписка на диктора: его первое же изменение (скорость)
     // читает музыку и тишину. Наоборот на iPhone падало, и звук не включался.
@@ -42,6 +43,10 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
       musicVolume: _prefs.getDouble(_musicVolumeKey) ?? 0.3,
     );
     _track = MusicTrack.byId(_prefs.getString(_trackKey));
+    _voiceVolume = _prefs.getDouble(_voiceVolumeKey) ?? 1;
+    for (final output in _voiceOutputs) {
+      unawaited(output.setVolume(_voiceVolume));
+    }
     sleep = SleepTimer(onFire: pause, onChange: notifyListeners);
     narrator
       ..setSpeed(_speed)
@@ -63,6 +68,7 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
   static const _musicKey = 'narration.music';
   static const _musicVolumeKey = 'narration.musicVolume';
   static const _trackKey = 'narration.musicTrack';
+  static const _voiceVolumeKey = 'narration.voiceVolume';
   static const _systemKey = 'narration.systemVoice';
 
   final Narrator narrator;
@@ -387,6 +393,20 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
     notifyListeners();
   }
 
+  /// Громкость диктора (голос сервера и системный), отдельно от музыки.
+  double get voiceVolume => _voiceVolume;
+  late double _voiceVolume;
+  final List<VoiceVolume> _voiceOutputs;
+
+  void setVoiceVolume(double volume) {
+    _voiceVolume = volume.clamp(0.0, 1.0);
+    _prefs.setDouble(_voiceVolumeKey, _voiceVolume);
+    for (final output in _voiceOutputs) {
+      unawaited(output.setVolume(_voiceVolume));
+    }
+    notifyListeners();
+  }
+
   void setTrack(MusicTrack track) {
     _track = track;
     _prefs.setString(_trackKey, track.id);
@@ -395,10 +415,14 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
   }
 
   /// Музыка играет, пока играет книга; под голосом тише. Громкость меняется плавно.
+  /// Приглушение держится всю озвучку, а не по фразам: иначе в паузе между фразами музыка
+  /// на миг поднималась и снова опускалась, и на стыках слышался шум. Громче она становится,
+  /// только пока голос ждёт сервер.
   void _updateMusic() {
     final player = music;
     if (player == null) return;
-    double goal() => _mix.musicOn && state.playing ? _mix.musicLevel(speaking: state.sounding) : 0;
+    double goal() =>
+        _mix.musicOn && state.playing ? _mix.musicLevel(speaking: state.waiting == null) : 0;
     if (_mix.musicOn && state.playing) unawaited(player.play(_track.asset));
     if ((goal() - _musicLevel).abs() < 0.001) return;
     _fader ??= Timer.periodic(const Duration(milliseconds: 40), (timer) {
@@ -414,11 +438,13 @@ class NarrationController extends ChangeNotifier implements MediaCommands {
     });
   }
 
-  /// Тишина в паузах голоса сервера: иначе система усыпит приложение в фоне (PORTING.md).
+  /// Тишина под голосом сервера: иначе в паузах система усыпит приложение в фоне (PORTING.md).
+  /// Играет всё время, пока книга играет, а не только между фразами: второй плеер, который
+  /// включался и выключался на каждом стыке, давал щелчок и шум.
   void _updateSilence() {
     final player = silence;
     if (player == null || !keepAwake) return;
-    final needed = state.playing && !state.sounding && !(_mix.musicOn);
+    final needed = state.playing && !(_mix.musicOn);
     if (needed) {
       unawaited(_silenceFile().then((path) => player.play(path, asset: false)));
     } else {

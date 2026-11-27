@@ -9,6 +9,7 @@ import '../screens/library_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/voices_screen.dart';
 import '../screens/tab_page.dart';
+import '../theme/fading_glass.dart';
 import '../theme/glass.dart';
 import 'island.dart';
 import 'mini_player.dart';
@@ -76,6 +77,21 @@ class _AppShellState extends State<AppShell> {
                       ],
                     ),
                   ),
+                  // Шапка раздела: стекло под часами и кружком профиля, прокрученный текст
+                  // уходит под него и размывается, как под шапкой главы. В открытой книге
+                  // у экрана своя шапка.
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    height: top + ProfileButton.top + ProfileButton.size / 2 + 30,
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: _bookOpen,
+                      builder: (context, bookOpen, glass) =>
+                          Visibility(visible: !(bookOpen && _tab == AppTab.library), child: glass!),
+                      child: const FadingGlass(fadeEdge: AxisDirection.down),
+                    ),
+                  ),
                   // Профиль — только в разделах; в открытой книге на его месте «Назад»
                   // (Брэд, 27.11.2026).
                   Positioned(
@@ -107,7 +123,7 @@ class _AppShellState extends State<AppShell> {
                   Positioned(
                     left: 12,
                     right: 12,
-                    bottom: islandClearance(context) + 10,
+                    bottom: islandClearance(context) + MiniPlayer.gap,
                     child: ValueListenableBuilder<bool>(
                       valueListenable: _bookOpen,
                       builder: (context, bookOpen, player) {
