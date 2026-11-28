@@ -6,7 +6,6 @@ import 'package:lumen_core/lumen_core.dart';
 import 'package:lumen_storage/lumen_storage.dart';
 import 'package:material_ui/material_ui.dart' hide TextRange;
 
-import '../library/book_cover.dart';
 import '../library/book_transitions.dart';
 import '../library/chapter_content.dart';
 import '../library/library_scope.dart';
@@ -23,7 +22,6 @@ import '../shell/app_shell.dart' show TabSwitcher;
 import '../theme/fading_glass.dart';
 import '../theme/glass.dart';
 import '../theme/graphite.dart';
-import 'library_screen.dart' show removeBook;
 import 'tab_page.dart';
 
 /// Верх экрана: кнопки стоят на одной высоте с кружком профиля
@@ -31,281 +29,148 @@ import 'tab_page.dart';
 double _top(BuildContext context) =>
     MediaQuery.paddingOf(context).top + TabPage.windowBar + ProfileButton.top;
 
-/// Карточка книги: обложка, сведения и главы.
+/// Открытая книга (Брэд, 27.11.2026): сразу текст — с места, где читатель
+/// остановился, или с начала книги. Отдельной страницы со списком глав нет,
+/// главы — кнопкой «Главы» в плеере.
+///
+/// Пока обложка летит к центру и вырастает до ~85 % экрана, книга читается
+/// в фоне; когда перелёт закончен и книга готова, обложка гаснет, а текст
+/// (уже разложенный и стоящий на нужном абзаце) проявляется.
 class BookScreen extends StatefulWidget {
   const BookScreen({super.key, required this.bookId, this.preview, this.openChapter});
 
   final String bookId;
 
-  /// Сразу открыть текст этой главы (из мини-плеера).
+  /// Открыть эту главу (мини-плеер: глава, которая звучит); `null` — где остановился.
   final int? openChapter;
 
-  /// Книга из списка (без глав): показать сразу, пока грузится целиком.
+  /// Книга из списка (без глав): её обложка видна сразу, пока книга грузится.
   final Book? preview;
+
+  /// Глава, с которой открыть книгу: заданная, иначе текущая; дочитанная
+  /// текущая — следующая за ней; книгу ещё не открывали — первая.
+  static int startChapter(ReadingProgress progress, int chapters, [int? asked]) {
+    if (chapters == 0) return 0;
+    if (asked != null && asked >= 0 && asked < chapters) return asked;
+    final current = progress.current;
+    if (current == null || current >= chapters) return 0;
+    if (progress.finished(current) && current + 1 < chapters) return current + 1;
+    return current;
+  }
 
   @override
   State<BookScreen> createState() => _BookScreenState();
 }
 
 class _BookScreenState extends State<BookScreen> {
-  Future<Book?>? _book;
+  Book? _book;
+  ReadingProgress _progress = ReadingProgress.empty;
+  var _loaded = false;
 
-  /// Где читатель остановился; текст главы сообщает каждое новое место.
-  var _progress = ReadingProgress.empty;
+  /// Перелёт обложки закончен: можно менять её на текст.
+  var _landed = false;
+  Animation<double>? _route;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_book == null) {
-      _book = LibraryScope.of(context).store.book(widget.bookId);
-      _loadProgress();
+    if (_route == null) {
+      _route = ModalRoute.of(context)?.animation;
+      _route?.addStatusListener(_onRoute);
+      _landed = _route == null || _route!.status == AnimationStatus.completed;
+      _load();
     }
   }
 
-  Future<void> _loadProgress() async {
-    final book = _book;
-    final progress = await LibraryScope.of(context).store.progress(widget.bookId);
+  @override
+  void dispose() {
+    _route?.removeStatusListener(_onRoute);
+    super.dispose();
+  }
+
+  void _onRoute(AnimationStatus status) {
+    if (status == AnimationStatus.completed && !_landed) setState(() => _landed = true);
+  }
+
+  Future<void> _load() async {
+    final store = LibraryScope.of(context).store;
+    // Книга и место читаются одновременно; книга — в фоновом потоке.
+    final (book, progress) = await (store.book(widget.bookId), store.progress(widget.bookId)).wait;
     if (!mounted) return;
-    setState(() => _progress = progress);
-    final chapter = widget.openChapter;
-    final loaded = await book;
-    if (chapter != null && loaded != null && mounted && chapter < loaded.chapters.length) {
-      _open(loaded, chapter);
-    }
-  }
-
-  void _open(Book book, int index) => Navigator.of(context).push(
-    BlurPageRoute<void>(
-      builder: (_) => ChapterTextScreen(
-        book: book,
-        index: index,
-        progress: _progress,
-        onProgress: (progress) {
-          if (mounted) setState(() => _progress = progress);
-        },
-      ),
-    ),
-  );
-
-  Future<void> _more(Book book) async {
-    if (await removeBook(context, book) && mounted) Navigator.of(context).pop();
+    setState(() {
+      _book = book;
+      _progress = progress;
+      _loaded = true;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final book = _book;
+    final cover = _book ?? widget.preview;
+    final ready = _loaded && _landed;
+    final screen = MediaQuery.sizeOf(context);
+    final big = bigCoverRect(screen);
     return Material(
       type: MaterialType.transparency,
-      child: FutureBuilder<Book?>(
-        future: _book,
-        builder: (context, snapshot) {
-          final book = snapshot.data ?? widget.preview;
-          if (book == null) return const SizedBox.shrink();
-          final loaded = snapshot.data != null;
-          final characters = book.chapters.fold(0, (sum, c) => sum + c.text.length);
-          final facts = [
-            bookFormat(book),
-            if (loaded) chaptersLabel(book.chapters.length),
-            if (loaded) '≈ ${listeningTime(characters)}',
-          ].join(' · ');
-          final read = loaded && _progress.current != null
-              ? _progress.ofBook([for (final c in book.chapters) c.text.length])
-              : null;
-          return ListView(
-            padding: EdgeInsets.fromLTRB(20, _top(context), 20, 140),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1100),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    spacing: 18,
-                    children: [
-                      // «Назад» — на месте кружка профиля (профиль в книге скрыт).
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          GlassIconButton(
-                            icon: Icons24.back,
-                            label: 'Назад',
-                            onPressed: () => Navigator.of(context).maybePop(),
-                          ),
-                          GlassIconButton(
-                            icon: Icons24.trash,
-                            label: 'Убрать из библиотеки',
-                            onPressed: () => _more(book),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        spacing: 16,
-                        children: [
-                          SizedBox(
-                            width: 120,
-                            child: FlyingCover(
-                              book: book,
-                              child: BookCover(book: book, radius: 16, titleSize: 13),
-                            ),
-                          ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              spacing: 6,
-                              children: [
-                                Text(
-                                  book.title,
-                                  style: const TextStyle(
-                                    fontSize: 24,
-                                    height: 1.15,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                if (book.author != null)
-                                  Text(
-                                    book.author!,
-                                    style: const TextStyle(fontSize: 14, color: Graphite.textMuted),
-                                  ),
-                                Text(
-                                  facts,
-                                  style: const TextStyle(fontSize: 12, color: Graphite.textMuted),
-                                ),
-                                if (read != null)
-                                  Text(
-                                    'Прочитано ${(read * 100).floor()} %',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: Graphite.amber,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (loaded) ...[
-                        const Text(
-                          'Главы',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                        ),
-                        Column(
-                          children: [
-                            for (final chapter in book.chapters)
-                              _ChapterRow(
-                                chapter: chapter,
-                                current: _progress.current == chapter.index,
-                                fraction: _progress.of(chapter.index),
-                                onTap: () => _open(book, chapter.index),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// Строка списка глав. Глава, где читатель остановился, отмечена янтарём:
-/// «Вы остановились здесь», процент и полоска прочитанного (Брэд, 27.11.2026).
-class _ChapterRow extends StatelessWidget {
-  const _ChapterRow({
-    required this.chapter,
-    required this.current,
-    required this.fraction,
-    required this.onTap,
-  });
-
-  final Chapter chapter;
-  final bool current;
-
-  /// Прочитанная доля главы.
-  final double fraction;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final percent = (fraction * 100).floor();
-    final finished = fraction >= 0.99;
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: Color(0xFF22222A))),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          spacing: 8,
-          children: [
-            Row(
-              spacing: 14,
-              children: [
-                SizedBox(
-                  width: 30,
-                  child: Text(
-                    '${chapter.index + 1}',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: current ? FontWeight.w700 : null,
-                      color: current ? Graphite.amber : Graphite.textMuted,
+      child: Stack(
+        children: [
+          if (book != null && book.chapters.isNotEmpty)
+            // Текст строится сразу, как только книга прочитана, но виден только
+            // после перелёта: за это время он раскладывается и встаёт на место.
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: !ready,
+                child: AnimatedOpacity(
+                  opacity: ready ? 1 : 0,
+                  // Большая обложка ещё мгновение стоит, потом её сменяет текст.
+                  duration: const Duration(milliseconds: 560),
+                  curve: const Interval(.4, 1, curve: Curves.easeOut),
+                  child: ChapterTextScreen(
+                    book: book,
+                    index: BookScreen.startChapter(
+                      _progress,
+                      book.chapters.length,
+                      widget.openChapter,
                     ),
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    spacing: 2,
-                    children: [
-                      Text(
-                        chapter.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: current ? const TextStyle(fontWeight: FontWeight.w600) : null,
-                      ),
-                      if (current)
-                        const Text(
-                          'Вы остановились здесь',
-                          style: TextStyle(fontSize: 12, color: Graphite.amber),
-                        ),
-                    ],
-                  ),
-                ),
-                Text(
-                  current
-                      ? '$percent %'
-                      : finished
-                      ? 'Прочитана'
-                      : listeningTime(chapter.text.length),
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: current ? FontWeight.w600 : null,
-                    color: current ? Graphite.amber : Graphite.textMuted,
-                  ),
-                ),
-              ],
-            ),
-            if (current)
-              Padding(
-                padding: const EdgeInsets.only(left: 44),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: fraction,
-                    minHeight: 3,
-                    color: Graphite.amber,
-                    backgroundColor: const Color(0xFF2A2A33),
+                    progress: _progress,
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+          if (_loaded && (book == null || book.chapters.isEmpty))
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                spacing: 16,
+                children: [
+                  const Text('В этой книге нет текста', style: TextStyle(fontSize: 17)),
+                  GlassIconButton(
+                    icon: Icons24.back,
+                    label: 'Назад',
+                    onPressed: () => Navigator.of(context).maybePop(),
+                  ),
+                ],
+              ),
+            ),
+          // Обложка посреди экрана: сюда прилетает обложка из библиотеки
+          // и сюда же возвращается при закрытии книги.
+          if (cover != null)
+            Positioned.fromRect(
+              rect: big,
+              child: IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: ready ? 0 : 1,
+                  duration: const Duration(milliseconds: 560),
+                  curve: const Interval(.4, 1, curve: Curves.easeIn),
+                  child: FlyingCover(
+                    book: cover,
+                    child: BigCover(book: cover),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

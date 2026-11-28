@@ -5,10 +5,12 @@ import 'package:lumen/library/book_cover.dart';
 import 'package:lumen/library/book_transitions.dart';
 import 'package:lumen/reader/narration_controls.dart';
 import 'package:lumen/reader/reading_panel.dart';
+import 'package:lumen/screens/book_screen.dart';
 import 'package:lumen/shell/island.dart';
 import 'package:lumen/theme/fading_glass.dart';
 import 'package:lumen/shell/profile_button.dart';
 import 'package:lumen/shell/tabs.dart';
+import 'package:lumen_core/lumen_core.dart';
 import 'package:lumen_import/lumen_import.dart';
 import 'package:lumen_storage/lumen_storage.dart';
 
@@ -24,10 +26,16 @@ Future<void> _openChapter(WidgetTester tester, String chapter) async {
   await tester.pumpWidget(LumenApp(store: store));
   await tester.tap(find.bySemanticsLabel(AppTab.library.label));
   await tester.pumpAndSettle();
+  // Книга сразу открывается текстом (впервые — с первой главы); другая глава —
+  // через «Главы» в плеере.
   await tester.tap(find.bySemanticsLabel('Тихая ночь'));
   await tester.pumpAndSettle();
-  await tester.tap(find.text(chapter).first);
-  await tester.pumpAndSettle();
+  if (chapter != 'Глава 1') {
+    await tester.tap(find.byTooltip('Главы'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(chapter).last);
+    await tester.pumpAndSettle();
+  }
 }
 
 Rect _rect(WidgetTester tester, Finder f) => tester.getRect(f);
@@ -55,9 +63,7 @@ void main() {
       // На месте кружка профиля (на телефоне) или левее колонки текста нет ничего.
       expect(back.top, closeTo(_rect(tester, find.byType(ProfileButton)).top, 1));
 
-      // Обратно к списку книг — профиль снова виден.
-      await tester.tap(find.byTooltip('Назад').last);
-      await tester.pumpAndSettle();
+      // «Назад» из текста — сразу к списку книг, профиль снова виден.
       await tester.tap(find.byTooltip('Назад').last);
       await tester.pumpAndSettle();
       expect(profile().hitTestable(), findsOneWidget);
@@ -84,23 +90,15 @@ void main() {
     },
   );
 
-  testWidgets('карточка книги во весь экран: «Назад» по краю обложки', (tester) async {
-    tester.view.physicalSize = const Size(1440, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    final store = MemoryBookStore();
-    await store.save(parsePlainText('Глава 1\n\nРаз.', title: 'Тихая ночь').toBook('b1'));
-    await tester.pumpWidget(LumenApp(store: store));
-    await tester.tap(find.bySemanticsLabel(AppTab.library.label));
-    await tester.pumpAndSettle();
-    await tester.tap(find.bySemanticsLabel('Тихая ночь'));
-    await tester.pumpAndSettle();
-
-    final back = tester.getRect(find.byTooltip('Назад').last);
-    final cover = tester.getRect(find.byType(BookCover).last);
-    expect(back.left, closeTo(cover.left, 1));
-    // В списке глав острова тоже нет.
-    expect(find.byType(NavIsland).hitTestable(), findsNothing);
+  test('с какой главы открыть книгу', () {
+    const none = ReadingProgress.empty;
+    expect(BookScreen.startChapter(none, 5), 0);
+    final mid = none.withChapter(2, .4);
+    expect(BookScreen.startChapter(mid, 5), 2);
+    expect(BookScreen.startChapter(none.withChapter(2, 1), 5), 3, reason: 'дочитана — следующая');
+    expect(BookScreen.startChapter(none.withChapter(4, 1), 5), 4, reason: 'последняя остаётся');
+    expect(BookScreen.startChapter(mid, 5, 1), 1, reason: 'мини-плеер просит свою главу');
+    expect(BookScreen.startChapter(mid, 0), 0);
   });
 
   for (final (name, size) in [('телефон', Size(390, 844)), ('окно', Size(1440, 900))]) {
@@ -122,7 +120,7 @@ void main() {
     });
   }
 
-  testWidgets('в списке глав видно, где остановился и сколько прочитано', (tester) async {
+  testWidgets('книга снова открывается там, где остановился', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -135,18 +133,9 @@ void main() {
 
     await tester.tap(find.byTooltip('Назад').last);
     await tester.pumpAndSettle();
-    expect(find.text('Вы остановились здесь'), findsOneWidget);
-    final row = find.ancestor(
-      of: find.text('Вы остановились здесь'),
-      matching: find.byType(InkWell),
-    );
-    expect(find.descendant(of: row, matching: find.text('Глава 2')), findsOneWidget);
-    expect(find.descendant(of: row, matching: find.textContaining('%')), findsOneWidget);
-    expect(find.textContaining('Прочитано'), findsOneWidget);
-
-    // Глава открывается на том же месте.
-    await tester.tap(find.text('Глава 2').first);
+    await tester.tap(find.bySemanticsLabel('Тихая ночь'));
     await tester.pumpAndSettle();
+    expect(find.text('Глава 2 из 3'), findsOneWidget);
     final reopened = tester.widget<ReadingPanel>(find.byType(ReadingPanel)).trailing!;
     final a = int.parse(percent.split(' ').first);
     final b = int.parse(reopened.split(' ').first);
@@ -312,7 +301,7 @@ void main() {
   });
 
   testWidgets(
-    'книга открывается с перелётом обложки, после перехода список под ней не ловит нажатия',
+    'книга открывается с перелётом обложки сразу в текст, библиотека под ним не ловит нажатия',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
@@ -324,6 +313,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.bySemanticsLabel('Тихая ночь'));
       await tester.pump();
+      // Пока обложка летит, текст не виден.
+      expect(find.text('Раз.').hitTestable(), findsNothing);
       for (var i = 0; i < 9; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
@@ -334,7 +325,7 @@ void main() {
       ];
       expect(widths.reduce((a, b) => a > b ? a : b), greaterThan(250));
       await tester.pumpAndSettle();
-      expect(find.text('Главы'), findsOneWidget);
+      expect(find.text('Раз.'), findsOneWidget);
       expect(find.bySemanticsLabel('Тихая ночь'), findsNothing);
     },
   );
