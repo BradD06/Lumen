@@ -417,22 +417,28 @@ class _SpeedButton extends StatelessWidget {
   final ValueChanged<double>? onChanged;
 
   Future<void> _pick(BuildContext context) async {
-    final box = context.findRenderObject()! as RenderBox;
-    final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
-    final at = box.localToGlobal(Offset.zero, ancestor: overlay);
-    final picked = await showMenu<double>(
-      context: context,
-      color: const Color(0xF2202028),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      position: RelativeRect.fromRect(at & box.size, Offset.zero & overlay.size),
-      items: [
-        for (final s in NarrationView.speeds)
-          CheckedPopupMenuItem(
-            value: s,
-            checked: s == speed,
-            child: Text(NarrationView.speedLabel(s)),
-          ),
-      ],
+    final picked = await _showAbove<double>(
+      context,
+      width: 150,
+      builder: (context) => GlassPanel(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final s in NarrationView.speeds)
+              ListTile(
+                dense: true,
+                selected: s == speed,
+                selectedColor: Graphite.text,
+                selectedTileColor: Graphite.islandOn,
+                title: Text(NarrationView.speedLabel(s), style: const TextStyle(fontSize: 15)),
+                trailing: s == speed ? const Icon(Icons.check, size: 18) : null,
+                onTap: () => Navigator.of(context).pop(s),
+              ),
+          ],
+        ),
+      ),
     );
     if (picked != null) onChanged!(picked);
   }
@@ -451,6 +457,42 @@ class _SpeedButton extends StatelessWidget {
   );
 }
 
+/// Окно из стекла над кнопкой плеера; нажатие мимо закрывает его.
+Future<T?> _showAbove<T>(
+  BuildContext context, {
+  required double width,
+  required WidgetBuilder builder,
+}) {
+  final box = context.findRenderObject()! as RenderBox;
+  final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
+  final at = box.localToGlobal(Offset.zero, ancestor: overlay);
+  return showGeneralDialog<T>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'Закрыть',
+    barrierColor: Colors.transparent,
+    transitionDuration: const Duration(milliseconds: 160),
+    transitionBuilder: (context, animation, _, child) =>
+        FadeTransition(opacity: animation, child: child),
+    pageBuilder: (context, _, _) {
+      final left = (at.dx + box.size.width / 2 - width / 2).clamp(
+        12.0,
+        overlay.size.width - width - 12,
+      );
+      return Stack(
+        children: [
+          Positioned(
+            left: left,
+            bottom: overlay.size.height - at.dy + 10,
+            width: width,
+            child: builder(context),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 /// Музыка на фоне: подсвечена, когда играет; нажатие — окно с переключателем
 /// и громкостью над панелью.
 class _MusicButton extends StatelessWidget {
@@ -459,37 +501,11 @@ class _MusicButton extends StatelessWidget {
   final NarrationView view;
   final NarrationActions actions;
 
-  Future<void> _open(BuildContext context) {
-    final box = context.findRenderObject()! as RenderBox;
-    final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
-    final at = box.localToGlobal(Offset.zero, ancestor: overlay);
-    return showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Закрыть',
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 160),
-      transitionBuilder: (context, animation, _, child) =>
-          FadeTransition(opacity: animation, child: child),
-      pageBuilder: (context, _, _) {
-        const width = 300.0;
-        final left = (at.dx + box.size.width / 2 - width / 2).clamp(
-          12.0,
-          overlay.size.width - width - 12,
-        );
-        return Stack(
-          children: [
-            Positioned(
-              left: left,
-              bottom: overlay.size.height - at.dy + 10,
-              width: width,
-              child: _MusicSheet(view: view, actions: actions),
-            ),
-          ],
-        );
-      },
-    );
-  }
+  Future<void> _open(BuildContext context) => _showAbove<void>(
+    context,
+    width: 300,
+    builder: (context) => _MusicSheet(view: view, actions: actions),
+  );
 
   @override
   Widget build(BuildContext context) => Builder(
@@ -520,93 +536,88 @@ class _MusicSheetState extends State<_MusicSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      type: MaterialType.transparency,
-      child: Glass(
-        radius: 22,
-        fill: const Color(0xE6202028),
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (widget.actions.voiceVolume != null) ...[
-              const Text('Громкость', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-              _VolumeRow(
-                label: 'Диктор',
-                value: _voice,
+    return GlassPanel(
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.actions.voiceVolume != null) ...[
+            const Text('Громкость', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            _VolumeRow(
+              label: 'Диктор',
+              value: _voice,
+              onChanged: (v) {
+                setState(() => _voice = v);
+                widget.actions.voiceVolume!(v);
+              },
+            ),
+            const SizedBox(height: 4),
+          ],
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Музыка на фоне',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ),
+              Switch(
+                value: _on,
+                activeThumbColor: Graphite.onAccent,
+                activeTrackColor: Graphite.accent,
+                inactiveThumbColor: Graphite.textMuted,
+                inactiveTrackColor: Graphite.track,
                 onChanged: (v) {
-                  setState(() => _voice = v);
-                  widget.actions.voiceVolume!(v);
+                  setState(() => _on = v);
+                  widget.actions.music?.call(v);
                 },
               ),
-              const SizedBox(height: 4),
             ],
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Музыка на фоне',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ),
-                Switch(
-                  value: _on,
-                  activeThumbColor: Graphite.onAccent,
-                  activeTrackColor: Graphite.accent,
-                  inactiveThumbColor: Graphite.textMuted,
-                  inactiveTrackColor: Graphite.track,
-                  onChanged: (v) {
-                    setState(() => _on = v);
-                    widget.actions.music?.call(v);
+          ),
+          _VolumeRow(
+            label: 'Музыка',
+            value: _volume,
+            onChanged: !_on || widget.actions.musicVolume == null
+                ? null
+                : (v) {
+                    setState(() => _volume = v);
+                    widget.actions.musicVolume!(v);
                   },
-                ),
-              ],
-            ),
-            _VolumeRow(
-              label: 'Музыка',
-              value: _volume,
-              onChanged: !_on || widget.actions.musicVolume == null
-                  ? null
-                  : (v) {
-                      setState(() => _volume = v);
-                      widget.actions.musicVolume!(v);
-                    },
-            ),
-            if (widget.actions.musicTrack != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final (i, title) in NarrationView.musicTracks.indexed)
-                      ChoiceChip(
-                        label: Text(title),
-                        selected: i == _track,
-                        showCheckmark: false,
-                        selectedColor: Graphite.accent,
-                        backgroundColor: Graphite.glassFillStrong,
-                        side: const BorderSide(color: Graphite.glassBorder),
-                        labelStyle: TextStyle(
-                          fontSize: 13,
-                          color: i == _track ? Graphite.onAccent : Graphite.text,
-                        ),
-                        onSelected: (_) {
-                          setState(() => _track = i);
-                          widget.actions.musicTrack!(i);
-                        },
+          ),
+          if (widget.actions.musicTrack != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final (i, title) in NarrationView.musicTracks.indexed)
+                    ChoiceChip(
+                      label: Text(title),
+                      selected: i == _track,
+                      showCheckmark: false,
+                      selectedColor: Graphite.accent,
+                      backgroundColor: Graphite.glassFillStrong,
+                      side: const BorderSide(color: Graphite.glassBorder),
+                      labelStyle: TextStyle(
+                        fontSize: 13,
+                        color: i == _track ? Graphite.onAccent : Graphite.text,
                       ),
-                  ],
-                ),
+                      onSelected: (_) {
+                        setState(() => _track = i);
+                        widget.actions.musicTrack!(i);
+                      },
+                    ),
+                ],
               ),
-            const Text(
-              'Тихая музыка под голосом диктора; когда он говорит, она приглушается. Громкость '
-              'диктора и музыки настраивается отдельно.',
-              style: TextStyle(fontSize: 12, height: 1.35, color: Graphite.textFaint),
             ),
-          ],
-        ),
+          const Text(
+            'Тихая музыка под голосом диктора; когда он говорит, она приглушается. Громкость '
+            'диктора и музыки настраивается отдельно.',
+            style: TextStyle(fontSize: 12, height: 1.35, color: Graphite.textFaint),
+          ),
+        ],
       ),
     );
   }

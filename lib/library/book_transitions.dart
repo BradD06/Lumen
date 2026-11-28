@@ -161,7 +161,7 @@ class BlurPageRoute<T> extends PageRouteBuilder<T> {
               ),
             Opacity(
               opacity: settled ? 1 : background.value,
-              child: const GlowBackground(child: SizedBox.expand()),
+              child: const AppBackground(child: SizedBox.expand()),
             ),
             // Экран строится и раскладывается сразу, пока не виден.
             Opacity(opacity: settled ? 1 : page.value, child: child),

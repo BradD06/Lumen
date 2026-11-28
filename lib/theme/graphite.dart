@@ -3,7 +3,7 @@ import 'package:material_ui/material_ui.dart';
 /// Цвета «Графита» (docs/DESIGN.md). Интерфейс только чёрный, серый и белый;
 /// янтарь — только подсветка слова и прогресс озвучки. Обложки цветные.
 abstract final class Graphite {
-  static const background = Color(0xFF0C0C11);
+  static const background = Color(0xFF17171C);
   static const text = Color(0xFFF2F2F5);
   static const textMuted = Color(0xFFA5A5B0);
   static const textFaint = Color(0xFF8A8A96);
@@ -37,10 +37,9 @@ abstract final class Graphite {
   static const islandOn = Color(0x29FFFFFF); // .16
   static const islandOffText = Color(0xFF9A9AA6);
 
-  // Мягкие серые свечения фона.
-  static const glowA = Color(0xFF4A4A52);
-  static const glowB = Color(0xFF6A6A72);
-  static const glowC = Color(0xFF3E3E46);
+  // Всплывающие окна плеера: прозрачное стекло, сквозь него виден текст книги.
+  static const panelFill = Color(0x8C1C1C24); // .55
+  static const panelBarrier = Color(0x33000000); // .20
 
   static const font = 'Onest';
 
